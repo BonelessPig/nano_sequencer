@@ -19,8 +19,8 @@ int main (void) {
     // DDRB |= _BV(DDB5); 
     DDRB |= BIT_5; // Sets 5th but (0b00100000) to 1 to make this an output
 
-    while(1){
-        log_serial(LOG_LEVEL_DEBUG, "Hello from ATmega328P!\r\n"); // Using custom string function
+    while(1) {
+        log_serial(LOGLVL_DEBUG, "Hello from ATmega328P!\r\n"); // Using custom string function
 
         printf("hello\n");
 

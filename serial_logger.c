@@ -1,6 +1,6 @@
 #include "serial_logger.h"
 
-static LogLevel currentLogLevel = LOG_LEVEL_OFF; 
+static LogLevel currentLogLevel = LOGLVL_OFF; 
 
 void serial_init(LogLevel level) {
     UBRR0H = UBRRH_VALUE; // Set baud rate high byte
