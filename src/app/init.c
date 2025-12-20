@@ -8,6 +8,7 @@
  * 
  */
 #include "init.h"
+#include "serial_logger.h"
 
 // Set up a FILE stream for serial output
 static const FILE serial_output = FDEV_SETUP_STREAM(add_char_serial, NULL, _FDEV_SETUP_WRITE);

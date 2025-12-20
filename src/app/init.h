@@ -11,8 +11,6 @@
  */
 
 #include <stdio.h> // For FILE type
-#include <avr/io.h> // For AVR IO registers
-#include "serial_logger.h" // For serial logging functions
 
 /**
  * @brief  Initializes the sequencer and serial logger.
