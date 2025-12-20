@@ -9,7 +9,7 @@
  */
 #include "serial_logger.h"
 
-static LogLevel currentLogLevel = LOGLVL_OFF; 
+static LogLevel currentLogLevel = LOGLVL_OFF; // Default log level
 
 /**
  * @brief Initializes the serial logger with the specified log level.
@@ -19,14 +19,9 @@ void serial_init(LogLevel level) {
     UBRR0H = UBRRH_VALUE; // Set baud rate high byte
     UBRR0L = UBRRL_VALUE; // Set baud rate low byte
 
-    // Enable receiver and transmitter
-    UCSR0B = (1 << RXEN0) | (1 << TXEN0);
+    UCSR0B = (1 << RXEN0) | (1 << TXEN0); // Enable receiver and transmitter
 
-    // Set frame format: 8 data bits, 1 stop bit, no parity
-    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
-
-    // Sets the Log Level
-    currentLogLevel = level;
+    currentLogLevel = level; // Sets the Log Level
 }
 
 /**
