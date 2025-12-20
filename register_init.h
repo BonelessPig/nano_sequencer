@@ -1,5 +1,5 @@
-#ifndef REGISTER_INIT_H 
-#define REGISTER_INIT_H
+#ifndef __REGISTER_INIT_H__
+#define __REGISTER_INIT_H__
 /**
  * @file   register_init.h
  * @brief  Header file for register initialization on AVR microcontrollers.

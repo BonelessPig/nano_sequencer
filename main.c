@@ -31,9 +31,9 @@ int main (void) {
         //PORTC1 |= PORTC2;  // Sets Bit Value 1 to 1 (Output High)
 
         PORTB |= BIT_5;  // Sets Bit Value 5 to 1 (LED On)
-        delay_ms(5000000);
+        delay_ms(500);
         
         PORTB &= ~BIT_5; // Sets Bit Value 5 to 0 (LED Off)
-        delay_ms(5000000);
+        delay_ms(500);
     }
 }

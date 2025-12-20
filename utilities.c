@@ -11,21 +11,11 @@
 #include "utilities.h"
 
 /**
- * @brief  Delays execution for a specified number of CPU clocks.
- * @param  clocks Number of CPU clocks to delay.
- */
-void delay_clocks(unsigned long clocks) {
-    while (clocks--) {
-        __asm__ __volatile__ ("nop");
-    }
-}
-
-/**
  * @brief  Delays execution for a specified number of milliseconds.
  * @param  millis Number of milliseconds to delay.
  */ 
 void delay_ms(unsigned int millis) {
     while (millis--) {
-        delay_clocks(16000); // Assuming a 16 MHz clock, 16000 clocks = 1 ms
+        delay_clocks(clock_cycles_per_ms); // Assuming a 16 MHz clock, 16000 clocks = 1 ms
     }
 }

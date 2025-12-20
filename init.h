@@ -1,5 +1,5 @@
-#ifndef SEQUENCER_INIT_H
-#define SEQUENCER_INIT_H
+#ifndef __INIT_H__
+#define __INIT_H__
 /**
  * @file   init.h
  * @brief  Header file for sequencer initialization on AVR microcontrollers.

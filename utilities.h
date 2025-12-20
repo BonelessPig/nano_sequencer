@@ -1,5 +1,5 @@
-#ifndef UTILITIES_H
-#define UTILITIES_H
+#ifndef __UTILITIES_H__
+#define __UTILITIES_H__
 /**
  * @file   utilities.h
  * @brief  Header file for utility functions and definitions.
@@ -10,11 +10,8 @@
  * 
  */
 
- /**
-  * @brief  Delays execution for a specified number of CPU clocks.
-  * @param  clocks Number of CPU clocks to delay.
-  */
- void delay_clocks(unsigned long clocks);
+#define delay_clocks(cycles) __builtin_avr_delay_cycles(cycles)
+#define clock_cycles_per_ms 16000 // Assuming a 16 MHz clock
 
  /**
   * @brief  Delays execution for a specified number of milliseconds.

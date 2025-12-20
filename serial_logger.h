@@ -1,5 +1,5 @@
-#ifndef SERIAL_LOGGER_H 
-#define SERIAL_LOGGER_H
+#ifndef __SERIAL_LOGGER_H__
+#define __SERIAL_LOGGER_H__
 /**
  * @file   serial_logger.h
  * @brief  Header file for serial logging functionality on AVR microcontrollers.
