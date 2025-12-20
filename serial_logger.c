@@ -3,6 +3,9 @@
  * @brief  Implementation of serial logging functionality on AVR microcontrollers.
  * @author BonelessPig
  * @date   2025-12-08
+ * 
+ * @copyright Copyright (c) 2025
+ * 
  */
 #include "serial_logger.h"
 

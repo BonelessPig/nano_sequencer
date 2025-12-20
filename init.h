@@ -5,6 +5,9 @@
  * @brief  Header file for sequencer initialization on AVR microcontrollers.
  * @author BonelessPig
  * @date   2025-12-08
+ * 
+ * @copyright Copyright (c) 2025
+ * 
  */
 
 #include <stdio.h> // For FILE type

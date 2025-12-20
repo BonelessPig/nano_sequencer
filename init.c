@@ -3,6 +3,9 @@
  * @brief  Implementation of sequencer initialization on AVR microcontrollers.
  * @author BonelessPig
  * @date   2025-12-08
+ * 
+ * @copyright Copyright (c) 2025
+ * 
  */
 #include "init.h"
 
