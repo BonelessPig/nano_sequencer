@@ -24,7 +24,7 @@ int main (void) {
     register_init();
 
     while(1) {
-        log_serial(LOGLVL_DEBUG, "Hello from ATmega328P!\r\n"); // Using custom string function
+        log_serial(LOGLVL_DEBUG, "test\r\n"); // Using custom string function
 
         //log_serial(LOGLVL_DEBUG, "Port C0 = %d\n", (PINC & BIT_0) ? 1 : 0); // Reads the value of Pin C0 and prints it to serial
 
