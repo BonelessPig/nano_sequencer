@@ -19,6 +19,16 @@
 #define BIT_6 (0b1 << 6) // Bit value for bit 6 (0b01000000)
 #define BIT_7 (0b1 << 7) // Bit value for bit 7 (0b10000000)
 
+// ADC Register Definitions
+#define ADCSRA (*((volatile unsigned char*)0x7A)) // ADC Control and Status Register A
+#define ADMUX  (*((volatile unsigned char*)0x7C)) // ADC Multiplexer Selection Register
+
+// ADC Register Bit Definitions
+#define ADEN  7                                 // ADC Enable bit in ADCSRA
+#define ADPS2 2                                 // ADC Prescaler Select Bit 2 in ADCSRA
+#define ADPS1 1                                 // ADC Prescaler Select Bit 1 in ADCSRA
+#define ADPS0 0                                 // ADC Prescaler Select Bit 0 in ADCSRA
+
 #define DDRA (*((volatile unsigned char*)0x23)) // Data Direction Register for port A
 #define DDRB (*((volatile unsigned char*)0x24)) // Data Direction Register for port B
 #define DDRC (*((volatile unsigned char*)0x27)) // Data Direction Register for port C
