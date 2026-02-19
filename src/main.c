@@ -16,24 +16,20 @@
 
 /**
  * @brief  main operating loop
- * @return uint8_t status code (0 for success)
+ * @return int status code (0 for success)
  */
 int main (void) {
 
     sequencer_init();
     register_init();
+    uint8_t buffer[64]; // Buffer for formatted output
+    memset(buffer, 0, sizeof(buffer)); // Clear the buffer
+    short adc_value = 0; // Variable to store ADC value
 
     while(1) {
-        log_serial(LOGLVL_DEBUG, "test\r\n"); // Using custom string function
-
-        //log_serial(LOGLVL_DEBUG, "Port C0 = %d\n", (PINC & BIT_0) ? 1 : 0); // Reads the value of Pin C0 and prints it to serial
-
-        //PORTC1 |= PORTC2;  // Sets Bit Value 1 to 1 (Output High)
-
-        PORTB |= BIT_5;  // Sets Bit Value 5 to 1 (LED On)
-        delay_ms(500);
-        
-        PORTB &= ~BIT_5; // Sets Bit Value 5 to 0 (LED Off)
-        delay_ms(500);
+        read_analog_value(&adc_value, 0); // Read ADC value from channel 0
+        snprintf(buffer, sizeof(buffer), "ADC Value = %d\r\n", adc_value);
+        log_serial(LOGLVL_DEBUG, buffer); // Print ADC value to serial
+        delay_ms(50);
     }
 }

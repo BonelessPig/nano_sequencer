@@ -3,10 +3,10 @@
 /**
  * @file   utilities.h
  * @brief  Header file for utility functions and definitions.
- * @author YourName
- * @date   2024-06-15
+ * @author BonelessPig
+ * @date   2025-12-08
  * 
- * @copywright Copyright (c) 2025
+ * @copyright Copyright (c) 2025
  * 
  */
 

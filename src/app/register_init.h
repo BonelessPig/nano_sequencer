@@ -19,15 +19,18 @@
 #define BIT_6 (0b1 << 6) // Bit value for bit 6 (0b01000000)
 #define BIT_7 (0b1 << 7) // Bit value for bit 7 (0b10000000)
 
-// ADC Register Definitions
+// ADC Register Definitions (Analog to Digital Converter)
 #define ADCSRA (*((volatile unsigned char*)0x7A)) // ADC Control and Status Register A
 #define ADMUX  (*((volatile unsigned char*)0x7C)) // ADC Multiplexer Selection Register
 
 // ADC Register Bit Definitions
 #define ADEN  7                                 // ADC Enable bit in ADCSRA
+#define ADSC  6                                 // ADC Start Conversion bit in ADCSRA
 #define ADPS2 2                                 // ADC Prescaler Select Bit 2 in ADCSRA
 #define ADPS1 1                                 // ADC Prescaler Select Bit 1 in ADCSRA
 #define ADPS0 0                                 // ADC Prescaler Select Bit 0 in ADCSRA
+
+#define ADC   (*((volatile unsigned int*)0x78)) // ADC Data Register (10-bit result from ADC)
 
 #define DDRA (*((volatile unsigned char*)0x23)) // Data Direction Register for port A
 #define DDRB (*((volatile unsigned char*)0x24)) // Data Direction Register for port B
@@ -39,8 +42,13 @@
 #define PORTC (*((volatile unsigned char*)0x28)) // Data Register for port C
 #define PORTD (*((volatile unsigned char*)0x2B)) // Data Register for port D
 
+#define PINC (*(volatile uint8_t *)(0x06)) // Input Pins Address for port C
+
+#define REFS0 6 // Reference Selection Bit 0 in ADMUX
+
 /**
  * @brief Initializes the necessary registers for the microcontroller.
  */
 void register_init(void);
+
 #endif
