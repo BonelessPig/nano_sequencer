@@ -66,7 +66,8 @@ void log_serial(LogLevel level, const char *s);
 /**
  * @brief Initializes the serial logger with the specified log level.
  * @param level level to set for logging
+ * @return int status code (0 for success)
  */
-void serial_init(LogLevel level);
+int serial_init(LogLevel level);
 
 #endif

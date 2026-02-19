@@ -9,6 +9,8 @@
  */
 #include "init.h"
 #include "serial_logger.h"
+#include "register_init.h"
+#include "../common/common_types.h"
 
 
 
@@ -18,6 +20,13 @@
  */
 int sequencer_init() 
 {
-    serial_init(LOGLVL_DEBUG); // Initialize serial logger with DEBUG level
-    return 0; // Return success
+    int status = STATUS_OK; // Variable to store status
+
+    status = serial_init(LOGLVL_DEBUG); // Initialize serial logger with DEBUG level
+    if (status != STATUS_OK) return status; // Return if initialization failed
+
+    status = register_init(); // Initialize registers
+    if (status != STATUS_OK) return status; // Return if initialization failed
+
+    return STATUS_OK; // Return success
 }

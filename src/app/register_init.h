@@ -48,7 +48,8 @@
 
 /**
  * @brief Initializes the necessary registers for the microcontroller.
+ * @return int status code (0 for success)
  */
-void register_init(void);
+int register_init(void);
 
 #endif
