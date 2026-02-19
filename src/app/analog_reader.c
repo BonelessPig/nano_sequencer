@@ -21,5 +21,5 @@ void read_analog_value(short* value, unsigned char channel) {
     ADMUX = (1 << REFS0) | (channel & 0x0F); // Set reference to AVcc and select ADC channel (0-7)
     ADCSRA |= (1 << ADSC); // Start ADC conversion
     while (ADCSRA & (1 << ADSC)); // Wait for conversion to complete
-    *value = ADC;
+    *value = ADC; // Read the ADC value (10-bit result from ADC register) 0-1023 for 0-5V input
 }
