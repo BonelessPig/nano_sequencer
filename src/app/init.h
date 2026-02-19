@@ -10,12 +10,12 @@
  * 
  */
 
-#include <stdio.h> // For FILE type
+
 
 /**
  * @brief  Initializes the sequencer and serial logger.
  * @return uint8_t status code (0 for success)
  */
-uint8_t sequencer_init();
+int sequencer_init();
 
 #endif

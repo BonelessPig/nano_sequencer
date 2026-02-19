@@ -22,7 +22,7 @@ int main (void) {
 
     sequencer_init();
     register_init();
-    uint8_t buffer[64]; // Buffer for formatted output
+    char buffer[64]; // Buffer for formatted output
     memset(buffer, 0, sizeof(buffer)); // Clear the buffer
     short adc_value = 0; // Variable to store ADC value
 
