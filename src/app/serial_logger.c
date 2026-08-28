@@ -13,7 +13,6 @@
 static LogLevel currentLogLevel = LOGLVL_OFF; // Default log level
 
 
-
 /**
  * @brief Initializes the serial logger with the specified log level.
  * @param level level to set for logging
@@ -45,8 +44,35 @@ void add_char_serial(char c) {
 /**
  * @brief Logs a string to the serial output if the log level is appropriate.
  * @param level LogLevel of the message
- * @param s string to log
+ * @param format format string (like printf)
+ * @param ... additional arguments for the format string
  */
-void log_serial(LogLevel level, const char *s) {
-    if (level >= currentLogLevel) while (*s) add_char_serial(*s++);
+void log_serial(LogLevel level, const char *format, ...) {
+    
+    if (level < currentLogLevel) return; // Skip logging if level is too low
+
+    static char buffer[64]; // Buffer for formatted output
+
+    va_list args;
+    va_start(args, format);
+    int len = vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    const char* s = buffer;
+    while (*s) add_char_serial(*s++);
+
+    if (len >= sizeof(buffer) - 1) {
+        // If the message was truncated, indicate this in the output
+        add_char_serial('\n');
+        add_char_serial('[');
+        add_char_serial('T');
+        add_char_serial('R');
+        add_char_serial('U');
+        add_char_serial('N');
+        add_char_serial('C');
+        add_char_serial('A');
+        add_char_serial('T');
+        add_char_serial('E');
+        add_char_serial('D');
+        add_char_serial(']');
+    }
 }

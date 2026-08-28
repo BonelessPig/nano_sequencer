@@ -35,6 +35,14 @@
 
 #define UDR0   (*(volatile char*)0xC6) // USART I/O Data Register
 
+#define va_start(v, l) __builtin_va_start(v, l)
+#define va_end(v)      __builtin_va_end(v)
+
+typedef __builtin_va_list va_list;
+
+
+//int vsnprintf(char *str, long size, const char *format, va_list ap);
+
 
 
 /**
@@ -59,9 +67,10 @@ void add_char_serial(char c);
 /**
  * @brief Logs a string to the serial output if the log level is appropriate.
  * @param level LogLevel of the message
- * @param s string to log
+ * @param format format string (like printf)
+ * @param ... additional arguments for the format string
  */
-void log_serial(LogLevel level, const char *s);
+void log_serial(LogLevel level, const char *s, ...);
 
 /**
  * @brief Initializes the serial logger with the specified log level.

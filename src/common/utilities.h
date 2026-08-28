@@ -19,4 +19,8 @@
   */
  void delay_ms(unsigned int millis);
 
+ void *memset(void *s, int c, unsigned int n);
+
+ void *memmove(void *dest, const void *src, unsigned int n);
+
 #endif

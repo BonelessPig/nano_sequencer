@@ -24,22 +24,23 @@ int main (void) {
     int status = STATUS_OK; // Variable to store status
     status = sequencer_init();
     if (status != 0) {
-        log_serial(LOGLVL_ERROR, "Initialization failed\r\n");
+        log_serial(LOGLVL_ERROR, "Initialization failed, status code = %d\r\n", status);
         return status; // Return error status
     }
-    char buffer[64]; // Buffer for formatted output
-    memset(buffer, 0, sizeof(buffer)); // Clear the buffer
-    short adc_value = 0; // Variable to store ADC value
+    short delay_adc_value = 0; // Variable to store ADC value for delay
+    short adc_values[6]; // Buffer to store ADC values for 6 channels
 
     while(1) {
-        status = read_analog_value(&adc_value, 0); // Read ADC value from channel 0
-        if (status != 0) {
-            snprintf(buffer, sizeof(buffer), "ADC read failed, status code = %d\r\n", status);
-            log_serial(LOGLVL_ERROR, buffer);
-            continue; // Skip this iteration on error
+        for (int i = 0; i < 6; i++) {
+            status = read_analog_value(&adc_values[i], i); // Read ADC value from channel i
+            if (status != 0) {
+                log_serial(LOGLVL_ERROR, "ADC read failed, status code = %d\r\n", status);
+                continue; // Skip this iteration on error
+            }
+            log_serial(LOGLVL_DEBUG, "ADC %d Value = %d\r\n", i, adc_values[i]); // Print ADC value to serial
+
+            status = read_analog_value(&delay_adc_value, 6); // Read ADC value from channel 6, this will be used to control the delay
+            delay_ms(delay_adc_value / 4); // Delay based on ADC value (0-255 ms)
         }
-        snprintf(buffer, sizeof(buffer), "ADC Value = %d\r\n", adc_value);
-        log_serial(LOGLVL_DEBUG, buffer); // Print ADC value to serial
-        delay_ms(50);
     }
 }
