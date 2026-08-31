@@ -65,3 +65,76 @@ void *memmove(void *dest, const void *src, unsigned int n) {
     }
     return dest;
 }
+
+
+
+/**
+ * @brief  Stores one character into str if there is room for it (plus the
+ *         terminating null byte written later by the caller), and always
+ *         counts it toward the total, matching vsnprintf's truncation contract.
+ */
+static void emit_char(char *str, unsigned int size, unsigned int *written, unsigned int *total, char c) {
+    if (*written + 1 < size) str[(*written)++] = c;
+    (*total)++;
+}
+
+
+
+/**
+ * @brief  Writes a formatted string into a fixed-size buffer, in place of avr-libc's vsnprintf.
+ * @param  str destination buffer
+ * @param  size size of str, including the terminating null byte
+ * @param  format printf-style format string
+ * @param  args variadic arguments already captured via va_start
+ * @return the number of characters that would have been written had size been unlimited
+ */
+int vsnprintf(char *str, unsigned int size, const char *format, va_list args) {
+    unsigned int written = 0;
+    unsigned int total = 0;
+
+    for (const char *p = format; *p != '\0'; p++) {
+        if (*p != '%') {
+            emit_char(str, size, &written, &total, *p);
+            continue;
+        }
+
+        p++;
+        if (*p == '\0') {
+            emit_char(str, size, &written, &total, '%'); // Trailing '%' with nothing after it
+            break;
+        }
+
+        if (*p == '%') {
+            emit_char(str, size, &written, &total, '%');
+        } else if (*p == 'd') {
+            int value = va_arg(args, int);
+            unsigned int uvalue;
+            char digits[5]; // Max digits for a 16-bit int magnitude (32768)
+            unsigned char count = 0;
+
+            if (value < 0) {
+                emit_char(str, size, &written, &total, '-');
+                uvalue = (unsigned int)(-(value + 1)) + 1; // Avoids overflow when value is INT_MIN
+            } else {
+                uvalue = (unsigned int)value;
+            }
+
+            do {
+                digits[count++] = '0' + (uvalue % 10);
+                uvalue /= 10;
+            } while (uvalue > 0);
+
+            while (count > 0) {
+                emit_char(str, size, &written, &total, digits[--count]);
+            }
+        } else {
+            // Unrecognized specifier: emit it literally rather than silently
+            // misinterpreting it, since only %d and %% are actually supported
+            emit_char(str, size, &written, &total, '%');
+            emit_char(str, size, &written, &total, *p);
+        }
+    }
+
+    if (size > 0) str[written] = '\0';
+    return (int)total;
+}

@@ -9,12 +9,13 @@
  * 
  */
 #include "analog_reader.h"
-#include "register_init.h"
+#include "../mcu/atmega328p_regs.h"
 #include "../common/common_types.h"
 
 /**
  * @brief Reads the value of an analog input pin and stores it in the provided variable.
- * @param value pointer to a short variable where the ADC value will be stored
+ * @param value pointer to a short variable where the Analog to Digital Converter (ADC) 
+ *              value will be stored
  * @param channel the ADC channel to read from (0-7 for ATmega328P)
  * @return int status code (0 for success)
  */

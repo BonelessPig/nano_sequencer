@@ -7,11 +7,15 @@
  * @copyright Copyright (c) 2025    
  * 
  */
-#include "app/init.h"           // For sequencer initialization
-#include "app/serial_logger.h"  // For serial logging
-#include "app/register_init.h"  // For register initialization
+#include "app/init.h"            // For sequencer initialization
+#include "app/serial_logger.h"   // For serial logging
+#include "app/register_init.h"   // For register initialization
+#include "app/analog_reader.h"   // For reading the tempo ADC channel
+#include "app/shift_reg_reader.h" // For reading step note values from the 74HC165 chain
 #include "common/utilities.h"      // For utility functions
 #include "common/common_types.h"    // For common type definitions
+
+#define STEP_COUNT 16 // Number of sequencer steps
 
 
 
@@ -28,19 +32,26 @@ int main (void) {
         return status; // Return error status
     }
     short delay_adc_value = 0; // Variable to store ADC value for delay
-    short adc_values[6]; // Buffer to store ADC values for 6 channels
+    unsigned char step_notes[STEP_COUNT]; // Buffer to store note values for each step
 
+    // Main loop to continuously read step notes and control delay
     while(1) {
-        for (int i = 0; i < 6; i++) {
-            status = read_analog_value(&adc_values[i], i); // Read ADC value from channel i
-            if (status != 0) {
-                log_serial(LOGLVL_ERROR, "ADC read failed, status code = %d\r\n", status);
-                continue; // Skip this iteration on error
+        // Read all step note values from the shift register chain
+        status = read_step_notes(step_notes, STEP_COUNT);
+        if (status != 0) {
+            log_serial(LOGLVL_ERROR, "Step note read failed, status code = %d\r\n", status);
+        } else {
+            for (int i = 0; i < STEP_COUNT; i++) {
+                log_serial(LOGLVL_DEBUG, "Step %d Note = %d\r\n", i, step_notes[i]); // Print note value to serial
             }
-            log_serial(LOGLVL_DEBUG, "ADC %d Value = %d\r\n", i, adc_values[i]); // Print ADC value to serial
-
-            status = read_analog_value(&delay_adc_value, 6); // Read ADC value from channel 6, this will be used to control the delay
-            delay_ms(delay_adc_value / 4); // Delay based on ADC value (0-255 ms)
         }
+
+        // Read ADC value from channel 6 once per sweep, this will be used to control the delay
+        status = read_analog_value(&delay_adc_value, 6);
+        if (status != 0) {
+            log_serial(LOGLVL_ERROR, "ADC read failed for delay channel, status code = %d\r\n", status);
+            continue; // Skip this iteration on error
+        }
+        delay_ms(delay_adc_value / 4); // Delay based on ADC value (0-255 ms)
     }
 }

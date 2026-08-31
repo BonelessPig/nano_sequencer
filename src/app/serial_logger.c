@@ -9,6 +9,15 @@
  */
 #include "serial_logger.h"
 #include "../common/common_types.h"
+#include "../common/utilities.h"
+#include "../mcu/atmega328p_regs.h"
+
+#define BAUD 9600 // Desired baud rate
+
+// Calculated per the ATmega328P datasheet, in place of <util/setbaud.h>
+#define UUBR_VALUE  (((F_CPU) / (16UL * BAUD)) - 1) // USART Baud Rate Register value
+#define UBRRH_VALUE ((unsigned char)(UUBR_VALUE >> 8)) // High byte of UBRR value
+#define UBRRL_VALUE ((unsigned char)UUBR_VALUE)        // Low  byte of UBRR value
 
 static LogLevel currentLogLevel = LOGLVL_OFF; // Default log level
 
@@ -60,7 +69,7 @@ void log_serial(LogLevel level, const char *format, ...) {
     const char* s = buffer;
     while (*s) add_char_serial(*s++);
 
-    if (len >= sizeof(buffer) - 1) {
+    if (len < 0 || (unsigned int)len >= sizeof(buffer) - 1) {
         // If the message was truncated, indicate this in the output
         add_char_serial('\n');
         add_char_serial('[');
