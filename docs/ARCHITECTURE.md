@@ -1,63 +1,69 @@
 # nano_sequencer — architecture and inner workings
 
-An analysis of the firmware, first written against `dev` at `316e431`. Findings fixed since then are marked "(fixed)", and the module descriptions reflect the fixed code. It covers how the code is layered, what happens from reset to the main loop, how each module works at the register level, and a list of findings (bugs, inconsistencies, and things that will matter when the output stage is added).
+How the firmware is structured, what happens from reset to the main loop, how each part works, and what is still open. The standing rules for the codebase are in [CLAUDE.md](../CLAUDE.md); this document describes what is there.
 
-How this was checked: every source file was read, and the firmware was compiled with the Makefile's flags using avr-gcc 12.1.0. It builds with no warnings. Nothing here was run on hardware, so timing figures are calculated, not measured.
+How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the hardware-free parts are compiled and tested on a PC with `make test`. The firmware was last run on the board before the ports-and-adapters refactor; the refactored build has not been flashed yet, so timing figures are calculated, not measured.
 
 ## At a glance
 
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano), 16 MHz |
-| Flash used | 1868 bytes of 32 KB |
-| RAM used | 66 bytes static (64-byte log buffer + 2-byte log level), plus stack |
+| Flash used | 1850 bytes of 32 KB |
+| RAM used | 68 bytes static (64-byte log buffer, 2-byte log level, 2-byte sequencer state), plus stack |
 | Interrupts | None. Everything is polled and blocking |
 | Inputs | 16 steps × 4 bits from eight 74HC165s; one pot on ADC channel 6 for tempo |
 | Outputs | Serial log only (9600 baud). No gate, trigger or CV output yet |
+| Tests | 21 host tests (12 for the core, 9 for the app loop) |
 
-## Layering
+## Structure: ports and adapters
 
-The source is split into three layers, and dependencies only point downward.
+The sequencer logic is a pure core. It never touches hardware: the app gathers inputs through ports, hands them to the core, and applies what the core returns.
 
 ```mermaid
 graph TD
-    main[main.c] --> init[app/init]
-    main --> shift[app/shift_reg_reader]
-    main --> adc[app/analog_reader]
-    main --> log[app/serial_logger]
-    main --> util[common/utilities]
-    init --> log
-    init --> reginit[app/register_init]
-    log --> util
-    util --> varargs[common/varargs.h]
-    reginit --> regs[mcu/atmega328p_regs.h]
-    reginit --> bits[common/bits.h]
-    shift --> regs
-    shift --> bits
-    adc --> regs
-    log --> regs
+    main[app/main.c] --> app[app/app.c]
+    app --> core[core/seq]
+    app --> ports[ports/*.h]
+    target[adapters/target] -. implements .-> ports
+    host[adapters/host] -. implements .-> ports
+    tests[tests/] --> app
+    tests --> core
+    tests --> host
 ```
 
-| Layer | Files | Role |
+| Folder | Role | May touch hardware |
 |---|---|---|
-| `mcu/` | `atmega328p_regs.h` | Register addresses and bit positions as `volatile` pointer macros. The only place raw addresses appear |
-| `common/` | `bits.h`, `common_types.h`, `utilities.*`, `varargs.h` | Hardware-independent helpers: bit masks, the `Status` enum, delay, `memset`/`memmove`, a small `vsnprintf`, and `va_list` macros |
-| `app/` | `init`, `register_init`, `serial_logger`, `analog_reader`, `shift_reg_reader` | One module per peripheral or job |
-| top | `main.c` | Init, then the forever loop |
+| `core/` | Sequencer logic. Plain C99; includes only its own headers and `<stdint.h>`, `<stdbool.h>`, `<stddef.h>` | No |
+| `ports/` | Headers describing what the app needs from outside: one small header per need | No |
+| `adapters/target/` | The ports implemented for the ATmega328P | Yes — the only place |
+| `adapters/host/` | The ports faked for PC tests: scripted inputs, recorded outputs | No |
+| `app/` | Wires ports to the core; holds `main` | No |
+| `tests/` | Host test programs and a small assert-based harness | No |
 
-Every `app/` function returns an `int` status using the values in `common_types.h` (`STATUS_OK` = 0, `ERR_INVALID_PARAM` = 2, and so on) and passes results back through pointer arguments.
+Ports are bound at link time: the firmware links `adapters/target/`, the tests link `adapters/host/`, and both use the same headers. There are no function-pointer tables.
+
+### The ports
+
+| Port | Function | Target implementation |
+|---|---|---|
+| `platform_port.h` | `platform_init()` | `init.c`: serial logger, then pin directions and ADC |
+| `step_input_port.h` | `step_input_read(p_raw_bits, byte_count)` | `shift_reg_reader.c`: 74HC165 chain |
+| `tempo_input_port.h` | `tempo_input_read(p_raw)` | `analog_reader.c`: ADC channel 6 |
+| `delay_port.h` | `delay_wait_ms(ms)` | `delay.c`: calibrated busy-wait |
+| `log_port.h` | `log_step_note(step, note)`, `log_error(what, status)` | `serial_logger.c`: USART0 |
+
+Functions that can fail return `port_status_t` (`STATUS_OK` = 0, `ERR_INVALID_PARAM` = 2, `ERR_TIMEOUT` = 4, and so on). The numbers appear in the serial log, so they are fixed.
 
 ## What "bare metal" means here
 
-No source file includes an avr-libc or standard header. Registers come from `mcu/atmega328p_regs.h`, variadic support from the compiler builtins in `common/varargs.h`, and the delay from `__builtin_avr_delay_cycles`.
+No source file includes an avr-libc header. Registers come from `adapters/target/atmega328p_regs.h`, variadic support from the compiler builtins in `varargs.h`, and the delay from `__builtin_avr_delay_cycles`. The build uses `-ffreestanding`, so `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` are the compiler's own.
 
-The link step is not library-free, though. The Makefile links with plain `avr-gcc -mmcu=atmega328p` (no `-nostdlib` or `-nostartfiles`), so the map file shows:
+The link step is not library-free. The Makefile links with plain `avr-gcc -mmcu=atmega328p`, so the map file shows:
 
-- `crtatmega328p.o`, which ships with avr-libc. It supplies the interrupt vector table (`__vectors`, 0x68 bytes), `__bad_interrupt`, and the `__init` code that sets the stack pointer to 0x08FF and calls `main`.
+- `crtatmega328p.o`, which ships with avr-libc. It supplies the interrupt vector table, `__bad_interrupt`, and the `__init` code that sets the stack pointer and calls `main`.
 - From libgcc: `__do_clear_bss`, `__do_copy_data`, `_exit`, and `__udivmodhi4` (16-bit divide, used by the `%d` formatter).
 - `libc.a` and `libm.a` are searched, but nothing is pulled from them.
-
-So the accurate statement is: no avr-libc headers or library functions, but the reset/startup code is still avr-libc's.
 
 ## Reset to main loop
 
@@ -65,52 +71,62 @@ So the accurate statement is: no avr-libc headers or library functions, but the 
 sequenceDiagram
     participant CRT as crt + libgcc
     participant M as main
-    participant I as sequencer_init
-    participant S as serial_init
-    participant R as register_init
+    participant A as app
+    participant P as ports (target adapters)
+    participant C as core
     CRT->>CRT: set stack pointer, clear .bss
     CRT->>M: call main
-    M->>I: sequencer_init()
-    I->>S: serial_init(LOGLVL_DEBUG)
-    S-->>I: UBRR0 = 103, RX and TX enabled
-    I->>R: register_init()
-    R-->>I: pin directions set, ADC enabled
-    I-->>M: STATUS_OK
-    loop forever
-        M->>M: read 16 step notes, log each
-        M->>M: read ADC channel 6
-        M->>M: delay_ms(adc / 4)
+    M->>A: app_init()
+    A->>P: platform_init()
+    A->>C: seq_init()
+    loop forever: app_run_once()
+        A->>P: step_input_read(), tempo_input_read()
+        A->>C: seq_tick(state, inputs, outputs)
+        A->>P: log_step_note() x16, delay_wait_ms()
     end
 ```
 
-Neither init function can currently fail; both return `STATUS_OK` unconditionally.
+If `platform_init()` fails, `app_init()` logs it and `main` returns the status; execution then falls into libgcc's `_exit`, which disables interrupts and loops forever. Neither target init function can currently fail.
 
-## The main loop
+## One tick
 
-[`src/main.c`](../src/main.c) does three things per iteration:
+`app_run_once()` in [`app/app.c`](../app/app.c) runs three steps:
 
-1. `read_step_notes()` latches and shifts in all 64 bits, then unpacks 16 four-bit notes into `step_notes[]`. Each one is logged at DEBUG level.
-2. `read_analog_value(&delay_adc_value, 6)` does one ADC conversion on channel 6.
-3. `delay_ms(delay_adc_value / 4)` waits 0 to 255 ms.
+1. **Gather inputs.** Read 8 raw bytes from the step input port and one reading from the tempo port. Each read's success becomes a valid flag in `seq_inputs_t`.
+2. **Run the core.** `seq_tick()` decodes the notes and works out the delay.
+3. **Apply outputs.** Log the 16 notes (or one error if the step read failed), log an error if the tempo read failed, then wait `delay_ms`.
 
-There is no notion of a "current step" yet. The loop is a sample-and-print sweep, and the tempo pot sets the pause between whole sweeps.
+There is no notion of a "current step" yet. A tick is a sample-and-print sweep, and the tempo pot sets the pause between sweeps.
 
-**Where the time goes.** Logging is blocking and dominates the loop. Each line (`Step N Note = M\r\n`) is 17 to 19 characters, so a sweep sends about 280 to 295 characters. At 9600 baud that is roughly 0.3 s per iteration, more than the largest possible tempo delay. The shift register read and the ADC conversion are tiny by comparison (well under a millisecond together).
+**Where the time goes.** Logging is blocking and dominates. Each line (`Step N Note = M\r\n`) is 17 to 19 characters, so a sweep sends about 280 to 295 characters. At 9600 baud that is roughly 0.3 s per tick, more than the largest possible tempo delay of 255 ms. The shift register read and the ADC conversion together take well under a millisecond.
 
-## Module internals
+## The core — `core/seq.c`
 
-### Register map — `mcu/atmega328p_regs.h`
+```c
+void seq_init(seq_state_t *p_state);
+void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_out);
+```
 
-Each register is a macro that dereferences a fixed address, for example `#define PORTD (*((volatile unsigned char*)0x2B))`. `ADC` is a 16-bit access at 0x78, which reads ADCL then ADCH. The file disables `-Warray-bounds` for everything that includes it, because GCC 12 flags fixed-address dereferences as out-of-bounds; the comment in the file explains why there is no matching pop.
+`seq_tick()` reads the state and inputs, writes the state and outputs, and does nothing else.
 
-### Pin and ADC setup — `app/register_init.c`
+- **Note decoding.** The 64 input bits are packed MSB first, 4 bits per step: step 0 is the high nibble of byte 0, step 1 the low nibble, step 2 the high nibble of byte 1, and so on. If the step inputs are flagged invalid, every note is 0 and `b_notes_valid` is false.
+- **Delay.** `delay_ms` is the tempo reading divided by 4, giving 0 to 255 ms over the 10-bit range.
+- **State.** The last valid tempo reading. When a tempo read fails, the previous reading is reused, so the loop keeps its pace. Before any valid reading the delay is 0.
+
+## Target adapters — `adapters/target/`
+
+### Register map — `atmega328p_regs.h`
+
+Each register is a macro that dereferences a fixed address, for example `#define PORTD (*((volatile unsigned char*)0x2B))`. `ADC` is a 16-bit access at 0x78, which reads ADCL then ADCH. The file disables `-Warray-bounds` for everything that includes it, because GCC 12 flags fixed-address dereferences as out-of-bounds.
+
+### Pin and ADC setup — `register_init.c`
 
 | Pin | Nano label | Direction | Used for |
 |---|---|---|---|
 | PB5 | D13 (on-board LED) | output | Nothing yet; never written |
 | PC0 | A0 | input | Nothing yet; never read |
 | PC1 | A1 | output | Nothing yet; never written |
-| PD0 | D0 / RXD | output | See finding 8 |
+| PD0 | D0 / RXD | output | See open item 2 |
 | PD2 | D2 | output | 74HC165 SH/LD (load, active low) |
 | PD3 | D3 | output | 74HC165 CLK |
 | PD4 | D4 | input | 74HC165 serial data (QH of nearest chip) |
@@ -118,122 +134,74 @@ Each register is a macro that dereferences a fixed address, for example `#define
 
 The ADC is enabled with a prescaler of 128, giving a 125 kHz ADC clock from 16 MHz. A normal conversion takes 13 ADC clocks, about 104 µs.
 
-### ADC read — `app/analog_reader.c`
+### Tempo input — `analog_reader.c`
 
-`read_analog_value()` rejects channels above 7, writes `ADMUX` with AVcc as the reference and the channel number, sets `ADSC` to start a single conversion, spins until the hardware clears `ADSC`, then copies the 10-bit result (0 to 1023) out. It is a single-shot, polled read. The wait is bounded: after 10000 polls (a few milliseconds, against a worst-case conversion of about 200 µs) it gives up and returns `ERR_TIMEOUT`.
+Writes `ADMUX` with AVcc as the reference and channel 6, sets `ADSC` to start a single conversion, polls until the hardware clears `ADSC`, then copies out the 10-bit result. The wait is bounded: after 10000 polls (a few milliseconds, against a worst-case conversion of about 200 µs) it returns `ERR_TIMEOUT`.
 
-### Shift register read — `app/shift_reg_reader.c`
+### Step input — `shift_reg_reader.c`
 
-Three functions, layered:
-
-- `read_shift_reg_chain()` pulses PD2 low then high to latch all parallel inputs, then for each byte reads PD4 and pulses PD3 eight times. The bit is sampled before the clock pulse, which is correct for the 74HC165: the first bit is already on QH after the load.
-- `get_step_note()` pulls one `NOTE_BITS_PER_STEP`-wide field out of the raw buffer with bounds checking.
-- `read_step_notes()` works out how many bytes are needed, reads the chain once, and unpacks every step.
-
-Bits are shifted in MSB first, which fixes the wiring-to-step mapping:
+Pulses PD2 low then high to latch all parallel inputs, then for each byte reads PD4 and pulses PD3 eight times. The bit is sampled before the clock pulse, which is correct for the 74HC165: the first bit is already on QH after the load. Bits are shifted in MSB first, which fixes the wiring-to-step mapping:
 
 | | Bits 7..4 | Bits 3..0 |
 |---|---|---|
 | 74HC165 inputs | H G F E | D C B A |
 | Chip `k` (0 = nearest the MCU) | step `2k` | step `2k + 1` |
 
-Within each nibble the higher-lettered input is the more significant bit, so input H of the nearest chip is the MSB of step 0.
+Within each nibble the higher-lettered input is the more significant bit, so input H of the nearest chip is the MSB of step 0. Each chip's Clock Inhibit pin must be tied to GND. The clock and load pulses are a single `sbi`/`cbi` pair, about 125 ns wide at 16 MHz, comfortably above the 74HC165's minimum at 5 V.
 
-`NOTE_BITS_PER_STEP` (4) and `SHIFT_REG_CHAIN_BYTES` (8) live in the header, and a `_Static_assert` enforces that the field width divides 8. With 16 steps × 4 bits the chain is exactly full at 64 bits.
+### Log — `serial_logger.c`
 
-On timing: the clock and load pulses are a single `sbi`/`cbi` pair, about 125 ns wide at 16 MHz, which is comfortably above the 74HC165's minimum pulse width at 5 V.
+`serial_init()` sets the baud divisor from `F_CPU` (`16000000 / (16 × 9600) − 1 = 103`, about 0.2 % error), sets normal speed and 8N1 explicitly, and enables the transmitter and receiver. Nothing reads from the UART.
 
-### Serial logger — `app/serial_logger.c`
+The port functions `log_step_note()` and `log_error()` own the message wording and call `log_serial()`, which filters by level, formats into a 64-byte `static` buffer with the project's own `vsnprintf`, and sends it one byte at a time, busy-waiting on `UDRE0`. A message that does not fit is followed by `[TRUNCATED]` on its own line. The level is set to DEBUG at init, so everything except TRACE prints.
 
-`serial_init()` sets the baud divisor from `F_CPU` (`16000000 / (16 × 9600) − 1 = 103`, about 0.2 % error) and enables the transmitter and receiver. It writes `UCSR0A` and `UCSR0C` explicitly (normal speed, 8N1) so it does not depend on what a bootloader left behind.
+### Delay and utilities — `delay.c`, `utilities.c`
 
-`log_serial()` formats into a 64-byte `static` buffer with the project's own `vsnprintf`, then sends it one byte at a time through `add_char_serial()`, which busy-waits on `UDRE0`. If the message did not fit, it appends `[TRUNCATED]` on its own line.
+- `delay_wait_ms()` loops `__builtin_avr_delay_cycles(F_CPU / 1000)` once per millisecond.
+- `vsnprintf()` supports `%d` and `%%` only; any other specifier is emitted literally. It returns the length the full output would have had, and handles `INT_MIN` without overflow.
+- `memset()` and `memmove()` are standard implementations. Nothing calls them directly, and `--gc-sections` drops them unless the compiler emits a call.
 
-Nothing reads from the UART, although the receiver is enabled.
+## Host side — `adapters/host/` and `tests/`
 
-### Utilities — `common/utilities.c`
+`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every output-port call in order. `make test` builds and runs two programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`:
 
-- `delay_ms()` loops `__builtin_avr_delay_cycles(F_CPU / 1000)` once per millisecond.
-- `memset()` and `memmove()` are standard implementations. Nothing calls them, and `--gc-sections` drops them from the binary.
-- `vsnprintf()` supports `%d` and `%%` only. Any other specifier is emitted literally. It follows the standard contract of returning the length the full output would have had, and it handles `INT_MIN` without overflow.
+- `test_seq`: the core alone. Decoding of every step and nibble, the delay maths, last-valid-tempo reuse, independence of the two valid flags, and null-pointer handling.
+- `test_app`: the real `app.c` and core linked against the fakes. Checks that a tick logs 16 notes in order and then delays once, that a failed read logs the right error in the right place, and that init failure is logged and returned.
 
-### Build — `Makefile`
+The target adapters themselves are not covered by host tests; they need the board.
 
-Compiles every `.c` under `src/`, `src/app/` and `src/common/` into `build/obj/`, links to `build/output.elf`, converts to Intel HEX, and prints a size report. Flags are `-Os` with function and data sections plus `--gc-sections`, and `F_CPU` is passed with `-D`. `make flash` runs avrdude with the `arduino` programmer at 57600 baud, which is the old-bootloader Nano setting.
+## Build — `Makefile`
 
-## Findings
+`make` compiles every `.c` under `app/`, `core/` and `adapters/target/` into `build/obj/`, links `build/output.elf`, converts to Intel HEX, and prints a size report. `make flash` uploads with avrdude at 57600 baud (the old-bootloader Nano setting), with the signature check and verification on. `make test` and `make misra` are described above and in the README. The Makefile handles Windows, macOS and Linux; only Windows has been exercised.
 
-Ordered roughly by how much they matter.
+## Static analysis
 
-### 1. Log level filter was inverted (fixed)
+`make misra` runs cppcheck with its MISRA addon over `core/`, `ports/`, `adapters/` and `app/`. Counts before the refactor are in [misra-baseline.md](misra-baseline.md). How findings are handled is set out in CLAUDE.md.
 
-`log_serial()` in `serial_logger.c` used to read `if (level < currentLogLevel) return;`. The enum runs from `LOGLVL_OFF = 0` up to `LOGLVL_TRACE = 6`, so higher numbers are more verbose. With the level set to `LOGLVL_DEBUG` (5), as `sequencer_init()` does, that check dropped FATAL, ERROR, WARN and INFO, and printed DEBUG and TRACE. All three `LOGLVL_ERROR` messages in `main.c` were silently discarded, and `LOGLVL_OFF` printed everything.
+## Open items
 
-The check is now `if (level == LOGLVL_OFF || level > currentLogLevel) return;`, so a message prints when it is at or below the configured verbosity, and `LOGLVL_OFF` prints nothing.
+Earlier findings from this analysis that have since been fixed are in the git history (log level filter, flash port default, header dependency tracking, truncation check, register map, UART setup, robustness gaps, stale comments, Makefile flags). What remains:
 
-### 2. Blocking logging sets the real loop time
+### 1. Blocking logging sets the real loop time
 
-As calculated above, a sweep spends about 0.3 s in the UART. Once the loop advances one step per tempo period, logging 16 lines per step would cap the tempo at roughly three steps per second regardless of the pot. Options are to log only the current step, raise the baud rate, or lower the log level.
+A tick spends about 0.3 s in the UART. Once the loop advances one step per tempo period, logging 16 lines per step would cap the tempo at roughly three steps per second regardless of the pot. Options are to log only the current step, raise the baud rate, or lower the log level.
 
-### 3. Flash port default disagreed between README and Makefile (fixed)
+### 2. PD0 is set as an output
 
-The README said `make flash` defaults to `PORT=COM4`, but the Makefile defaulted to `COM3`. The Makefile default stays `COM3` and the README now says the same. The local VS Code settings (not in the repo) use `COM4`.
+`DDRD |= BIT_0` makes PD0 an output, but PD0 is the USART receive pin and `RXEN0` is enabled, which overrides the direction setting. The line has no effect while the receiver is on. PB5, PC0 and PC1 are configured but never used.
 
-### 4. `delay_ms` ignored `F_CPU` (fixed)
+### 3. Tempo is sampled before logging
 
-`clock_cycles_per_ms` was hard-coded to 16000 in `utilities.h`, while `serial_logger.h` says `F_CPU` is the single source of truth for the clock. Changing `F_CPU` would have fixed the baud rate but left delays wrong. It is now `(F_CPU / 1000UL)`, and `utilities.h` refuses to compile if `F_CPU` is not defined.
+Because inputs are gathered before outputs are applied, the tempo pot is read about 0.3 s before the delay it controls (it used to be read just before). The serial output and the loop period are unchanged.
 
-### 5. Truncation check was off by one (fixed)
+### 4. Legacy style in the target adapters
 
-`log_serial()` flagged truncation when `len >= sizeof(buffer) - 1`, so a message of exactly 63 characters fit in full but was still marked `[TRUNCATED]`. The test is now `len >= sizeof(buffer)`, and the unreachable `len < 0` branch is gone. The marker used a bare `\n` and left the next message on the same line; it is now wrapped in `\r\n` on both sides.
-
-### 6. Port A registers were defined but do not exist (fixed)
-
-`DDRA` and `PORTA` were in the register header, but the ATmega328P has no port A. The address given for `DDRA` (0x23) is actually `PINB`, and 0x22 is reserved. Both are removed, and `PINB` is added so port B can be read.
-
-### 7. README was partly out of date (fixed)
-
-- It said the project was written "without ... avr-libc", which is true of the source but not of the startup code (see above). It now says no avr-libc headers or functions are used and names what the toolchain adds at link time.
-- The layout tree described `main.c` as "ADC sampling + serial logging" and omitted `varargs.h` and the `vsnprintf` in `utilities.c`. All three are corrected.
-
-### 8. PD0 is set as an output
-
-`DDRD |= BIT_0` makes PD0 an output, but PD0 is the USART receive pin and `RXEN0` is enabled, which overrides the direction setting. The line has no effect while the receiver is on. If it was meant for something else, it is on the wrong pin; if not, it can go. PB5, PC0 and PC1 are configured but never used.
-
-### 9. Makefile gaps
-
-- Header dependency tracking was missing, so editing a `.h` file did not rebuild the objects that include it. Fixed: the Makefile now compiles with `-MMD -MP` and includes the generated `.d` files.
-- The recipes used `cmd.exe` syntax (`if not exist`, `rmdir /s /q`), so the build was Windows-only. Fixed: the Makefile now picks the folder commands and default serial port per platform. The macOS and Linux branches have not been run on those systems.
-- `flash` passed `-V` (skip verification), which hid bad writes. Fixed: avrdude now verifies after writing.
-- `flash` passed `-F` (skip the device signature check), which hid a wrong-chip situation. Removed after a flash without it succeeded on the board.
-- `-fno-exceptions` was in the compiler flags and does nothing for C. Removed.
-
-### 10. USART setup relied on reset defaults (fixed)
-
-`serial_init()` never wrote `UCSR0A` or `UCSR0C`. That is fine after a true reset, but if a bootloader hands over without resetting those registers and had enabled double-speed mode, the baud rate would be off by a factor of two. Both are now written explicitly.
-
-### 11. Small robustness gaps (fixed)
-
-- `read_analog_value()` did not check `value` for null and its conversion wait had no timeout. It now rejects a null pointer and returns `ERR_TIMEOUT` if the conversion never completes.
-- In `main.c`, an ADC failure hit `continue` and skipped the delay, turning the loop into a tight spin. The loop now logs the error and delays using the last good reading.
-- `get_step_note()` computed `bit_pos` in an `unsigned char`, so a `step_index` of 64 or more wrapped and returned a different step instead of an error. It is now computed in an `unsigned int`.
-
-One related behaviour is unchanged and worth knowing: if `main` returns on init failure, execution falls into libgcc's `_exit`, which disables interrupts and loops forever.
-
-### 12. Stale comments (fixed)
-
-- `register_init.c` said "Sets 0th bit ... to 1 to make this an input" where the code clears it.
-- `analog_reader.c` and `.h` said the function "prints it to serial".
-- `init.c` and `init.h` documented a `uint8_t` return for a function returning `int`.
-- `utilities.c` and `register_init.c` carried the template author line (`you@domain.com`) and empty descriptions.
-- The Makefile header said it mirrors `.vscode/settings.json`, which is gitignored and no longer matches.
+The code in `adapters/target/` predates the coding standard in CLAUDE.md: unbraced single-line `if`s, `int`/`unsigned char` where fixed-width types are called for, and K&R brace placement. It accounts for most of the remaining MISRA findings and is deliberately left for a separate cleanup.
 
 ## What the output stage will need
 
-Based on the structure above, adding sequencing touches these points:
-
-- **A step index in `main.c`**, advanced once per tempo period, in place of the per-sweep delay.
-- **An output module in `app/`** alongside the readers, following the same pattern (`int` status, pointer out-parameters, registers via `mcu/`). PB5, PC0 and PC1 are already configured and free.
+- **Step advance in the core first**, with tests: a current-step index in `seq_state_t`, advanced once per tick, and the note for that step in `seq_outputs_t`.
+- **A new output port** (gate, trigger or CV) with a target adapter and a host fake. PB5, PC0 and PC1 are already configured and free.
 - **New register definitions** in `atmega328p_regs.h` for whatever drives the output: timer registers for PWM-based CV, or SPI registers for an external DAC.
-- **A timing decision.** `delay_ms` blocks, so the inputs are only re-read between steps. That is acceptable for a simple sequencer; a timer interrupt would be the next step up, and would be the first interrupt in the project.
-- **Dealing with finding 2 first**, since it limits how fast the loop can run.
+- **A timing decision.** `delay_wait_ms` blocks, so the inputs are only re-read between steps. A timer interrupt would be the next step up; under the project rules it would only bump a tick counter, with the core still called from the main loop.
+- **Dealing with open item 1 first**, since it limits how fast the loop can run.
