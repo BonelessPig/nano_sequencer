@@ -214,9 +214,20 @@ HOST_HDRS := $(wildcard core/*.h ports/*.h app/*.h adapters/host/*.h tests/*.h)
 TEST_SEQ = $(HOST_DIR)/test_seq$(EXE)
 TEST_APP = $(HOST_DIR)/test_app$(EXE)
 
-test: $(TEST_SEQ) $(TEST_APP)
+TEST_LOGGER = $(HOST_DIR)/test_serial_logger$(EXE)
+
+test: $(TEST_SEQ) $(TEST_APP) $(TEST_LOGGER)
 	$(call run,$(TEST_SEQ))
 	$(call run,$(TEST_APP))
+	$(call run,$(TEST_LOGGER))
+
+# Tests for the target serial logger. The test includes the adapter's .c file
+# directly, with the MCU register header swapped for tests/fake_atmega328p_regs.h,
+# so it can check the exact bytes the logger would send. It needs the adapter's
+# folder on the include path and the same F_CPU the firmware is built with.
+$(TEST_LOGGER): tests/test_serial_logger.c adapters/target/serial_logger.c $(HOST_HDRS) $(wildcard adapters/target/*.h)
+	@$(call mkdir_p,$(HOST_DIR))
+	$(HOST_CC) $(HOST_CFLAGS) -Iadapters/target -DF_CPU=$(F_CPU) -o $@ tests/test_serial_logger.c
 
 # Unit tests for the core alone: no ports, no adapters.
 $(TEST_SEQ): tests/test_seq.c $(CORE_SRCS) $(HOST_HDRS)

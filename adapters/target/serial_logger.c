@@ -1,6 +1,8 @@
 /**
  * @file   serial_logger.c
- * @brief  Target implementation of the log port: formatted logging over USART0.
+ * @brief  Target implementation of the log port: text logging over USART0.
+ *         Messages are sent piece by piece (fixed text, then numbers as
+ *         decimal digits), so no formatting buffer is needed.
  * @author BonelessPig
  * @date   2025-12-08
  *
@@ -8,19 +10,102 @@
  *
  */
 #include "serial_logger.h"
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include "log_port.h"
 #include "port_status.h"
-#include "utilities.h"
 #include "atmega328p_regs.h"
 
-#define BAUD 9600 // Desired baud rate
+// F_CPU is provided by the build (see Makefile / -DF_CPU) rather than defined
+// here, so there is a single source of truth for the clock speed.
+#ifndef F_CPU
+#error "F_CPU must be defined by the build (e.g. -DF_CPU=16000000UL)"
+#endif
+
+#define BAUD (9600UL) // Desired baud rate
 
 // Calculated per the ATmega328P datasheet, in place of <util/setbaud.h>
-#define UUBR_VALUE  (((F_CPU) / (16UL * BAUD)) - 1) // USART Baud Rate Register value
-#define UBRRH_VALUE ((unsigned char)(UUBR_VALUE >> 8)) // High byte of UBRR value
-#define UBRRL_VALUE ((unsigned char)UUBR_VALUE)        // Low  byte of UBRR value
+#define UBRR_SAMPLES_PER_BIT (16UL) // Normal-speed mode samples each bit 16 times
+#define UBRR_VALUE  (((F_CPU) / (UBRR_SAMPLES_PER_BIT * BAUD)) - 1UL) // USART Baud Rate Register value
+#define BYTE_RANGE  (256UL) // Number of values one byte can hold
+#define UBRRH_VALUE ((uint8_t)(UBRR_VALUE / BYTE_RANGE)) // High byte of UBRR value
+#define UBRRL_VALUE ((uint8_t)(UBRR_VALUE % BYTE_RANGE)) // Low  byte of UBRR value
 
-static LogLevel currentLogLevel = LOGLVL_OFF; // Default log level
+#define DECIMAL_BASE       (10U)
+#define MAX_DECIMAL_DIGITS (5U) // Digits in the largest 16-bit value (65535)
+
+static log_level_t g_log_level = LOGLVL_OFF; // Default log level
+
+
+
+/**
+ * @brief Tells whether a message of the given level should be sent.
+ * @param level level of the message
+ * @return true if the level is at or below the configured verbosity
+ */
+static bool is_level_enabled(log_level_t level)
+{
+    return (LOGLVL_OFF != level) && (level <= g_log_level);
+}
+
+
+
+/**
+ * @brief Sends one character over the serial port, waiting for room first.
+ * @param character character to send
+ */
+static void write_char(char character)
+{
+    while (0U == (UCSR0A & (1U << UDRE0))) // Wait for empty transmit buffer
+    {
+    }
+    UDR0 = (uint8_t)character; // Put data into buffer, sends the data
+}
+
+
+
+/**
+ * @brief Sends a null-terminated string over the serial port.
+ * @param p_text string to send; must not be null
+ */
+static void write_text(const char *p_text)
+{
+    for (uint8_t i = 0U; '\0' != p_text[i]; i++)
+    {
+        write_char(p_text[i]);
+    }
+}
+
+
+
+/**
+ * @brief Sends a number over the serial port as decimal digits, with no padding.
+ * @param value number to send, 0 to 65535
+ */
+static void write_decimal(uint16_t value)
+{
+    char     digits[MAX_DECIMAL_DIGITS];
+    uint8_t  count     = 0U;
+    uint16_t remaining = value;
+
+    // Digits come out least significant first, so collect them and send in reverse
+    do
+    {
+        const uint8_t digit = (uint8_t)(remaining % DECIMAL_BASE);
+
+        digits[count] = (char)('0' + digit);
+        count++;
+        remaining /= DECIMAL_BASE;
+    } while (remaining > 0U);
+
+    while (count > 0U)
+    {
+        count--;
+        write_char(digits[count]);
+    }
+}
+
 
 
 /**
@@ -28,71 +113,20 @@ static LogLevel currentLogLevel = LOGLVL_OFF; // Default log level
  * @param level level to set for logging
  * @return port_status_t status code (STATUS_OK for success)
  */
-port_status_t serial_init(LogLevel level) {
+port_status_t serial_init(log_level_t level)
+{
     UBRR0H = UBRRH_VALUE; // Set baud rate high byte
     UBRR0L = UBRRL_VALUE; // Set baud rate low byte
 
     // Set these explicitly rather than relying on reset defaults, in case a
     // bootloader left them changed (e.g. double-speed mode enabled)
-    UCSR0A = 0; // Normal speed (U2X0 = 0), no multi-processor mode
-    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00); // Frame format: 8 data bits, no parity, 1 stop bit
+    UCSR0A = 0U; // Normal speed (U2X0 = 0), no multi-processor mode
+    UCSR0C = (uint8_t)((1U << UCSZ01) | (1U << UCSZ00)); // Frame format: 8 data bits, no parity, 1 stop bit
 
-    UCSR0B = (1 << RXEN0) | (1 << TXEN0); // Enable receiver and transmitter
+    UCSR0B = (uint8_t)((1U << RXEN0) | (1U << TXEN0)); // Enable receiver and transmitter
 
-    currentLogLevel = level; // Sets the Log Level
+    g_log_level = level; // Sets the Log Level
     return STATUS_OK; // Return success
-}
-
-
-
-/**
- * @brief Adds a character to the serial output.
- * @param c character to add
- */
-void add_char_serial(char c) {
-    while (!(UCSR0A & (1 << UDRE0))); // Wait for empty transmit buffer
-    UDR0 = (unsigned char)c; // Put data into buffer, sends the data
-}
-
-
-
-/**
- * @brief Logs a string to the serial output if the log level is appropriate.
- * @param level LogLevel of the message
- * @param format format string (like printf)
- * @param ... additional arguments for the format string
- */
-void log_serial(LogLevel level, const char *format, ...) {
-
-    if (level == LOGLVL_OFF || level > currentLogLevel) return; // Skip logging if level is more verbose than the current setting
-
-    static char buffer[64]; // Buffer for formatted output
-
-    va_list args;
-    va_start(args, format);
-    int len = vsnprintf(buffer, sizeof(buffer), format, args);
-    va_end(args);
-    const char* s = buffer;
-    while (*s) add_char_serial(*s++);
-
-    if ((unsigned int)len >= sizeof(buffer)) {
-        // If the message was truncated, indicate this in the output
-        add_char_serial('\r');
-        add_char_serial('\n');
-        add_char_serial('[');
-        add_char_serial('T');
-        add_char_serial('R');
-        add_char_serial('U');
-        add_char_serial('N');
-        add_char_serial('C');
-        add_char_serial('A');
-        add_char_serial('T');
-        add_char_serial('E');
-        add_char_serial('D');
-        add_char_serial(']');
-        add_char_serial('\r');
-        add_char_serial('\n');
-    }
 }
 
 
@@ -102,8 +136,16 @@ void log_serial(LogLevel level, const char *format, ...) {
  * @param step step index
  * @param note note value for that step
  */
-void log_step_note(uint8_t step, uint8_t note) {
-    log_serial(LOGLVL_DEBUG, "Step %d Note = %d\r\n", step, note); // Print note value to serial
+void log_step_note(uint8_t step, uint8_t note)
+{
+    if (is_level_enabled(LOGLVL_DEBUG))
+    {
+        write_text("Step ");
+        write_decimal(step);
+        write_text(" Note = ");
+        write_decimal(note);
+        write_text("\r\n");
+    }
 }
 
 
@@ -113,18 +155,33 @@ void log_step_note(uint8_t step, uint8_t note) {
  * @param what which operation failed
  * @param status the status code it returned
  */
-void log_error(log_error_id_t what, port_status_t status) {
-    switch (what) {
+void log_error(log_error_id_t what, port_status_t status)
+{
+    const char *p_text = NULL;
+
+    switch (what)
+    {
         case LOG_ERROR_INIT:
-            log_serial(LOGLVL_ERROR, "Initialization failed, status code = %d\r\n", status);
+            p_text = "Initialization failed, status code = ";
             break;
+
         case LOG_ERROR_STEP_READ:
-            log_serial(LOGLVL_ERROR, "Step note read failed, status code = %d\r\n", status);
+            p_text = "Step note read failed, status code = ";
             break;
+
         case LOG_ERROR_TEMPO_READ:
-            log_serial(LOGLVL_ERROR, "ADC read failed for delay channel, status code = %d\r\n", status);
+            p_text = "ADC read failed for delay channel, status code = ";
             break;
+
         default:
-            break; // Unknown id: nothing sensible to print
+            // Unknown id: nothing sensible to print
+            break;
+    }
+
+    if ((NULL != p_text) && is_level_enabled(LOGLVL_ERROR))
+    {
+        write_text(p_text);
+        write_decimal((uint16_t)status);
+        write_text("\r\n");
     }
 }
