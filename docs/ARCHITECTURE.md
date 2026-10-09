@@ -178,7 +178,9 @@ The other target adapters (shift register, ADC, delay, pin setup) are not covere
 
 ## Static analysis
 
-`make misra` runs cppcheck with its MISRA addon over `core/`, `ports/` and `app/`, once with each set of adapters. Counts before the refactor are in [misra-baseline.md](misra-baseline.md): 165 findings, 5 of them mandatory and 101 required. There are now 8, all advisory and all rule 8.7, with no suppressions. They are on the control functions of the host fakes in `adapters/host`, which are called only from `tests/`; cppcheck does not analyse `tests/`, so it sees no caller in another file.
+`make misra` runs cppcheck with its MISRA addon twice, each time over the files that are linked together for that build: the firmware (`core/`, `ports/`, `app/`, `adapters/target/`) and the `test_app` host program (`core/`, `ports/`, `app/app.c`, `adapters/host/`, `tests/test_app.c`). Counts before the refactor are in [misra-baseline.md](misra-baseline.md): 165 findings, 5 of them mandatory and 101 required. There are now none, and no inline suppressions or deviations in the source.
+
+Two things about scope: findings located in `tests/` are not reported, because test code is not held to the coding standard; the test file is in the host run only so cppcheck can see the host fakes being called. And cppcheck implements only part of MISRA C, so zero findings means zero from this tool, not a claim of full compliance. The `io_low` attribute in the register header and the delay builtin are compiler extensions that the tool does not flag.
 
 How findings are handled is set out in CLAUDE.md.
 

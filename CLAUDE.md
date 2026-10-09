@@ -37,8 +37,10 @@ Follow BARR-C:2018 (the Barr Group Embedded C Coding Standard) for style and nam
 
   ```
   cppcheck --addon=tools/misra/misra.json --std=c99 --enable=warning,style,performance,portability --inline-suppr --error-exitcode=1 -DF_CPU=16000000UL -I core -I ports core ports app adapters/target
-  cppcheck --addon=tools/misra/misra.json --std=c99 --enable=warning,style,performance,portability --inline-suppr --error-exitcode=1 -DF_CPU=16000000UL -I core -I ports core ports app adapters/host
+  cppcheck --addon=tools/misra/misra.json --std=c99 --enable=warning,style,performance,portability --inline-suppr --error-exitcode=1 -DF_CPU=16000000UL -I core -I ports -I app -I adapters/host -I tests "--suppress=*:tests/*" core ports app/app.c adapters/host tests/test_app.c
   ```
+
+  The host run mirrors the `test_app` program: it leaves out `app/main.c` (the test has its own `main`) and includes `tests/test_app.c` so cppcheck can see the host fakes being called. Test code is outside the coding standard, so findings located in `tests/` are not reported. That is the one approved path-wide suppression.
 
   `tools/misra/misra.json` points the addon at the MISRA headlines file in `tools/misra/`, so findings come out with readable rule text and a category.
 

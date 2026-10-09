@@ -258,26 +258,34 @@ $(TEST_APP): tests/test_app.c app/app.c $(CORE_SRCS) $(HOST_SRCS) $(HOST_HDRS)
 # everything it is given as one program. The target and host adapters each
 # define the same port functions (only one set is ever linked), and analysing
 # both together would report every port as defined twice.
+#
+# Each run analyses the same files that are linked together for that build:
+#   misra-target   core, ports, all of app (including main.c), adapters/target
+#   misra-host     core, ports, app/app.c, adapters/host, tests/test_app.c
+# The host run mirrors the test_app program. It leaves out app/main.c because
+# the test supplies its own main, and it includes the test file only so
+# cppcheck can see that the host fakes' control functions are called from
+# another file. Test code is not held to the coding standard, so findings
+# located in tests/ are not reported (MISRA_HOST_SCOPE).
 #   make misra         Both runs; stops at the first one that reports findings
 #   make -k misra      Both runs even if the first reports findings
-#   MISRA_COMMON    Folders in both runs
 #   MISRA_INCLUDES  Where cppcheck looks for the project's own headers
 #   -DF_CPU=...     Same define the compiler gets; without it the headers hit
 #                     their #error and cppcheck skips the code
-MISRA_COMMON   = core ports app
-MISRA_INCLUDES = -I core -I ports
-MISRA_FLAGS    = --addon=tools/misra/misra.json --std=c99 \
-                 --enable=warning,style,performance,portability \
-                 --inline-suppr --error-exitcode=1 -DF_CPU=$(F_CPU)
+MISRA_INCLUDES   = -I core -I ports
+MISRA_FLAGS      = --addon=tools/misra/misra.json --std=c99 \
+                   --enable=warning,style,performance,portability \
+                   --inline-suppr --error-exitcode=1 -DF_CPU=$(F_CPU)
+MISRA_HOST_SCOPE = -I app -I adapters/host -I tests "--suppress=*:tests/*"
 
 .PHONY: misra-target misra-host
 misra: misra-target misra-host
 
 misra-target:
-	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_COMMON) adapters/target
+	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) core ports app adapters/target
 
 misra-host:
-	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_COMMON) adapters/host
+	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_HOST_SCOPE) core ports app/app.c adapters/host tests/test_app.c
 
 # Upload the .hex to the board through the bootloader. The first line stops with
 # a clear message if no port was given and none could be auto-detected.
