@@ -51,7 +51,7 @@ port_status_t serial_init(LogLevel level) {
  */
 void add_char_serial(char c) {
     while (!(UCSR0A & (1 << UDRE0))); // Wait for empty transmit buffer
-    UDR0 = c; // Put data into buffer, sends the data
+    UDR0 = (unsigned char)c; // Put data into buffer, sends the data
 }
 
 

@@ -35,7 +35,7 @@ port_status_t step_input_read(uint8_t *raw_bits, uint8_t chain_bytes) {
     if (raw_bits == 0) return ERR_INVALID_PARAM;
     if (chain_bytes == 0 || chain_bytes > SHIFT_REG_CHAIN_BYTES) return ERR_INVALID_PARAM;
 
-    PORTD &= ~SHIFT_LOAD_BIT; // Latch parallel inputs
+    PORTD &= (unsigned char)~SHIFT_LOAD_BIT; // Latch parallel inputs
     PORTD |= SHIFT_LOAD_BIT;  // Return to shift mode
 
     for (unsigned char byte_i = 0; byte_i < chain_bytes; byte_i++) {
@@ -44,7 +44,7 @@ port_status_t step_input_read(uint8_t *raw_bits, uint8_t chain_bytes) {
             b <<= 1;
             if (PIND & SHIFT_DATA_BIT) b |= 1; // Read current bit before clocking to the next
             PORTD |= SHIFT_CLK_BIT;
-            PORTD &= ~SHIFT_CLK_BIT;
+            PORTD &= (unsigned char)~SHIFT_CLK_BIT;
         }
         raw_bits[byte_i] = b;
     }

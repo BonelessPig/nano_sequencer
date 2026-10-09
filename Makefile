@@ -129,7 +129,11 @@ DEPS := $(OBJS:.o=.d)
 # Compiler flags:
 #   -g                    Include debug info in the .elf (not uploaded to the chip)
 #   -Os                   Optimize for size
+#   -std=c99              Compile as C99
 #   -Wall -Wextra         Enable the common warnings
+#   -Wconversion          Warn when an implicit conversion could change a value or its sign
+#   -Wshadow              Warn when a local name hides another variable
+#   -Werror               Treat every warning as an error, so none can be ignored
 #   -ffunction-sections   Put each function and variable in its own section so
 #   -fdata-sections         the linker can drop the ones nothing uses
 #   -pipe                 Pass data between compiler stages in memory, not temp files
@@ -140,7 +144,7 @@ DEPS := $(OBJS:.o=.d)
 #   -I<dir>               One per INCLUDE_DIRS entry, so headers are found by name
 #   -MMD -MP              Also write a .d file listing the headers each source
 #                           includes, so editing a header rebuilds what uses it
-CFLAGS  = -g -Os -Wall -Wextra \
+CFLAGS  = -g -Os -std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror \
           -ffunction-sections -fdata-sections -pipe -ffreestanding \
           -mmcu=$(MCU) -DF_CPU=$(F_CPU) $(addprefix -I,$(INCLUDE_DIRS)) \
           -MMD -MP

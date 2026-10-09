@@ -108,7 +108,7 @@ int vsnprintf(char *str, unsigned int size, const char *format, va_list args) {
             }
 
             do {
-                digits[count++] = '0' + (uvalue % 10);
+                digits[count++] = (char)('0' + (uvalue % 10));
                 uvalue /= 10;
             } while (uvalue > 0);
 
