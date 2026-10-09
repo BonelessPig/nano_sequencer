@@ -38,9 +38,9 @@ def load_categories():
 
 
 def folder_of(path):
-    """Group by the first two path components (e.g. adapters/target), or the file itself at top level."""
+    """Group by folder, at most two levels deep (core, adapters/target); a top-level file is its own group."""
     parts = path.replace("\\", "/").split("/")
-    return "/".join(parts[:2]) if len(parts) > 2 else "/".join(parts)
+    return "/".join(parts[:-1][:2]) if len(parts) > 1 else path
 
 
 def rule_key(rule):
