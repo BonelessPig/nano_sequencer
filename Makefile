@@ -115,7 +115,7 @@ DEPS := $(OBJS:.o=.d)
 #   -I src                Lets code include headers by path from src/
 #   -MMD -MP              Also write a .d file listing the headers each source
 #                           includes, so editing a header rebuilds what uses it
-CFLAGS  = -g -Os -Wall -Wextra -fno-exceptions \
+CFLAGS  = -g -Os -Wall -Wextra \
           -ffunction-sections -fdata-sections -pipe \
           -mmcu=$(MCU) -DF_CPU=$(F_CPU) -I$(SRC_DIR) \
           -MMD -MP
@@ -167,12 +167,14 @@ size: $(TARGET).elf
 
 # Upload the .hex to the board through the bootloader. The first line stops with
 # a clear message if no port was given and none could be auto-detected.
-#   -F  skip the device signature check
-#   -V  skip reading the flash back to verify it
+# After writing, avrdude reads the flash back and compares it to the .hex, so a
+# "verification error" means the upload did not take; try again.
+#   -F  skip the device signature check (some Nano clones report a different
+#       chip signature; without -F avrdude would refuse to flash those)
 #   -U flash:w:<file>:i  write <file> to flash, i = Intel HEX format
 flash: $(TARGET).hex
 	$(if $(PORT),,$(error No serial port found. Plug in the board or pass PORT=<device>))
-	$(AVRDUDE) -F -V -c $(PROGRAMMER) -p ATMEGA328P -P $(PORT) -b $(BAUD) -U flash:w:$<:i
+	$(AVRDUDE) -F -c $(PROGRAMMER) -p ATMEGA328P -P $(PORT) -b $(BAUD) -U flash:w:$<:i
 
 clean:
 	@$(call rm_rf,$(BUILD_DIR))
