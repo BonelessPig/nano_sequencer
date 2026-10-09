@@ -159,7 +159,7 @@ Nothing reads from the UART, although the receiver is enabled.
 
 ### Build — `Makefile`
 
-Compiles every `.c` under `src/`, `src/app/` and `src/common/` into `build/obj/`, links to `build/output.elf`, and converts to Intel HEX. Flags are `-Os` with function and data sections plus `--gc-sections`, and `F_CPU` is passed with `-D`. `make flash` runs avrdude with the `arduino` programmer at 57600 baud, which is the old-bootloader Nano setting.
+Compiles every `.c` under `src/`, `src/app/` and `src/common/` into `build/obj/`, links to `build/output.elf`, converts to Intel HEX, and prints a size report. Flags are `-Os` with function and data sections plus `--gc-sections`, and `F_CPU` is passed with `-D`. `make flash` runs avrdude with the `arduino` programmer at 57600 baud, which is the old-bootloader Nano setting.
 
 ## Findings
 
@@ -175,9 +175,9 @@ The check is now `if (level == LOGLVL_OFF || level > currentLogLevel) return;`, 
 
 As calculated above, a sweep spends about 0.3 s in the UART. Once the loop advances one step per tempo period, logging 16 lines per step would cap the tempo at roughly three steps per second regardless of the pot. Options are to log only the current step, raise the baud rate, or lower the log level.
 
-### 3. Flash port default disagrees between README and Makefile
+### 3. Flash port default disagreed between README and Makefile (fixed)
 
-The README says `make flash` defaults to `PORT=COM4` and suggests `PORT=COM3` as the override. The Makefile defaults to `COM3`. The local VS Code settings use `COM4`.
+The README said `make flash` defaults to `PORT=COM4`, but the Makefile defaulted to `COM3`. The Makefile now defaults to `COM4`, matching the README and the local VS Code settings.
 
 ### 4. `delay_ms` ignores `F_CPU`
 
@@ -202,8 +202,8 @@ The README says `make flash` defaults to `PORT=COM4` and suggests `PORT=COM3` as
 
 ### 9. Makefile gaps
 
-- No header dependency tracking (`-MMD -MP`), so editing a `.h` file does not rebuild the objects that include it. A `make clean` is needed after header changes.
-- The recipes use `cmd.exe` syntax (`if not exist`, `rmdir /s /q`), so the build is Windows-only.
+- Header dependency tracking was missing, so editing a `.h` file did not rebuild the objects that include it. Fixed: the Makefile now compiles with `-MMD -MP` and includes the generated `.d` files.
+- The recipes used `cmd.exe` syntax (`if not exist`, `rmdir /s /q`), so the build was Windows-only. Fixed: the Makefile now picks the folder commands and default serial port per platform. The macOS and Linux branches have not been run on those systems.
 - `flash` passes `-F` (skip the device signature check) and `-V` (skip verification), which hides a wrong-chip or bad-write situation.
 - `-fno-exceptions` does nothing for C.
 

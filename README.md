@@ -38,17 +38,47 @@ src/
 - Step notes: 16 steps × 4 bits, read from a chain of 8 daisy-chained 74HC165 shift registers via `PORTD2` (SH/LD), `PORTD3` (CLK), and `PORTD4` (SER data-in) — each 74HC165's Clock Inhibit/CE pin must be tied to GND in hardware
 - Digital I/O configured in `register_init.c`: `PORTB5`, `PORTD0`, `PORTD2`, `PORTD3` as outputs, `PORTC0`, `PORTD4` as inputs, `PORTC1` as output
 
+## Dependencies
+
+Nothing needs to be installed beyond one AVR toolchain folder on your `PATH`. No Arduino IDE, no VS Code extension, and no libraries.
+
+| Tool | Used for | Needed to |
+|---|---|---|
+| `avr-gcc` | Compiling and linking (also supplies the chip's startup code and `libgcc`) | Build |
+| `avr-objcopy` | Converting the linked `.elf` to the `.hex` upload format | Build |
+| `avr-size` | The flash/RAM usage report | Build |
+| `make` | Running the `Makefile` | Build |
+| `avrdude` | Uploading the `.hex` to the board over USB serial | Flash only |
+
+Installing them:
+
+- **Windows:** prebuilt AVR toolchain bundles typically ship all five in a single `bin` folder, so adding that folder to `PATH` is the whole setup.
+- **macOS** (Homebrew; `make` comes with the Xcode command line tools):
+  ```sh
+  brew tap osx-cross/avr
+  brew install avr-gcc avrdude
+  ```
+- **Linux** (Debian/Ubuntu; `avr-libc` is needed for the chip's startup object at link time):
+  ```sh
+  sudo apt install gcc-avr binutils-avr avr-libc avrdude make
+  ```
+
+Developed on Windows with avr-gcc 12.1.0, GNU Make 4.2.1, and avrdude 7.0. The `Makefile` detects the platform and is written to work on macOS and Linux as well, but it has not yet been run on either.
+
+On the hardware side: an Arduino Nano (ATmega328P, 16 MHz) with its stock serial bootloader, and a USB cable. The upload speed in the `Makefile` (57600 baud) is for the old Nano bootloader; newer boards use 115200.
+
 ## Building and flashing
 
-Build and flash with the included `Makefile` (requires `avr-gcc`, `avr-objcopy`, and `avrdude` on your `PATH`):
+Build and flash with the included `Makefile`:
 
 ```sh
-make            # Compile + link + convert to build/output.hex
-make flash      # Flash build/output.hex (defaults to PORT=COM4)
+make            # Compile + link + convert to build/output.hex, then print flash/RAM usage
+make size       # Print flash/RAM usage (builds first if needed)
+make flash      # Flash build/output.hex
 make clean      # Remove the build/ directory
 ```
 
-Override the port if your Nano enumerates differently, e.g. `make flash PORT=COM3`.
+`make flash` picks the serial port per platform: `COM4` on Windows, the first `/dev/cu.usbserial*`, `/dev/cu.wchusbserial*` or `/dev/cu.usbmodem*` device on macOS, and the first `/dev/ttyUSB*` or `/dev/ttyACM*` device on Linux. Override it if your Nano enumerates differently, e.g. `make flash PORT=COM3` or `make flash PORT=/dev/ttyUSB1`. On Linux your user needs access to the port (usually membership of the `dialout` group).
 
 ## License
 
