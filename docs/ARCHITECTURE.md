@@ -57,7 +57,7 @@ Functions that can fail return `port_status_t` (`STATUS_OK` = 0, `ERR_INVALID_PA
 
 ## What "bare metal" means here
 
-No source file includes an avr-libc header. Registers come from `adapters/target/atmega328p_regs.h` and the delay from the `__builtin_avr_delay_cycles` compiler builtin. There is no `printf`, `memset` or any other library function; the logger converts numbers to text itself. The build uses `-ffreestanding`, so `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` are the compiler's own.
+No source file includes an avr-libc header. Registers are declared in `adapters/target/atmega328p_regs.h` and placed by the linker, and the delay comes from the `__builtin_avr_delay_cycles` compiler builtin. There is no `printf`, `memset` or any other library function; the logger converts numbers to text itself. The build uses `-ffreestanding`, so `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` are the compiler's own.
 
 The link step is not library-free. The Makefile links with plain `avr-gcc -mmcu=atmega328p`, so the map file shows:
 
@@ -115,9 +115,11 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
 
 ## Target adapters — `adapters/target/`
 
-### Register map — `atmega328p_regs.h`
+### Register map — `atmega328p_regs.h` and `atmega328p_regs.ld`
 
-Each register is a macro that dereferences a fixed address, for example `#define PORTD (*((volatile unsigned char*)0x2B))`. `ADC` is a 16-bit access at 0x78, which reads ADCL then ADCH. The file disables `-Warray-bounds` for everything that includes it, because GCC 12 flags fixed-address dereferences as out-of-bounds.
+Each register is declared as an ordinary variable, for example `extern volatile uint8_t PORTD;`, with no address in the C source. The linker places each name at its datasheet address using `atmega328p_regs.ld`, which the Makefile passes as an extra linker input. A register must appear in both files; one missing from the `.ld` file fails at link time with an undefined reference, but a wrong address there links silently.
+
+Registers in the low I/O range carry avr-gcc's `io_low` attribute, which lets the compiler keep using single-instruction bit operations (`sbi`, `cbi`, `sbis`) even though it cannot see the address. The generated code is identical to the earlier pointer-cast form. `ADC` is a 16-bit variable at 0x78, which reads ADCL then ADCH.
 
 ### Pin and ADC setup — `register_init.c`
 
@@ -176,14 +178,7 @@ The other target adapters (shift register, ADC, delay, pin setup) are not covere
 
 ## Static analysis
 
-`make misra` runs cppcheck with its MISRA addon over `core/`, `ports/` and `app/`, once with each set of adapters. Counts before the refactor are in [misra-baseline.md](misra-baseline.md): 165 findings, 5 of them mandatory and 101 required. There are now 34, all advisory, with no suppressions:
-
-| Rule | Count | Where | Why it is left |
-|---|---:|---|---|
-| 11.4 | 14 | `atmega328p_regs.h` | The integer-to-pointer casts that define the registers |
-| 8.7 | 8 | `adapters/host` | Fake-control functions called only from `tests/`, which is not analysed |
-| 2.5 | 7 | register map, `bits.h`, `seq.h` | Definitions kept for completeness but not used yet |
-| 15.5 | 5 | `analog_reader.c`, `shift_reg_reader.c` | Guard-clause early returns |
+`make misra` runs cppcheck with its MISRA addon over `core/`, `ports/` and `app/`, once with each set of adapters. Counts before the refactor are in [misra-baseline.md](misra-baseline.md): 165 findings, 5 of them mandatory and 101 required. There are now 8, all advisory and all rule 8.7, with no suppressions. They are on the control functions of the host fakes in `adapters/host`, which are called only from `tests/`; cppcheck does not analyse `tests/`, so it sees no caller in another file.
 
 How findings are handled is set out in CLAUDE.md.
 

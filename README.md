@@ -1,6 +1,6 @@
 # nano_sequencer
 
-A bare-metal firmware project for the ATmega328P (Arduino Nano), written from scratch without the Arduino core and without any avr-libc headers or library functions. All peripheral access goes through manually-defined memory-mapped registers, and nothing from the standard library is used: the serial logger does its own number-to-text conversion. The only code not written here is what the toolchain adds at link time: the chip's startup object (vector table and stack setup, which ships with avr-libc) and a few `libgcc` helpers.
+A bare-metal firmware project for the ATmega328P (Arduino Nano), written from scratch without the Arduino core and without any avr-libc headers or library functions. All peripheral access goes through registers declared in this repo and placed at their datasheet addresses by the linker, and nothing from the standard library is used: the serial logger does its own number-to-text conversion. The only code not written here is what the toolchain adds at link time: the chip's startup object (vector table and stack setup, which ships with avr-libc) and a few `libgcc` helpers.
 
 ## Status
 
@@ -8,7 +8,7 @@ Work in progress. Currently the firmware initializes the ADC, USART, and I/O dir
 
 ## Why bare-metal?
 
-No Arduino `Wiring`/HAL layer and no avr-libc headers or functions in the source — registers are defined directly from the ATmega328P datasheet addresses, and only one `avr-gcc` built-in (`__builtin_avr_delay_cycles`) is used where the compiler must be involved. The fixed-width types come from the compiler's own `<stdint.h>` (the build uses `-ffreestanding`), not from avr-libc. This keeps the binary small and the behavior fully explicit at the register level.
+No Arduino `Wiring`/HAL layer and no avr-libc headers or functions in the source — registers are declared here and given their ATmega328P datasheet addresses at link time, and only one `avr-gcc` built-in (`__builtin_avr_delay_cycles`) is used where the compiler must be involved. The fixed-width types come from the compiler's own `<stdint.h>` (the build uses `-ffreestanding`), not from avr-libc. This keeps the binary small and the behavior fully explicit at the register level.
 
 ## Project layout
 
@@ -32,8 +32,9 @@ adapters/
 │   ├── shift_reg_reader.c            # Step input: 74HC165 shift register chain read
 │   ├── delay.c                       # Delay: calibrated busy-wait
 │   ├── serial_logger.c / .h          # Log: USART setup + text logging with log levels
-│   ├── bits.h                        # BIT_0..BIT_7 mask constants
-│   └── atmega328p_regs.h             # Memory-mapped register addresses and bit positions
+│   ├── bits.h                        # BIT_0..BIT_5 mask constants
+│   ├── atmega328p_regs.h             # Register declarations and bit positions
+│   └── atmega328p_regs.ld            # Register addresses, applied by the linker
 └── host/                     # The ports faked for PC tests
     └── host_ports.c / .h             # Scripted inputs, recorded outputs
 app/
