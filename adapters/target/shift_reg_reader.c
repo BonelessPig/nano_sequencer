@@ -1,14 +1,16 @@
 /**
  * @file   shift_reg_reader.c
- * @brief  Implementation of 74HC165 shift register chain reading for step notes.
+ * @brief  Target implementation of the step input port: reads the 74HC165
+ *         shift register chain that holds the step notes.
  * @author BonelessPig
  *
  * @copyright Copyright (c) 2026
  *
  */
 #include "shift_reg_reader.h"
+#include "step_input_port.h"
 #include "atmega328p_regs.h"
-#include "common_types.h"
+#include "port_status.h"
 #include "bits.h"
 
 _Static_assert(8 % NOTE_BITS_PER_STEP == 0, "NOTE_BITS_PER_STEP must divide 8");
@@ -21,12 +23,16 @@ _Static_assert(8 % NOTE_BITS_PER_STEP == 0, "NOTE_BITS_PER_STEP must divide 8");
 
 /**
  * @brief Performs one parallel-load + serial-clock-out cycle across the 74HC165
- *        daisy chain and stores the raw bits read.
- * @param raw_bits pointer to a buffer of at least chain_bytes bytes
- * @param chain_bytes number of bytes to read (i.e. number of chained 74HC165s)
- * @return int status code (0 for success)
+ *        daisy chain and stores the raw bits read (see step_input_port.h).
+ * @param raw_bits pointer to a buffer of at least chain_bytes bytes. raw_bits[0]
+ *                 holds the first 8 bits clocked out (the chip nearest the MCU,
+ *                 whose QH feeds the MCU's data-in pin); raw_bits[chain_bytes-1]
+ *                 holds the chip farthest from the MCU (SER tied low).
+ * @param chain_bytes number of bytes to read (i.e. number of chained 74HC165s);
+ *                     must be between 1 and SHIFT_REG_CHAIN_BYTES
+ * @return port_status_t status code (STATUS_OK for success)
  */
-int read_shift_reg_chain(unsigned char *raw_bits, unsigned char chain_bytes) {
+port_status_t step_input_read(uint8_t *raw_bits, uint8_t chain_bytes) {
     if (raw_bits == 0) return ERR_INVALID_PARAM;
     if (chain_bytes == 0 || chain_bytes > SHIFT_REG_CHAIN_BYTES) return ERR_INVALID_PARAM;
 
@@ -86,7 +92,7 @@ int read_step_notes(unsigned char *notes, unsigned char step_count) {
     if (needed_bytes > SHIFT_REG_CHAIN_BYTES) return ERR_INVALID_PARAM;
 
     unsigned char raw_bits[SHIFT_REG_CHAIN_BYTES];
-    int status = read_shift_reg_chain(raw_bits, needed_bytes);
+    int status = step_input_read(raw_bits, needed_bytes);
     if (status != STATUS_OK) return status;
 
     for (unsigned char i = 0; i < step_count; i++) {

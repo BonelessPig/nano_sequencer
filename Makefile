@@ -124,13 +124,15 @@ DEPS := $(OBJS:.o=.d)
 #   -ffunction-sections   Put each function and variable in its own section so
 #   -fdata-sections         the linker can drop the ones nothing uses
 #   -pipe                 Pass data between compiler stages in memory, not temp files
+#   -ffreestanding        No standard library is assumed, so <stdint.h>, <stdbool.h>
+#                           and <stddef.h> come from the compiler itself, not avr-libc
 #   -mmcu=...             Target chip
 #   -DF_CPU=...           Defines F_CPU for the C code
 #   -I<dir>               One per INCLUDE_DIRS entry, so headers are found by name
 #   -MMD -MP              Also write a .d file listing the headers each source
 #                           includes, so editing a header rebuilds what uses it
 CFLAGS  = -g -Os -Wall -Wextra \
-          -ffunction-sections -fdata-sections -pipe \
+          -ffunction-sections -fdata-sections -pipe -ffreestanding \
           -mmcu=$(MCU) -DF_CPU=$(F_CPU) $(addprefix -I,$(INCLUDE_DIRS)) \
           -MMD -MP
 

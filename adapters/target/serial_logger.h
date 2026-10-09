@@ -5,9 +5,9 @@
  * @brief  Header file for serial logging functionality on AVR microcontrollers.
  * @author BonelessPig
  * @date   2025-12-08
- * 
+ *
  * @copyright Copyright (c) 2025
- * 
+ *
  */
 
 
@@ -16,6 +16,8 @@
 #ifndef F_CPU
 #error "F_CPU must be defined by the build (e.g. -DF_CPU=16000000UL)"
 #endif
+
+#include "port_status.h"
 
 /**
  * @brief Log levels for serial logging
@@ -47,8 +49,8 @@ void log_serial(LogLevel level, const char *s, ...);
 /**
  * @brief Initializes the serial logger with the specified log level.
  * @param level level to set for logging
- * @return int status code (0 for success)
+ * @return port_status_t status code (STATUS_OK for success)
  */
-int serial_init(LogLevel level);
+port_status_t serial_init(LogLevel level);
 
 #endif

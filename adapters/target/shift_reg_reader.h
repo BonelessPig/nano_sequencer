@@ -9,21 +9,10 @@
  *
  */
 
+#include "port_status.h"
+
 #define SHIFT_REG_CHAIN_BYTES 8 // Max daisy-chained 74HC165s supported (8 x 8 bits = 64 bits)
 #define NOTE_BITS_PER_STEP    4 // Bits per step's note value; must evenly divide 8 (1, 2, 4, or 8)
-
-/**
- * @brief Performs one parallel-load + serial-clock-out cycle across the 74HC165
- *        daisy chain and stores the raw bits read.
- * @param raw_bits pointer to a buffer of at least chain_bytes bytes. raw_bits[0]
- *                 holds the first 8 bits clocked out (the chip nearest the MCU,
- *                 whose QH feeds the MCU's data-in pin); raw_bits[chain_bytes-1]
- *                 holds the chip farthest from the MCU (SER tied low).
- * @param chain_bytes number of bytes to read (i.e. number of chained 74HC165s);
- *                     must be between 1 and SHIFT_REG_CHAIN_BYTES
- * @return int status code (0 for success)
- */
-int read_shift_reg_chain(unsigned char *raw_bits, unsigned char chain_bytes);
 
 /**
  * @brief Extracts one step's NOTE_BITS_PER_STEP-wide note value from a raw bit

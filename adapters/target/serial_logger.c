@@ -1,14 +1,15 @@
 /**
  * @file   serial_logger.c
- * @brief  Implementation of serial logging functionality on AVR microcontrollers.
+ * @brief  Target implementation of the log port: formatted logging over USART0.
  * @author BonelessPig
  * @date   2025-12-08
- * 
+ *
  * @copyright Copyright (c) 2025
- * 
+ *
  */
 #include "serial_logger.h"
-#include "common_types.h"
+#include "log_port.h"
+#include "port_status.h"
 #include "utilities.h"
 #include "atmega328p_regs.h"
 
@@ -25,9 +26,9 @@ static LogLevel currentLogLevel = LOGLVL_OFF; // Default log level
 /**
  * @brief Initializes the serial logger with the specified log level.
  * @param level level to set for logging
- * @return int status code (0 for success)
+ * @return port_status_t status code (STATUS_OK for success)
  */
-int serial_init(LogLevel level) {
+port_status_t serial_init(LogLevel level) {
     UBRR0H = UBRRH_VALUE; // Set baud rate high byte
     UBRR0L = UBRRL_VALUE; // Set baud rate low byte
 
@@ -62,7 +63,7 @@ void add_char_serial(char c) {
  * @param ... additional arguments for the format string
  */
 void log_serial(LogLevel level, const char *format, ...) {
-    
+
     if (level == LOGLVL_OFF || level > currentLogLevel) return; // Skip logging if level is more verbose than the current setting
 
     static char buffer[64]; // Buffer for formatted output
@@ -91,5 +92,39 @@ void log_serial(LogLevel level, const char *format, ...) {
         add_char_serial(']');
         add_char_serial('\r');
         add_char_serial('\n');
+    }
+}
+
+
+
+/**
+ * @brief Logs one step's note value at DEBUG level (see log_port.h).
+ * @param step step index
+ * @param note note value for that step
+ */
+void log_step_note(uint8_t step, uint8_t note) {
+    log_serial(LOGLVL_DEBUG, "Step %d Note = %d\r\n", step, note); // Print note value to serial
+}
+
+
+
+/**
+ * @brief Logs a failed operation and its status code at ERROR level (see log_port.h).
+ * @param what which operation failed
+ * @param status the status code it returned
+ */
+void log_error(log_error_id_t what, port_status_t status) {
+    switch (what) {
+        case LOG_ERROR_INIT:
+            log_serial(LOGLVL_ERROR, "Initialization failed, status code = %d\r\n", status);
+            break;
+        case LOG_ERROR_STEP_READ:
+            log_serial(LOGLVL_ERROR, "Step note read failed, status code = %d\r\n", status);
+            break;
+        case LOG_ERROR_TEMPO_READ:
+            log_serial(LOGLVL_ERROR, "ADC read failed for delay channel, status code = %d\r\n", status);
+            break;
+        default:
+            break; // Unknown id: nothing sensible to print
     }
 }

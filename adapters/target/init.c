@@ -1,26 +1,27 @@
 /**
  * @file   init.c
- * @brief  Implementation of sequencer initialization on AVR microcontrollers.
+ * @brief  Target implementation of the platform port: brings up the serial
+ *         logger and the MCU registers.
  * @author BonelessPig
  * @date   2025-12-08
  * 
  * @copyright Copyright (c) 2025
  * 
  */
-#include "init.h"
+#include "platform_port.h"
 #include "serial_logger.h"
 #include "register_init.h"
-#include "common_types.h"
+#include "port_status.h"
 
 
 
 /**
- * @brief  Initializes the sequencer and serial logger.
- * @return int status code (0 for success)
+ * @brief  Initializes the serial logger and the MCU registers (see platform_port.h).
+ * @return port_status_t status code (STATUS_OK for success)
  */
-int sequencer_init() 
+port_status_t platform_init(void)
 {
-    int status = STATUS_OK; // Variable to store status
+    port_status_t status = STATUS_OK; // Variable to store status
 
     status = serial_init(LOGLVL_DEBUG); // Initialize serial logger with DEBUG level
     if (status != STATUS_OK) return status; // Return if initialization failed
