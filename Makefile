@@ -42,7 +42,7 @@ ifeq ($(OS),Windows_NT)
     SHELL := cmd.exe
     mkdir_p = if not exist "$(subst /,\,$1)" mkdir "$(subst /,\,$1)"
     rm_rf   = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
-    DEFAULT_PORT = COM4
+    DEFAULT_PORT = COM3
 else
     mkdir_p = mkdir -p "$1"
     rm_rf   = rm -rf "$1"

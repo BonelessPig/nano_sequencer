@@ -177,7 +177,7 @@ As calculated above, a sweep spends about 0.3 s in the UART. Once the loop advan
 
 ### 3. Flash port default disagreed between README and Makefile (fixed)
 
-The README said `make flash` defaults to `PORT=COM4`, but the Makefile defaulted to `COM3`. The Makefile now defaults to `COM4`, matching the README and the local VS Code settings.
+The README said `make flash` defaults to `PORT=COM4`, but the Makefile defaulted to `COM3`. The Makefile default stays `COM3` and the README now says the same. The local VS Code settings (not in the repo) use `COM4`.
 
 ### 4. `delay_ms` ignores `F_CPU`
 
