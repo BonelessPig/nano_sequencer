@@ -21,7 +21,6 @@
 #define SEQ_RAW_BYTE_COUNT   ((SEQ_STEP_COUNT * SEQ_NOTE_BITS) / SEQ_BITS_PER_BYTE)
 
 #define SEQ_NOTE_MAX         ((1U << SEQ_NOTE_BITS) - 1U) // Largest note value (15)
-#define SEQ_TEMPO_RAW_MAX    (1023U) // Largest tempo reading (10-bit)
 #define SEQ_TEMPO_RAW_PER_MS (4U)    // Tempo reading units per millisecond of delay
 
 /**
@@ -29,7 +28,7 @@
  */
 typedef struct
 {
-    uint16_t last_tempo_raw; // Most recent valid tempo reading, 0 to SEQ_TEMPO_RAW_MAX
+    uint16_t last_tempo_raw; // Most recent valid tempo reading, 0 to 1023 (10-bit)
 } seq_state_t;
 
 /**
@@ -41,7 +40,7 @@ typedef struct
     // step 1 the low nibble of byte 0, step 2 the high nibble of byte 1, ...
     uint8_t  raw_steps[SEQ_RAW_BYTE_COUNT];
     bool     b_steps_valid; // false if raw_steps could not be read this tick
-    uint16_t tempo_raw;     // Tempo control position, 0 to SEQ_TEMPO_RAW_MAX
+    uint16_t tempo_raw;     // Tempo control position, 0 to 1023 (10-bit)
     bool     b_tempo_valid; // false if tempo_raw could not be read this tick
 } seq_inputs_t;
 

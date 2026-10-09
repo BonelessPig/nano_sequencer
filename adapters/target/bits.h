@@ -15,7 +15,5 @@
 #define BIT_3 (1U << 3)   // 0b00001000
 #define BIT_4 (1U << 4)   // 0b00010000
 #define BIT_5 (1U << 5)   // 0b00100000
-#define BIT_6 (1U << 6)   // 0b01000000
-#define BIT_7 (1U << 7)   // 0b10000000
 
 #endif

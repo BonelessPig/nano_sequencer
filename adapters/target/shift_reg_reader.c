@@ -35,32 +35,33 @@
  */
 port_status_t step_input_read(uint8_t *p_raw_bits, uint8_t byte_count)
 {
-    if (NULL == p_raw_bits)
-    {
-        return ERR_INVALID_PARAM;
-    }
-    if ((0U == byte_count) || (byte_count > SHIFT_REG_CHAIN_BYTES))
-    {
-        return ERR_INVALID_PARAM;
-    }
+    port_status_t status = STATUS_OK;
 
-    PORTD &= (uint8_t)~SHIFT_LOAD_BIT; // Latch parallel inputs
-    PORTD |= SHIFT_LOAD_BIT;  // Return to shift mode
-
-    for (uint8_t byte_i = 0U; byte_i < byte_count; byte_i++)
+    if ((NULL == p_raw_bits) || (0U == byte_count) || (byte_count > SHIFT_REG_CHAIN_BYTES))
     {
-        uint8_t bits = 0U;
-        for (uint8_t bit_i = 0U; bit_i < BITS_PER_BYTE; bit_i++)
+        status = ERR_INVALID_PARAM;
+    }
+    else
+    {
+        PORTD &= (uint8_t)~SHIFT_LOAD_BIT; // Latch parallel inputs
+        PORTD |= SHIFT_LOAD_BIT;  // Return to shift mode
+
+        for (uint8_t byte_i = 0U; byte_i < byte_count; byte_i++)
         {
-            bits = (uint8_t)(bits << 1U);
-            if (0U != (PIND & SHIFT_DATA_BIT)) // Read current bit before clocking to the next
+            uint8_t bits = 0U;
+            for (uint8_t bit_i = 0U; bit_i < BITS_PER_BYTE; bit_i++)
             {
-                bits |= 1U;
+                bits = (uint8_t)(bits << 1U);
+                if (0U != (PIND & SHIFT_DATA_BIT)) // Read current bit before clocking to the next
+                {
+                    bits |= 1U;
+                }
+                PORTD |= SHIFT_CLK_BIT;
+                PORTD &= (uint8_t)~SHIFT_CLK_BIT;
             }
-            PORTD |= SHIFT_CLK_BIT;
-            PORTD &= (uint8_t)~SHIFT_CLK_BIT;
+            p_raw_bits[byte_i] = bits;
         }
-        p_raw_bits[byte_i] = bits;
     }
-    return STATUS_OK;
+
+    return status;
 }

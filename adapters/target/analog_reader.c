@@ -9,6 +9,7 @@
  *
  */
 #include "tempo_input_port.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include "atmega328p_regs.h"
 #include "port_status.h"
@@ -31,28 +32,44 @@
  */
 static port_status_t read_analog_value(uint16_t *p_value, uint8_t channel)
 {
-    if (NULL == p_value)
-    {
-        return ERR_INVALID_PARAM; // Nowhere to store the result
-    }
-    if (channel > ADC_CHANNEL_MAX)
-    {
-        return ERR_INVALID_PARAM; // Invalid channel
-    }
-    ADMUX = (uint8_t)((1U << REFS0) | (channel & ADC_CHANNEL_MASK)); // Set reference to AVcc and select ADC channel (0-7)
-    ADCSRA |= (1U << ADSC); // Start ADC conversion
+    port_status_t status = STATUS_OK;
 
-    uint16_t loops_left = ADC_TIMEOUT_LOOPS;
-    while (0U != (ADCSRA & (1U << ADSC))) // Wait for conversion to complete
+    if ((NULL == p_value) || (channel > ADC_CHANNEL_MAX))
     {
-        loops_left--;
-        if (0U == loops_left)
+        status = ERR_INVALID_PARAM; // Nowhere to store the result, or an invalid channel
+    }
+    else
+    {
+        uint16_t loops_left   = ADC_TIMEOUT_LOOPS;
+        bool     b_converting = true;
+
+        ADMUX = (uint8_t)((1U << REFS0) | (channel & ADC_CHANNEL_MASK)); // Set reference to AVcc and select ADC channel (0-7)
+        ADCSRA |= (1U << ADSC); // Start ADC conversion
+
+        // Wait for conversion to complete, giving up once the poll budget is spent
+        while (b_converting && (loops_left > 0U))
         {
-            return ERR_TIMEOUT; // ADC never finished (e.g. not enabled)
+            if (0U == (ADCSRA & (1U << ADSC)))
+            {
+                b_converting = false;
+            }
+            else
+            {
+                loops_left--;
+            }
+        }
+
+        if (b_converting)
+        {
+            status = ERR_TIMEOUT; // ADC never finished (e.g. not enabled)
+        }
+        else
+        {
+            *p_value = ADC; // Read the ADC value (10-bit result from ADC register) 0-1023 for 0-5V input
         }
     }
-    *p_value = ADC; // Read the ADC value (10-bit result from ADC register) 0-1023 for 0-5V input
-    return STATUS_OK; // Return success
+
+    return status;
 }
 
 
