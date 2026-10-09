@@ -58,7 +58,7 @@ void add_char_serial(char c) {
  */
 void log_serial(LogLevel level, const char *format, ...) {
     
-    if (level < currentLogLevel) return; // Skip logging if level is too low
+    if (level == LOGLVL_OFF || level > currentLogLevel) return; // Skip logging if level is more verbose than the current setting
 
     static char buffer[64]; // Buffer for formatted output
 
