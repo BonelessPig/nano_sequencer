@@ -1,5 +1,5 @@
-#ifndef __UTILITIES_H__
-#define __UTILITIES_H__
+#ifndef UTILITIES_H
+#define UTILITIES_H
 /**
  * @file   utilities.h
  * @brief  Header file for utility functions and definitions.

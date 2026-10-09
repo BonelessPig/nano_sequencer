@@ -1,5 +1,5 @@
-#ifndef __ATMEGA328P_REGS_H__
-#define __ATMEGA328P_REGS_H__
+#ifndef ATMEGA328P_REGS_H
+#define ATMEGA328P_REGS_H
 /**
  * @file   atmega328p_regs.h
  * @brief  Memory-mapped register addresses and bit positions for the ATmega328P.

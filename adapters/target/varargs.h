@@ -1,5 +1,5 @@
-#ifndef __VARARGS_H__
-#define __VARARGS_H__
+#ifndef VARARGS_H
+#define VARARGS_H
 /**
  * @file   varargs.h
  * @brief  Variadic-argument support built on avr-gcc's builtins, in place of <stdarg.h>.

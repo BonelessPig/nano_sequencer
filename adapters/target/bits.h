@@ -1,5 +1,5 @@
-#ifndef __BITS_H__
-#define __BITS_H__
+#ifndef BITS_H
+#define BITS_H
 /**
  * @file   bits.h
  * @brief  Single-bit mask constants for register manipulation.
