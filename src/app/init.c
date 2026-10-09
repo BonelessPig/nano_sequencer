@@ -16,7 +16,7 @@
 
 /**
  * @brief  Initializes the sequencer and serial logger.
- * @return uint8_t status code (0 for success)
+ * @return int status code (0 for success)
  */
 int sequencer_init() 
 {

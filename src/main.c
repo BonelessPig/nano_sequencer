@@ -49,8 +49,8 @@ int main (void) {
         // Read ADC value from channel 6 once per sweep, this will be used to control the delay
         status = read_analog_value(&delay_adc_value, 6);
         if (status != 0) {
+            // delay_adc_value is left untouched on failure, so the last good reading is reused below
             log_serial(LOGLVL_ERROR, "ADC read failed for delay channel, status code = %d\r\n", status);
-            continue; // Skip this iteration on error
         }
         delay_ms(delay_adc_value / 4); // Delay based on ADC value (0-255 ms)
     }

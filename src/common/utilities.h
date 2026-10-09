@@ -11,8 +11,14 @@
  */
 #include "varargs.h"
 
+// F_CPU is provided by the build (see Makefile / -DF_CPU) rather than defined
+// here, so there is a single source of truth for the clock speed.
+#ifndef F_CPU
+#error "F_CPU must be defined by the build (e.g. -DF_CPU=16000000UL)"
+#endif
+
 #define delay_clocks(cycles) __builtin_avr_delay_cycles(cycles)
-#define clock_cycles_per_ms 16000 // Assuming a 16 MHz clock
+#define clock_cycles_per_ms ((F_CPU) / 1000UL) // Clock cycles in one millisecond (16000 at 16 MHz)
 
  /**
   * @brief  Delays execution for a specified number of milliseconds.

@@ -1,6 +1,6 @@
 # nano_sequencer — architecture and inner workings
 
-An analysis of the firmware as it stands on `dev` at `316e431`. It covers how the code is layered, what happens from reset to the main loop, how each module works at the register level, and a list of findings (bugs, inconsistencies, and things that will matter when the output stage is added).
+An analysis of the firmware, first written against `dev` at `316e431`. Findings fixed since then are marked "(fixed)", and the module descriptions reflect the fixed code. It covers how the code is layered, what happens from reset to the main loop, how each module works at the register level, and a list of findings (bugs, inconsistencies, and things that will matter when the output stage is added).
 
 How this was checked: every source file was read, and the firmware was compiled with the Makefile's flags using avr-gcc 12.1.0. It builds with no warnings. Nothing here was run on hardware, so timing figures are calculated, not measured.
 
@@ -9,7 +9,7 @@ How this was checked: every source file was read, and the firmware was compiled 
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano), 16 MHz |
-| Flash used | 1806 bytes of 32 KB |
+| Flash used | 1868 bytes of 32 KB |
 | RAM used | 66 bytes static (64-byte log buffer + 2-byte log level), plus stack |
 | Interrupts | None. Everything is polled and blocking |
 | Inputs | 16 steps × 4 bits from eight 74HC165s; one pot on ADC channel 6 for tempo |
@@ -120,7 +120,7 @@ The ADC is enabled with a prescaler of 128, giving a 125 kHz ADC clock from 16 M
 
 ### ADC read — `app/analog_reader.c`
 
-`read_analog_value()` rejects channels above 7, writes `ADMUX` with AVcc as the reference and the channel number, sets `ADSC` to start a single conversion, spins until the hardware clears `ADSC`, then copies the 10-bit result (0 to 1023) out. It is a single-shot, polled read with no timeout.
+`read_analog_value()` rejects channels above 7, writes `ADMUX` with AVcc as the reference and the channel number, sets `ADSC` to start a single conversion, spins until the hardware clears `ADSC`, then copies the 10-bit result (0 to 1023) out. It is a single-shot, polled read. The wait is bounded: after 10000 polls (a few milliseconds, against a worst-case conversion of about 200 µs) it gives up and returns `ERR_TIMEOUT`.
 
 ### Shift register read — `app/shift_reg_reader.c`
 
@@ -145,15 +145,15 @@ On timing: the clock and load pulses are a single `sbi`/`cbi` pair, about 125 ns
 
 ### Serial logger — `app/serial_logger.c`
 
-`serial_init()` sets the baud divisor from `F_CPU` (`16000000 / (16 × 9600) − 1 = 103`, about 0.2 % error) and enables the transmitter and receiver. Frame format is left at the reset default of 8N1.
+`serial_init()` sets the baud divisor from `F_CPU` (`16000000 / (16 × 9600) − 1 = 103`, about 0.2 % error) and enables the transmitter and receiver. It writes `UCSR0A` and `UCSR0C` explicitly (normal speed, 8N1) so it does not depend on what a bootloader left behind.
 
-`log_serial()` formats into a 64-byte `static` buffer with the project's own `vsnprintf`, then sends it one byte at a time through `add_char_serial()`, which busy-waits on `UDRE0`. If the message did not fit, it appends `[TRUNCATED]`.
+`log_serial()` formats into a 64-byte `static` buffer with the project's own `vsnprintf`, then sends it one byte at a time through `add_char_serial()`, which busy-waits on `UDRE0`. If the message did not fit, it appends `[TRUNCATED]` on its own line.
 
 Nothing reads from the UART, although the receiver is enabled.
 
 ### Utilities — `common/utilities.c`
 
-- `delay_ms()` loops `__builtin_avr_delay_cycles(16000)` once per millisecond.
+- `delay_ms()` loops `__builtin_avr_delay_cycles(F_CPU / 1000)` once per millisecond.
 - `memset()` and `memmove()` are standard implementations. Nothing calls them, and `--gc-sections` drops them from the binary.
 - `vsnprintf()` supports `%d` and `%%` only. Any other specifier is emitted literally. It follows the standard contract of returning the length the full output would have had, and it handles `INT_MIN` without overflow.
 
@@ -167,7 +167,7 @@ Ordered roughly by how much they matter.
 
 ### 1. Log level filter was inverted (fixed)
 
-[`serial_logger.c:61`](../src/app/serial_logger.c#L61) used to read `if (level < currentLogLevel) return;`. The enum runs from `LOGLVL_OFF = 0` up to `LOGLVL_TRACE = 6`, so higher numbers are more verbose. With the level set to `LOGLVL_DEBUG` (5), as `sequencer_init()` does, that check dropped FATAL, ERROR, WARN and INFO, and printed DEBUG and TRACE. All three `LOGLVL_ERROR` messages in `main.c` were silently discarded, and `LOGLVL_OFF` printed everything.
+`log_serial()` in `serial_logger.c` used to read `if (level < currentLogLevel) return;`. The enum runs from `LOGLVL_OFF = 0` up to `LOGLVL_TRACE = 6`, so higher numbers are more verbose. With the level set to `LOGLVL_DEBUG` (5), as `sequencer_init()` does, that check dropped FATAL, ERROR, WARN and INFO, and printed DEBUG and TRACE. All three `LOGLVL_ERROR` messages in `main.c` were silently discarded, and `LOGLVL_OFF` printed everything.
 
 The check is now `if (level == LOGLVL_OFF || level > currentLogLevel) return;`, so a message prints when it is at or below the configured verbosity, and `LOGLVL_OFF` prints nothing.
 
@@ -179,17 +179,17 @@ As calculated above, a sweep spends about 0.3 s in the UART. Once the loop advan
 
 The README said `make flash` defaults to `PORT=COM4`, but the Makefile defaulted to `COM3`. The Makefile default stays `COM3` and the README now says the same. The local VS Code settings (not in the repo) use `COM4`.
 
-### 4. `delay_ms` ignores `F_CPU`
+### 4. `delay_ms` ignored `F_CPU` (fixed)
 
-`clock_cycles_per_ms` is hard-coded to 16000 in [`utilities.h:15`](../src/common/utilities.h#L15), while `serial_logger.h` says `F_CPU` is the single source of truth for the clock. Changing `F_CPU` would fix the baud rate but leave delays wrong. `(F_CPU / 1000UL)` would tie them together.
+`clock_cycles_per_ms` was hard-coded to 16000 in `utilities.h`, while `serial_logger.h` says `F_CPU` is the single source of truth for the clock. Changing `F_CPU` would have fixed the baud rate but left delays wrong. It is now `(F_CPU / 1000UL)`, and `utilities.h` refuses to compile if `F_CPU` is not defined.
 
-### 5. Truncation check is off by one
+### 5. Truncation check was off by one (fixed)
 
-[`serial_logger.c:72`](../src/app/serial_logger.c#L72) flags truncation when `len >= sizeof(buffer) - 1`, so a message of exactly 63 characters fits in full but is still marked `[TRUNCATED]`. The test should be `len >= sizeof(buffer)`. The `len < 0` branch can never be true with this `vsnprintf`. The marker is also preceded by `\n` without `\r`, unlike every other line ending.
+`log_serial()` flagged truncation when `len >= sizeof(buffer) - 1`, so a message of exactly 63 characters fit in full but was still marked `[TRUNCATED]`. The test is now `len >= sizeof(buffer)`, and the unreachable `len < 0` branch is gone. The marker used a bare `\n` and left the next message on the same line; it is now wrapped in `\r\n` on both sides.
 
-### 6. Port A registers are defined but do not exist
+### 6. Port A registers were defined but do not exist (fixed)
 
-`DDRA` and `PORTA` at 0x23 and 0x22 are in the register header, but the ATmega328P has no port A; those addresses are reserved. They are unused, so there is no effect, but they would compile without complaint if someone used them. `PINB` is absent, which will matter if port B is ever read.
+`DDRA` and `PORTA` were in the register header, but the ATmega328P has no port A. The address given for `DDRA` (0x23) is actually `PINB`, and 0x22 is reserved. Both are removed, and `PINB` is added so port B can be read.
 
 ### 7. README was partly out of date (fixed)
 
@@ -208,24 +208,25 @@ The README said `make flash` defaults to `PORT=COM4`, but the Makefile defaulted
 - `flash` passed `-F` (skip the device signature check), which hid a wrong-chip situation. Removed after a flash without it succeeded on the board.
 - `-fno-exceptions` was in the compiler flags and does nothing for C. Removed.
 
-### 10. USART setup relies on reset defaults
+### 10. USART setup relied on reset defaults (fixed)
 
-`serial_init()` never writes `UCSR0A` or `UCSR0C`. That is fine after a true reset. If a bootloader hands over without resetting those registers and had enabled double-speed mode, the baud rate would be off by a factor of two. Writing both explicitly would remove the dependency.
+`serial_init()` never wrote `UCSR0A` or `UCSR0C`. That is fine after a true reset, but if a bootloader hands over without resetting those registers and had enabled double-speed mode, the baud rate would be off by a factor of two. Both are now written explicitly.
 
-### 11. Small robustness gaps
+### 11. Small robustness gaps (fixed)
 
-- `read_analog_value()` does not check `value` for null, unlike the shift register functions, and its conversion wait has no timeout (`ERR_TIMEOUT` exists but is unused).
-- In `main.c`, an ADC failure hits `continue` and skips the delay, turning the loop into a tight spin. It cannot happen with the constant channel 6.
-- `get_step_note()` computes `bit_pos` in an `unsigned char`, so a `step_index` of 64 or more wraps and returns a different step instead of an error. `read_step_notes()` never passes such a value.
-- If `main` returns on init failure, execution falls into libgcc's `_exit`, which disables interrupts and loops forever.
+- `read_analog_value()` did not check `value` for null and its conversion wait had no timeout. It now rejects a null pointer and returns `ERR_TIMEOUT` if the conversion never completes.
+- In `main.c`, an ADC failure hit `continue` and skipped the delay, turning the loop into a tight spin. The loop now logs the error and delays using the last good reading.
+- `get_step_note()` computed `bit_pos` in an `unsigned char`, so a `step_index` of 64 or more wrapped and returned a different step instead of an error. It is now computed in an `unsigned int`.
 
-### 12. Stale comments
+One related behaviour is unchanged and worth knowing: if `main` returns on init failure, execution falls into libgcc's `_exit`, which disables interrupts and loops forever.
 
-- `register_init.c` line 22 says "Sets 0th bit ... to 1 to make this an input"; the code clears it.
-- `analog_reader.c` and `.h` say the function "prints it to serial"; it does not.
-- `init.c` and `init.h` document a `uint8_t` return; the function returns `int`.
-- `utilities.c` and `register_init.c` still carry the template author line (`you@domain.com`).
-- The Makefile header says it mirrors `.vscode/settings.json`, which is gitignored and so not in the repo.
+### 12. Stale comments (fixed)
+
+- `register_init.c` said "Sets 0th bit ... to 1 to make this an input" where the code clears it.
+- `analog_reader.c` and `.h` said the function "prints it to serial".
+- `init.c` and `init.h` documented a `uint8_t` return for a function returning `int`.
+- `utilities.c` and `register_init.c` carried the template author line (`you@domain.com`) and empty descriptions.
+- The Makefile header said it mirrors `.vscode/settings.json`, which is gitignored and no longer matches.
 
 ## What the output stage will need
 

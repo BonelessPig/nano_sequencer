@@ -60,7 +60,7 @@ int get_step_note(unsigned char *note, const unsigned char *raw_bits,
                    unsigned char raw_bits_len, unsigned char step_index) {
     if (note == 0 || raw_bits == 0) return ERR_INVALID_PARAM;
 
-    unsigned char bit_pos    = step_index * NOTE_BITS_PER_STEP;
+    unsigned int  bit_pos    = (unsigned int)step_index * NOTE_BITS_PER_STEP; // Wider than a byte so large step indexes can't wrap
     unsigned char byte_index = bit_pos / 8;
     if (byte_index >= raw_bits_len) return ERR_INVALID_PARAM;
 

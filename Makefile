@@ -1,6 +1,6 @@
 # Build configuration for the ATmega328P (Arduino Nano) bare-metal firmware.
-# Mirrors the flags used by the VS Code AVR extension (see .vscode/settings.json)
-# so `make` produces the same binary without requiring the extension.
+# Builds and flashes with only the AVR toolchain on PATH; no IDE or editor
+# extension is involved.
 # Works on Windows, macOS and Linux (see "Platform differences" below).
 #
 # Usage:

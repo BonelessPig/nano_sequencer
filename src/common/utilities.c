@@ -1,7 +1,7 @@
 /**
  * @file utilities.c
- * @author your name (you@domain.com)
- * @brief 
+ * @author BonelessPig
+ * @brief Implementation of utility functions: delay, memset, memmove, and a minimal vsnprintf.
  * @version 0.1
  * @date 2025-12-19
  * 
@@ -18,7 +18,7 @@
  */ 
 void delay_ms(unsigned int millis) {
     while (millis--) {
-        delay_clocks(clock_cycles_per_ms); // Assuming a 16 MHz clock, 16000 clocks = 1 ms
+        delay_clocks(clock_cycles_per_ms); // One millisecond's worth of clock cycles, derived from F_CPU
     }
 }
 

@@ -3,7 +3,7 @@
 /**
  * @file analog_reader.h
  * @author BonelessPig 
- * @brief reads the value of an analog input pin and prints it to serial
+ * @brief reads the value of an analog input pin using the ADC
  * @version 0.1
  * @date 2026-02-18
  * 

@@ -25,16 +25,15 @@
 #pragma GCC diagnostic ignored "-Warray-bounds"
 
 // ---- I/O Ports: Data Direction, Output, and Input registers ----
-#define DDRA  (*((volatile unsigned char*)0x23)) // Data Direction Register for port A
 #define DDRB  (*((volatile unsigned char*)0x24)) // Data Direction Register for port B
 #define DDRC  (*((volatile unsigned char*)0x27)) // Data Direction Register for port C
 #define DDRD  (*((volatile unsigned char*)0x2A)) // Data Direction Register for port D
 
-#define PORTA (*((volatile unsigned char*)0x22)) // Data Register for port A
 #define PORTB (*((volatile unsigned char*)0x25)) // Data Register for port B
 #define PORTC (*((volatile unsigned char*)0x28)) // Data Register for port C
 #define PORTD (*((volatile unsigned char*)0x2B)) // Data Register for port D
 
+#define PINB  (*(volatile unsigned char*)(0x23)) // Input Pins Address for port B
 #define PINC  (*(volatile unsigned char*)(0x26)) // Input Pins Address for port C
 #define PIND  (*(volatile unsigned char*)(0x29)) // Input Pins Address for port D
 
@@ -57,11 +56,14 @@
 
 #define UCSR0A (*(volatile unsigned char*)0xC0) // USART Control and Status Register A
 #define UCSR0B (*(volatile unsigned char*)0xC1) // USART Control and Status Register B
+#define UCSR0C (*(volatile unsigned char*)0xC2) // USART Control and Status Register C
 
 #define UDR0   (*(volatile unsigned char*)0xC6) // USART I/O Data Register
 
-#define UDRE0 5 // USART Data Register Empty flag in UCSR0A
-#define RXEN0 4 // Rx Enable bit in UCSR0B
-#define TXEN0 3 // Tx Enable bit in UCSR0B
+#define UDRE0  5 // USART Data Register Empty flag in UCSR0A
+#define RXEN0  4 // Rx Enable bit in UCSR0B
+#define TXEN0  3 // Tx Enable bit in UCSR0B
+#define UCSZ01 2 // Character Size bit 1 in UCSR0C
+#define UCSZ00 1 // Character Size bit 0 in UCSR0C
 
 #endif

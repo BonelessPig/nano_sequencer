@@ -31,6 +31,11 @@ int serial_init(LogLevel level) {
     UBRR0H = UBRRH_VALUE; // Set baud rate high byte
     UBRR0L = UBRRL_VALUE; // Set baud rate low byte
 
+    // Set these explicitly rather than relying on reset defaults, in case a
+    // bootloader left them changed (e.g. double-speed mode enabled)
+    UCSR0A = 0; // Normal speed (U2X0 = 0), no multi-processor mode
+    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00); // Frame format: 8 data bits, no parity, 1 stop bit
+
     UCSR0B = (1 << RXEN0) | (1 << TXEN0); // Enable receiver and transmitter
 
     currentLogLevel = level; // Sets the Log Level
@@ -69,8 +74,9 @@ void log_serial(LogLevel level, const char *format, ...) {
     const char* s = buffer;
     while (*s) add_char_serial(*s++);
 
-    if (len < 0 || (unsigned int)len >= sizeof(buffer) - 1) {
+    if ((unsigned int)len >= sizeof(buffer)) {
         // If the message was truncated, indicate this in the output
+        add_char_serial('\r');
         add_char_serial('\n');
         add_char_serial('[');
         add_char_serial('T');
@@ -83,5 +89,7 @@ void log_serial(LogLevel level, const char *format, ...) {
         add_char_serial('E');
         add_char_serial('D');
         add_char_serial(']');
+        add_char_serial('\r');
+        add_char_serial('\n');
     }
 }
