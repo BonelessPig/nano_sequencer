@@ -12,7 +12,7 @@
 #   make flash PORT=COM5   Override any variable below from the command line
 #
 # What a build does, in order:
-#   1. Compile   each src/**/*.c  ->  build/obj/**/*.o   (one avr-gcc call per file)
+#   1. Compile   each .c file     ->  build/obj/**/*.o   (one avr-gcc call per file)
 #   2. Link      all .o files     ->  build/output.elf   (adds startup code + libgcc)
 #   3. Convert   output.elf       ->  build/output.hex   (the format avrdude uploads)
 #   4. Report    flash and RAM usage of output.elf
@@ -90,17 +90,26 @@ CPPCHECK = cppcheck
 
 # ---- Files ------------------------------------------------------------------
 
-SRC_DIR   = src
 BUILD_DIR = build
 TARGET    = $(BUILD_DIR)/output
 
-# SRCS: every .c file in src/, src/app/ and src/common/. A new .c file in one of
-# those folders is picked up automatically; a new folder must be added here.
-SRCS := $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/app/*.c) $(wildcard $(SRC_DIR)/common/*.c)
+# The source is split by role (CLAUDE.md has the rules for what goes where):
+#   core/             Pure sequencer logic; no hardware access, also builds on a PC
+#   ports/            Headers describing what the core needs from the outside world
+#   adapters/target/  Implementations of the ports for this MCU
+#   app/              main.c, which wires the adapters to the core
+# SRC_DIRS are the folders compiled into the firmware; INCLUDE_DIRS are searched
+# for headers.
+SRC_DIRS     = app core adapters/target
+INCLUDE_DIRS = core ports adapters/target
+
+# SRCS: every .c file in SRC_DIRS. A new .c file in one of those folders is
+# picked up automatically; a new folder must be added to SRC_DIRS.
+SRCS := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))
 
 # OBJS: the matching object file for each source, mirrored under build/obj/
-# (src/app/init.c -> build/obj/app/init.o).
-OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/obj/%.o,$(SRCS))
+# (app/main.c -> build/obj/app/main.o).
+OBJS := $(patsubst %.c,$(BUILD_DIR)/obj/%.o,$(SRCS))
 
 # DEPS: one .d file per object, written by the compiler (see -MMD below). Each
 # lists the headers that source file includes.
@@ -117,12 +126,12 @@ DEPS := $(OBJS:.o=.d)
 #   -pipe                 Pass data between compiler stages in memory, not temp files
 #   -mmcu=...             Target chip
 #   -DF_CPU=...           Defines F_CPU for the C code
-#   -I src                Lets code include headers by path from src/
+#   -I<dir>               One per INCLUDE_DIRS entry, so headers are found by name
 #   -MMD -MP              Also write a .d file listing the headers each source
 #                           includes, so editing a header rebuilds what uses it
 CFLAGS  = -g -Os -Wall -Wextra \
           -ffunction-sections -fdata-sections -pipe \
-          -mmcu=$(MCU) -DF_CPU=$(F_CPU) -I$(SRC_DIR) \
+          -mmcu=$(MCU) -DF_CPU=$(F_CPU) $(addprefix -I,$(INCLUDE_DIRS)) \
           -MMD -MP
 
 # Linker flags:
@@ -159,7 +168,7 @@ $(TARGET).elf: $(OBJS)
 
 # Step 1: compile one .c file to one .o file. The first line creates the output
 # folder if it is missing. Compile errors and warnings are reported here, per file.
-$(BUILD_DIR)/obj/%.o: $(SRC_DIR)/%.c
+$(BUILD_DIR)/obj/%.o: %.c
 	@$(call mkdir_p,$(@D))
 	$(CC) $(CFLAGS) -c -o $@ $<
 
@@ -174,12 +183,12 @@ size: $(TARGET).elf
 # are handled). tools/misra/misra.json points the addon at the rule headlines
 # file, which is not in the repo; if it is missing, run
 # tools/misra/fetch_misra_headlines.sh first. Exits non-zero if anything is found.
-#   MISRA_PATHS     Folders to analyse
+#   MISRA_PATHS     Folders to analyse (those of the four that exist)
 #   MISRA_INCLUDES  Where cppcheck looks for the project's own headers
 #   -DF_CPU=...     Same define the compiler gets; without it the headers hit
 #                     their #error and cppcheck skips the code
-MISRA_PATHS    = $(SRC_DIR)
-MISRA_INCLUDES = -I $(SRC_DIR)
+MISRA_PATHS    = $(wildcard core ports adapters app)
+MISRA_INCLUDES = -I core -I ports
 MISRA_FLAGS    = --addon=tools/misra/misra.json --std=c99 \
                  --enable=warning,style,performance,portability \
                  --inline-suppr --error-exitcode=1 -DF_CPU=$(F_CPU)

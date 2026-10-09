@@ -8,9 +8,9 @@
  * 
  */
 #include "serial_logger.h"
-#include "../common/common_types.h"
-#include "../common/utilities.h"
-#include "../mcu/atmega328p_regs.h"
+#include "common_types.h"
+#include "utilities.h"
+#include "atmega328p_regs.h"
 
 #define BAUD 9600 // Desired baud rate
 

@@ -10,7 +10,7 @@
 #include "init.h"
 #include "serial_logger.h"
 #include "register_init.h"
-#include "../common/common_types.h"
+#include "common_types.h"
 
 
 

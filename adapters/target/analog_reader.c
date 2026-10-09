@@ -9,8 +9,8 @@
  * 
  */
 #include "analog_reader.h"
-#include "../mcu/atmega328p_regs.h"
-#include "../common/common_types.h"
+#include "atmega328p_regs.h"
+#include "common_types.h"
 
 // Upper bound on polls of the conversion-complete flag. A conversion takes at
 // most ~200 us (25 ADC clocks at 125 kHz); this many polls takes a few

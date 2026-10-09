@@ -7,13 +7,13 @@
  * @copyright Copyright (c) 2025    
  * 
  */
-#include "app/init.h"            // For sequencer initialization
-#include "app/serial_logger.h"   // For serial logging
-#include "app/register_init.h"   // For register initialization
-#include "app/analog_reader.h"   // For reading the tempo ADC channel
-#include "app/shift_reg_reader.h" // For reading step note values from the 74HC165 chain
-#include "common/utilities.h"      // For utility functions
-#include "common/common_types.h"    // For common type definitions
+#include "init.h"            // For sequencer initialization
+#include "serial_logger.h"   // For serial logging
+#include "register_init.h"   // For register initialization
+#include "analog_reader.h"   // For reading the tempo ADC channel
+#include "shift_reg_reader.h" // For reading step note values from the 74HC165 chain
+#include "utilities.h"      // For utility functions
+#include "common_types.h"    // For common type definitions
 
 #define STEP_COUNT 16 // Number of sequencer steps
 

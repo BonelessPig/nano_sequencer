@@ -10,8 +10,8 @@
  * 
  */
 
-#include "../common/bits.h"
-#include "../mcu/atmega328p_regs.h"
+#include "bits.h"
+#include "atmega328p_regs.h"
 
 /**
  * @brief Initializes the necessary registers for the microcontroller.

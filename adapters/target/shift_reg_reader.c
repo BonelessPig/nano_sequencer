@@ -7,9 +7,9 @@
  *
  */
 #include "shift_reg_reader.h"
-#include "../mcu/atmega328p_regs.h"
-#include "../common/common_types.h"
-#include "../common/bits.h"
+#include "atmega328p_regs.h"
+#include "common_types.h"
+#include "bits.h"
 
 _Static_assert(8 % NOTE_BITS_PER_STEP == 0, "NOTE_BITS_PER_STEP must divide 8");
 

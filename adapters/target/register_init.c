@@ -9,7 +9,7 @@
  * 
  */
 #include "register_init.h"
-#include "../common/common_types.h"
+#include "common_types.h"
 
 /**
  * @brief Initializes the necessary registers for the microcontroller.
