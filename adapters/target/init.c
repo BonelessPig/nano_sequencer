@@ -4,9 +4,9 @@
  *         logger and the MCU registers.
  * @author BonelessPig
  * @date   2025-12-08
- * 
+ *
  * @copyright Copyright (c) 2025
- * 
+ *
  */
 #include "platform_port.h"
 #include "serial_logger.h"
@@ -21,13 +21,12 @@
  */
 port_status_t platform_init(void)
 {
-    port_status_t status = STATUS_OK; // Variable to store status
+    port_status_t status = serial_init(LOGLVL_DEBUG); // Initialize serial logger with DEBUG level
 
-    status = serial_init(LOGLVL_DEBUG); // Initialize serial logger with DEBUG level
-    if (status != STATUS_OK) return status; // Return if initialization failed
+    if (STATUS_OK == status)
+    {
+        status = register_init(); // Initialize registers
+    }
 
-    status = register_init(); // Initialize registers
-    if (status != STATUS_OK) return status; // Return if initialization failed
-
-    return STATUS_OK; // Return success
+    return status; // STATUS_OK, or the status of the step that failed
 }

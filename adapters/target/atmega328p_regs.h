@@ -13,6 +13,7 @@
  * @copyright Copyright (c) 2026
  *
  */
+#include <stdint.h>
 
 // GCC's -Warray-bounds pass mistakes these fixed-address volatile pointer casts
 // for indexing into a zero-length array, since it can't know an absolute address
@@ -25,22 +26,22 @@
 #pragma GCC diagnostic ignored "-Warray-bounds"
 
 // ---- I/O Ports: Data Direction, Output, and Input registers ----
-#define DDRB  (*((volatile unsigned char*)0x24)) // Data Direction Register for port B
-#define DDRC  (*((volatile unsigned char*)0x27)) // Data Direction Register for port C
-#define DDRD  (*((volatile unsigned char*)0x2A)) // Data Direction Register for port D
+#define DDRB  (*((volatile uint8_t *)0x24)) // Data Direction Register for port B
+#define DDRC  (*((volatile uint8_t *)0x27)) // Data Direction Register for port C
+#define DDRD  (*((volatile uint8_t *)0x2A)) // Data Direction Register for port D
 
-#define PORTB (*((volatile unsigned char*)0x25)) // Data Register for port B
-#define PORTC (*((volatile unsigned char*)0x28)) // Data Register for port C
-#define PORTD (*((volatile unsigned char*)0x2B)) // Data Register for port D
+#define PORTB (*((volatile uint8_t *)0x25)) // Data Register for port B
+#define PORTC (*((volatile uint8_t *)0x28)) // Data Register for port C
+#define PORTD (*((volatile uint8_t *)0x2B)) // Data Register for port D
 
-#define PINB  (*(volatile unsigned char*)(0x23)) // Input Pins Address for port B
-#define PINC  (*(volatile unsigned char*)(0x26)) // Input Pins Address for port C
-#define PIND  (*(volatile unsigned char*)(0x29)) // Input Pins Address for port D
+#define PINB  (*(volatile uint8_t *)(0x23)) // Input Pins Address for port B
+#define PINC  (*(volatile uint8_t *)(0x26)) // Input Pins Address for port C
+#define PIND  (*(volatile uint8_t *)(0x29)) // Input Pins Address for port D
 
 // ---- ADC (Analog to Digital Converter) ----
-#define ADCSRA (*((volatile unsigned char*)0x7A)) // ADC Control and Status Register A
-#define ADMUX  (*((volatile unsigned char*)0x7C)) // ADC Multiplexer Selection Register
-#define ADC    (*((volatile unsigned int*)0x78))  // ADC Data Register (10-bit result)
+#define ADCSRA (*((volatile uint8_t *)0x7A)) // ADC Control and Status Register A
+#define ADMUX  (*((volatile uint8_t *)0x7C)) // ADC Multiplexer Selection Register
+#define ADC    (*((volatile uint16_t *)0x78))  // ADC Data Register (10-bit result)
 
 #define ADEN  7 // ADC Enable bit in ADCSRA
 #define ADSC  6 // ADC Start Conversion bit in ADCSRA
@@ -51,14 +52,14 @@
 #define REFS0 6 // Reference Selection Bit 0 in ADMUX
 
 // ---- USART0 ----
-#define UBRR0H (*(volatile unsigned char*)0xC5) // USART Baud Rate Register High Byte
-#define UBRR0L (*(volatile unsigned char*)0xC4) // USART Baud Rate Register Low  Byte
+#define UBRR0H (*(volatile uint8_t *)0xC5) // USART Baud Rate Register High Byte
+#define UBRR0L (*(volatile uint8_t *)0xC4) // USART Baud Rate Register Low  Byte
 
-#define UCSR0A (*(volatile unsigned char*)0xC0) // USART Control and Status Register A
-#define UCSR0B (*(volatile unsigned char*)0xC1) // USART Control and Status Register B
-#define UCSR0C (*(volatile unsigned char*)0xC2) // USART Control and Status Register C
+#define UCSR0A (*(volatile uint8_t *)0xC0) // USART Control and Status Register A
+#define UCSR0B (*(volatile uint8_t *)0xC1) // USART Control and Status Register B
+#define UCSR0C (*(volatile uint8_t *)0xC2) // USART Control and Status Register C
 
-#define UDR0   (*(volatile unsigned char*)0xC6) // USART I/O Data Register
+#define UDR0   (*(volatile uint8_t *)0xC6) // USART I/O Data Register
 
 #define UDRE0  5 // USART Data Register Empty flag in UCSR0A
 #define RXEN0  4 // Rx Enable bit in UCSR0B
