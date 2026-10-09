@@ -1,6 +1,6 @@
 # nano_sequencer
 
-A bare-metal firmware project for the ATmega328P (Arduino Nano), written from scratch without the Arduino core or avr-libc. All peripheral access goes through manually-defined memory-mapped registers, and standard library pieces normally pulled from avr-libc (`memset`, `memmove`, a minimal `vsnprintf`-based logger) are implemented directly in this repo.
+A bare-metal firmware project for the ATmega328P (Arduino Nano), written from scratch without the Arduino core and without any avr-libc headers or library functions. All peripheral access goes through manually-defined memory-mapped registers, and standard library pieces normally pulled from avr-libc (`memset`, `memmove`, a minimal `vsnprintf`-based logger) are implemented directly in this repo. The only code not written here is what the toolchain adds at link time: the chip's startup object (vector table and stack setup, which ships with avr-libc) and a few `libgcc` helpers.
 
 ## Status
 
@@ -8,13 +8,13 @@ Work in progress. Currently the firmware initializes the ADC, USART, and I/O dir
 
 ## Why bare-metal?
 
-No Arduino `Wiring`/HAL layer and no avr-libc dependency — registers are defined directly from the ATmega328P datasheet addresses, and only `avr-gcc`'s built-ins (`__builtin_avr_delay_cycles`, `__builtin_va_*`) are used where the compiler must be involved. This keeps the binary small and the behavior fully explicit at the register level.
+No Arduino `Wiring`/HAL layer and no avr-libc headers or functions in the source — registers are defined directly from the ATmega328P datasheet addresses, and only `avr-gcc`'s built-ins (`__builtin_avr_delay_cycles`, `__builtin_va_*`) are used where the compiler must be involved. This keeps the binary small and the behavior fully explicit at the register level.
 
 ## Project layout
 
 ```
 src/
-├── main.c                    # Main loop: ADC sampling + serial logging
+├── main.c                    # Main loop: read step notes + tempo pot, log over serial
 ├── app/
 │   ├── init.c / init.h               # Top-level sequencer init (calls serial + register init)
 │   ├── register_init.c / .h          # I/O direction + ADC setup
@@ -24,7 +24,8 @@ src/
 ├── common/
 │   ├── common_types.h        # Shared status/error codes
 │   ├── bits.h                 # BIT_0..BIT_7 mask constants
-│   └── utilities.c / .h      # delay_ms, memset, memmove
+│   ├── varargs.h             # va_list macros built on compiler builtins
+│   └── utilities.c / .h      # delay_ms, memset, memmove, minimal vsnprintf
 └── mcu/
     └── atmega328p_regs.h     # Memory-mapped register addresses and bit positions
 ```

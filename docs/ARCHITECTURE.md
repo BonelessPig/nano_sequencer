@@ -191,10 +191,10 @@ The README said `make flash` defaults to `PORT=COM4`, but the Makefile defaulted
 
 `DDRA` and `PORTA` at 0x23 and 0x22 are in the register header, but the ATmega328P has no port A; those addresses are reserved. They are unused, so there is no effect, but they would compile without complaint if someone used them. `PINB` is absent, which will matter if port B is ever read.
 
-### 7. README is partly out of date
+### 7. README was partly out of date (fixed)
 
-- "Without ... avr-libc" is true of the source but not of the startup code (see above).
-- The layout tree describes `main.c` as "ADC sampling + serial logging" and omits `varargs.h` and the `vsnprintf` in `utilities.c`.
+- It said the project was written "without ... avr-libc", which is true of the source but not of the startup code (see above). It now says no avr-libc headers or functions are used and names what the toolchain adds at link time.
+- The layout tree described `main.c` as "ADC sampling + serial logging" and omitted `varargs.h` and the `vsnprintf` in `utilities.c`. All three are corrected.
 
 ### 8. PD0 is set as an output
 
