@@ -33,10 +33,11 @@ Follow BARR-C:2018 (the Barr Group Embedded C Coding Standard) for style and nam
 
 - The target build must compile with `-Wall -Wextra -Wconversion -Wshadow -Werror` (or the toolchain equivalent).
 - Host tests must pass before a change is considered done.
-- Run cppcheck with the MISRA addon over `core/`, `ports/`, `adapters/` and `app/` before calling a change done:
+- Run cppcheck with the MISRA addon over `core/`, `ports/`, `adapters/` and `app/` before calling a change done. Use `make -k misra`, which runs it once per set of adapters (cppcheck treats its inputs as one program, and the target and host adapters define the same port functions):
 
   ```
-  cppcheck --addon=tools/misra/misra.json --std=c99 --enable=warning,style,performance,portability --inline-suppr --error-exitcode=1 -I core -I ports core ports adapters app
+  cppcheck --addon=tools/misra/misra.json --std=c99 --enable=warning,style,performance,portability --inline-suppr --error-exitcode=1 -DF_CPU=16000000UL -I core -I ports core ports app adapters/target
+  cppcheck --addon=tools/misra/misra.json --std=c99 --enable=warning,style,performance,portability --inline-suppr --error-exitcode=1 -DF_CPU=16000000UL -I core -I ports core ports app adapters/host
   ```
 
   `tools/misra/misra.json` points the addon at the MISRA headlines file in `tools/misra/`, so findings come out with readable rule text and a category.
