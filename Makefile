@@ -200,21 +200,31 @@ size: $(TARGET).elf
 #   -Werror               Any warning fails the build
 HOST_DIR    = $(BUILD_DIR)/host
 HOST_CFLAGS = -std=c99 -pedantic -g -Wall -Wextra -Wconversion -Wshadow -Werror \
-              -Icore -Iports -Itests
+              -Icore -Iports -Iapp -Iadapters/host -Itests
 
 CORE_SRCS := $(wildcard core/*.c)
-CORE_HDRS := $(wildcard core/*.h)
-TEST_HDRS := $(wildcard tests/*.h)
+HOST_SRCS := $(wildcard adapters/host/*.c)
+# Any header change rebuilds the tests; simpler than tracking each one
+HOST_HDRS := $(wildcard core/*.h ports/*.h app/*.h adapters/host/*.h tests/*.h)
 
 TEST_SEQ = $(HOST_DIR)/test_seq$(EXE)
+TEST_APP = $(HOST_DIR)/test_app$(EXE)
 
-test: $(TEST_SEQ)
+test: $(TEST_SEQ) $(TEST_APP)
 	$(call run,$(TEST_SEQ))
+	$(call run,$(TEST_APP))
 
 # Unit tests for the core alone: no ports, no adapters.
-$(TEST_SEQ): tests/test_seq.c $(CORE_SRCS) $(CORE_HDRS) $(TEST_HDRS)
+$(TEST_SEQ): tests/test_seq.c $(CORE_SRCS) $(HOST_HDRS)
 	@$(call mkdir_p,$(HOST_DIR))
 	$(HOST_CC) $(HOST_CFLAGS) -o $@ tests/test_seq.c $(CORE_SRCS)
+
+# Tests for the application loop: the real app.c and core, linked against the
+# fake ports in adapters/host instead of the MCU ones. main.c is left out; the
+# test program supplies main.
+$(TEST_APP): tests/test_app.c app/app.c $(CORE_SRCS) $(HOST_SRCS) $(HOST_HDRS)
+	@$(call mkdir_p,$(HOST_DIR))
+	$(HOST_CC) $(HOST_CFLAGS) -o $@ tests/test_app.c app/app.c $(CORE_SRCS) $(HOST_SRCS)
 
 # Static analysis: cppcheck plus its MISRA addon (see CLAUDE.md for how findings
 # are handled). tools/misra/misra.json points the addon at the rule headlines
