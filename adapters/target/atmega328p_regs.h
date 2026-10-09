@@ -2,46 +2,47 @@
 #define ATMEGA328P_REGS_H
 /**
  * @file   atmega328p_regs.h
- * @brief  Memory-mapped register addresses and bit positions for the ATmega328P.
+ * @brief  Memory-mapped registers and bit positions for the ATmega328P.
  * @author BonelessPig
  *
- * Addresses and bit positions are taken directly from the ATmega328P datasheet.
- * This file has no dependency on avr-libc's <avr/io.h> — it exists so the rest
- * of the codebase doesn't need to know raw addresses, without pulling in
- * avr-libc.
+ * Each register is declared here as an ordinary variable. Its address is not
+ * in the C source: the linker places every one of these names at its datasheet
+ * address, using the list in atmega328p_regs.ld (same folder). A register must
+ * appear in both files; one declared here but missing there fails at link time
+ * with "undefined reference".
+ *
+ * Bit positions are taken directly from the ATmega328P datasheet. This file
+ * has no dependency on avr-libc's <avr/io.h> — it exists so the rest of the
+ * codebase can name registers without pulling in avr-libc.
  *
  * @copyright Copyright (c) 2026
  *
  */
 #include <stdint.h>
 
-// GCC's -Warray-bounds pass mistakes these fixed-address volatile pointer casts
-// for indexing into a zero-length array, since it can't know an absolute address
-// like 0x24 is a real hardware register rather than an out-of-bounds object. This
-// is a known false positive for this style of raw memory-mapped I/O access (the
-// same pattern avr-libc's <avr/io.h> uses internally) — not a real bug. GCC ties
-// the diagnostic to where a macro is expanded, not where it's #defined, so this
-// stays in effect for the rest of any file that includes this header (there is
-// deliberately no matching "pop") rather than only around the lines below.
-#pragma GCC diagnostic ignored "-Warray-bounds"
+// Marks a register in the low I/O range (data addresses 0x20 to 0x3F). The
+// compiler cannot see the address, so this avr-gcc attribute is what lets it
+// use the single-instruction bit operations (sbi, cbi, sbic, sbis) there. The
+// shift register clock and load pulses rely on those.
+#define REG_IO_LOW __attribute__((io_low))
 
 // ---- I/O Ports: Data Direction, Output, and Input registers ----
-#define DDRB  (*((volatile uint8_t *)0x24)) // Data Direction Register for port B
-#define DDRC  (*((volatile uint8_t *)0x27)) // Data Direction Register for port C
-#define DDRD  (*((volatile uint8_t *)0x2A)) // Data Direction Register for port D
+extern volatile uint8_t DDRB REG_IO_LOW;  // Data Direction Register for port B
+extern volatile uint8_t DDRC REG_IO_LOW;  // Data Direction Register for port C
+extern volatile uint8_t DDRD REG_IO_LOW;  // Data Direction Register for port D
 
-#define PORTB (*((volatile uint8_t *)0x25)) // Data Register for port B
-#define PORTC (*((volatile uint8_t *)0x28)) // Data Register for port C
-#define PORTD (*((volatile uint8_t *)0x2B)) // Data Register for port D
+extern volatile uint8_t PORTB REG_IO_LOW; // Data Register for port B
+extern volatile uint8_t PORTC REG_IO_LOW; // Data Register for port C
+extern volatile uint8_t PORTD REG_IO_LOW; // Data Register for port D
 
-#define PINB  (*(volatile uint8_t *)(0x23)) // Input Pins Address for port B
-#define PINC  (*(volatile uint8_t *)(0x26)) // Input Pins Address for port C
-#define PIND  (*(volatile uint8_t *)(0x29)) // Input Pins Address for port D
+extern volatile uint8_t PINB REG_IO_LOW;  // Input Pins Address for port B
+extern volatile uint8_t PINC REG_IO_LOW;  // Input Pins Address for port C
+extern volatile uint8_t PIND REG_IO_LOW;  // Input Pins Address for port D
 
 // ---- ADC (Analog to Digital Converter) ----
-#define ADCSRA (*((volatile uint8_t *)0x7A)) // ADC Control and Status Register A
-#define ADMUX  (*((volatile uint8_t *)0x7C)) // ADC Multiplexer Selection Register
-#define ADC    (*((volatile uint16_t *)0x78))  // ADC Data Register (10-bit result)
+extern volatile uint8_t  ADCSRA; // ADC Control and Status Register A
+extern volatile uint8_t  ADMUX;  // ADC Multiplexer Selection Register
+extern volatile uint16_t ADC;    // ADC Data Register (10-bit result)
 
 #define ADEN  7 // ADC Enable bit in ADCSRA
 #define ADSC  6 // ADC Start Conversion bit in ADCSRA
@@ -52,14 +53,14 @@
 #define REFS0 6 // Reference Selection Bit 0 in ADMUX
 
 // ---- USART0 ----
-#define UBRR0H (*(volatile uint8_t *)0xC5) // USART Baud Rate Register High Byte
-#define UBRR0L (*(volatile uint8_t *)0xC4) // USART Baud Rate Register Low  Byte
+extern volatile uint8_t UBRR0H; // USART Baud Rate Register High Byte
+extern volatile uint8_t UBRR0L; // USART Baud Rate Register Low  Byte
 
-#define UCSR0A (*(volatile uint8_t *)0xC0) // USART Control and Status Register A
-#define UCSR0B (*(volatile uint8_t *)0xC1) // USART Control and Status Register B
-#define UCSR0C (*(volatile uint8_t *)0xC2) // USART Control and Status Register C
+extern volatile uint8_t UCSR0A; // USART Control and Status Register A
+extern volatile uint8_t UCSR0B; // USART Control and Status Register B
+extern volatile uint8_t UCSR0C; // USART Control and Status Register C
 
-#define UDR0   (*(volatile uint8_t *)0xC6) // USART I/O Data Register
+extern volatile uint8_t UDR0;   // USART I/O Data Register
 
 #define UDRE0  5 // USART Data Register Empty flag in UCSR0A
 #define RXEN0  4 // Rx Enable bit in UCSR0B
@@ -67,4 +68,4 @@
 #define UCSZ01 2 // Character Size bit 1 in UCSR0C
 #define UCSZ00 1 // Character Size bit 0 in UCSR0C
 
-#endif
+#endif /* ATMEGA328P_REGS_H */

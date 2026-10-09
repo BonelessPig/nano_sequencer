@@ -155,6 +155,14 @@ CFLAGS  = -g -Os -std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror \
 #                           -ffunction-sections / -fdata-sections flags above)
 LDFLAGS = -mmcu=$(MCU) -Wl,--gc-sections
 
+# Register addresses. The C code declares each MCU register as a plain variable
+# (adapters/target/atmega328p_regs.h) and this linker file says where each one
+# is. It is given to the linker as an extra input, which adds its symbols to
+# the toolchain's standard memory layout rather than replacing it. An
+# "undefined reference to `PORTD'" style error means a register is declared in
+# the header but has no address in this file.
+REGS_LD = adapters/target/atmega328p_regs.ld
+
 # ---- Rules ------------------------------------------------------------------
 #
 # Rule syntax:   output: inputs
@@ -178,8 +186,8 @@ $(TARGET).hex: $(TARGET).elf
 
 # Step 2: link all object files into one .elf. An "undefined reference" error
 # here means a function is declared and called but its .c file is not in SRCS.
-$(TARGET).elf: $(OBJS)
-	$(CC) $(LDFLAGS) -o $@ $(OBJS)
+$(TARGET).elf: $(OBJS) $(REGS_LD)
+	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(REGS_LD)
 
 # Step 1: compile one .c file to one .o file. The first line creates the output
 # folder if it is missing. Compile errors and warnings are reported here, per file.
