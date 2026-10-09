@@ -7,6 +7,7 @@
 #   make              Build build/output.hex and print the size report
 #   make size         Print the size report (builds first if needed)
 #   make flash        Build if needed, then upload to the board over serial
+#   make misra        Run cppcheck with the MISRA addon over the source
 #   make clean        Delete the build/ directory
 #   make flash PORT=COM5   Override any variable below from the command line
 #
@@ -83,6 +84,10 @@ OBJCOPY = avr-objcopy
 SIZE    = avr-size
 AVRDUDE = avrdude
 
+# cppcheck is only needed for `make misra`, not for building or flashing. Its
+# MISRA addon is a Python script, so python must be on PATH as well.
+CPPCHECK = cppcheck
+
 # ---- Files ------------------------------------------------------------------
 
 SRC_DIR   = src
@@ -137,7 +142,7 @@ LDFLAGS = -mmcu=$(MCU) -Wl,--gc-sections
 # A leading @ on a command stops make from echoing it.
 
 # These names are commands, not files, so always run them when asked.
-.PHONY: all size flash clean
+.PHONY: all size flash clean misra
 
 # Default target (what plain `make` runs): build the .hex, then report size.
 all: $(TARGET).hex size
@@ -164,6 +169,23 @@ $(BUILD_DIR)/obj/%.o: $(SRC_DIR)/%.c
 #   data + bss  = static RAM   (2048 bytes total, shared with the stack)
 size: $(TARGET).elf
 	$(SIZE) $<
+
+# Static analysis: cppcheck plus its MISRA addon (see CLAUDE.md for how findings
+# are handled). tools/misra/misra.json points the addon at the rule headlines
+# file, which is not in the repo; if it is missing, run
+# tools/misra/fetch_misra_headlines.sh first. Exits non-zero if anything is found.
+#   MISRA_PATHS     Folders to analyse
+#   MISRA_INCLUDES  Where cppcheck looks for the project's own headers
+#   -DF_CPU=...     Same define the compiler gets; without it the headers hit
+#                     their #error and cppcheck skips the code
+MISRA_PATHS    = $(SRC_DIR)
+MISRA_INCLUDES = -I $(SRC_DIR)
+MISRA_FLAGS    = --addon=tools/misra/misra.json --std=c99 \
+                 --enable=warning,style,performance,portability \
+                 --inline-suppr --error-exitcode=1 -DF_CPU=$(F_CPU)
+
+misra:
+	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_PATHS)
 
 # Upload the .hex to the board through the bootloader. The first line stops with
 # a clear message if no port was given and none could be auto-detected.

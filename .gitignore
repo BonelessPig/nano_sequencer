@@ -1,2 +1,5 @@
 .vscode
 build
+
+# MISRA rule text is copyrighted; fetch it locally with tools/misra/fetch_misra_headlines.sh
+tools/misra/*.txt
