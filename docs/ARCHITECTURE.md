@@ -2,19 +2,19 @@
 
 How the firmware is structured, what happens from reset to the main loop, how each part works, and what is still open. The standing rules for the codebase are in [CLAUDE.md](../CLAUDE.md); this document describes what is there.
 
-How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the hardware-free parts are compiled and tested on a PC with `make test`. The firmware was last run on the board before the ports-and-adapters refactor; the refactored build has not been flashed yet, so timing figures are calculated, not measured.
+How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the hardware-free parts are compiled and tested on a PC with `make test`. The refactored firmware has been flashed and run on the board; the later logger rewrite has not yet. Timing figures are calculated, not measured.
 
 ## At a glance
 
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano), 16 MHz |
-| Flash used | 1850 bytes of 32 KB |
-| RAM used | 68 bytes static (64-byte log buffer, 2-byte log level, 2-byte sequencer state), plus stack |
+| Flash used | 1328 bytes of 32 KB |
+| RAM used | 4 bytes static (2-byte log level, 2-byte sequencer state), plus stack |
 | Interrupts | None. Everything is polled and blocking |
 | Inputs | 16 steps × 4 bits from eight 74HC165s; one pot on ADC channel 6 for tempo |
 | Outputs | Serial log only (9600 baud). No gate, trigger or CV output yet |
-| Tests | 21 host tests (12 for the core, 9 for the app loop) |
+| Tests | 27 host tests (12 for the core, 9 for the app loop, 6 for the serial logger) |
 
 ## Structure: ports and adapters
 
@@ -57,12 +57,12 @@ Functions that can fail return `port_status_t` (`STATUS_OK` = 0, `ERR_INVALID_PA
 
 ## What "bare metal" means here
 
-No source file includes an avr-libc header. Registers come from `adapters/target/atmega328p_regs.h`, variadic support from the compiler builtins in `varargs.h`, and the delay from `__builtin_avr_delay_cycles`. The build uses `-ffreestanding`, so `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` are the compiler's own.
+No source file includes an avr-libc header. Registers come from `adapters/target/atmega328p_regs.h` and the delay from the `__builtin_avr_delay_cycles` compiler builtin. There is no `printf`, `memset` or any other library function; the logger converts numbers to text itself. The build uses `-ffreestanding`, so `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` are the compiler's own.
 
 The link step is not library-free. The Makefile links with plain `avr-gcc -mmcu=atmega328p`, so the map file shows:
 
 - `crtatmega328p.o`, which ships with avr-libc. It supplies the interrupt vector table, `__bad_interrupt`, and the `__init` code that sets the stack pointer and calls `main`.
-- From libgcc: `__do_clear_bss`, `__do_copy_data`, `_exit`, and `__udivmodhi4` (16-bit divide, used by the `%d` formatter).
+- From libgcc: `__do_clear_bss`, `__do_copy_data`, `_exit`, and `__udivmodhi4` (16-bit divide, used when converting numbers to decimal).
 - `libc.a` and `libm.a` are searched, but nothing is pulled from them.
 
 ## Reset to main loop
@@ -153,22 +153,22 @@ Within each nibble the higher-lettered input is the more significant bit, so inp
 
 `serial_init()` sets the baud divisor from `F_CPU` (`16000000 / (16 × 9600) − 1 = 103`, about 0.2 % error), sets normal speed and 8N1 explicitly, and enables the transmitter and receiver. Nothing reads from the UART.
 
-The port functions `log_step_note()` and `log_error()` own the message wording and call `log_serial()`, which filters by level, formats into a 64-byte `static` buffer with the project's own `vsnprintf`, and sends it one byte at a time, busy-waiting on `UDRE0`. A message that does not fit is followed by `[TRUNCATED]` on its own line. The level is set to DEBUG at init, so everything except TRACE prints.
+The port functions `log_step_note()` and `log_error()` own the message wording. Each checks the log level, then sends the message in pieces: fixed text through `write_text()` and numbers through `write_decimal()`, which produces unpadded decimal digits. Every byte goes through `write_char()`, which busy-waits on `UDRE0`. There is no format buffer, so nothing can be truncated. The level is set to DEBUG at init, so step notes (DEBUG) and errors (ERROR) both print.
 
-### Delay and utilities — `delay.c`, `utilities.c`
+### Delay — `delay.c`
 
-- `delay_wait_ms()` loops `__builtin_avr_delay_cycles(F_CPU / 1000)` once per millisecond.
-- `vsnprintf()` supports `%d` and `%%` only; any other specifier is emitted literally. It returns the length the full output would have had, and handles `INT_MIN` without overflow.
-- `memset()` and `memmove()` are standard implementations. Nothing calls them directly, and `--gc-sections` drops them unless the compiler emits a call.
+`delay_wait_ms()` loops `__builtin_avr_delay_cycles(F_CPU / 1000)` once per millisecond.
 
 ## Host side — `adapters/host/` and `tests/`
 
-`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every output-port call in order. `make test` builds and runs two programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`:
+`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every output-port call in order. `make test` builds and runs three programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`:
 
 - `test_seq`: the core alone. Decoding of every step and nibble, the delay maths, last-valid-tempo reuse, independence of the two valid flags, and null-pointer handling.
 - `test_app`: the real `app.c` and core linked against the fakes. Checks that a tick logs 16 notes in order and then delays once, that a failed read logs the right error in the right place, and that init failure is logged and returned.
 
-The target adapters themselves are not covered by host tests; they need the board.
+- `test_serial_logger`: the target logger's source compiled on the PC with `tests/fake_atmega328p_regs.h` standing in for the register map. Checks the USART setup values, the level filter, and that every message is byte-for-byte what the earlier `printf`-style format strings produced.
+
+The other target adapters (shift register, ADC, delay, pin setup) are not covered by host tests; they need the board.
 
 ## Build — `Makefile`
 
@@ -176,11 +176,20 @@ The target adapters themselves are not covered by host tests; they need the boar
 
 ## Static analysis
 
-`make misra` runs cppcheck with its MISRA addon over `core/`, `ports/`, `adapters/` and `app/`. Counts before the refactor are in [misra-baseline.md](misra-baseline.md). How findings are handled is set out in CLAUDE.md.
+`make misra` runs cppcheck with its MISRA addon over `core/`, `ports/` and `app/`, once with each set of adapters. Counts before the refactor are in [misra-baseline.md](misra-baseline.md): 165 findings, 5 of them mandatory and 101 required. There are now 34, all advisory, with no suppressions:
+
+| Rule | Count | Where | Why it is left |
+|---|---:|---|---|
+| 11.4 | 14 | `atmega328p_regs.h` | The integer-to-pointer casts that define the registers |
+| 8.7 | 8 | `adapters/host` | Fake-control functions called only from `tests/`, which is not analysed |
+| 2.5 | 7 | register map, `bits.h`, `seq.h` | Definitions kept for completeness but not used yet |
+| 15.5 | 5 | `analog_reader.c`, `shift_reg_reader.c` | Guard-clause early returns |
+
+How findings are handled is set out in CLAUDE.md.
 
 ## Open items
 
-Earlier findings from this analysis that have since been fixed are in the git history (log level filter, flash port default, header dependency tracking, truncation check, register map, UART setup, robustness gaps, stale comments, Makefile flags). What remains:
+Earlier findings from this analysis that have since been fixed are in the git history (log level filter, flash port default, header dependency tracking, register map, UART setup, robustness gaps, stale comments, Makefile flags, coding-standard cleanup of the target adapters). What remains:
 
 ### 1. Blocking logging sets the real loop time
 
@@ -193,10 +202,6 @@ A tick spends about 0.3 s in the UART. Once the loop advances one step per tempo
 ### 3. Tempo is sampled before logging
 
 Because inputs are gathered before outputs are applied, the tempo pot is read about 0.3 s before the delay it controls (it used to be read just before). The serial output and the loop period are unchanged.
-
-### 4. Legacy style in the target adapters
-
-The code in `adapters/target/` predates the coding standard in CLAUDE.md: unbraced single-line `if`s, `int`/`unsigned char` where fixed-width types are called for, and K&R brace placement. It accounts for most of the remaining MISRA findings and is deliberately left for a separate cleanup.
 
 ## What the output stage will need
 

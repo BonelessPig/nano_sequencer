@@ -1,6 +1,6 @@
 # nano_sequencer
 
-A bare-metal firmware project for the ATmega328P (Arduino Nano), written from scratch without the Arduino core and without any avr-libc headers or library functions. All peripheral access goes through manually-defined memory-mapped registers, and standard library pieces normally pulled from avr-libc (`memset`, `memmove`, a minimal `vsnprintf`-based logger) are implemented directly in this repo. The only code not written here is what the toolchain adds at link time: the chip's startup object (vector table and stack setup, which ships with avr-libc) and a few `libgcc` helpers.
+A bare-metal firmware project for the ATmega328P (Arduino Nano), written from scratch without the Arduino core and without any avr-libc headers or library functions. All peripheral access goes through manually-defined memory-mapped registers, and nothing from the standard library is used: the serial logger does its own number-to-text conversion. The only code not written here is what the toolchain adds at link time: the chip's startup object (vector table and stack setup, which ships with avr-libc) and a few `libgcc` helpers.
 
 ## Status
 
@@ -8,7 +8,7 @@ Work in progress. Currently the firmware initializes the ADC, USART, and I/O dir
 
 ## Why bare-metal?
 
-No Arduino `Wiring`/HAL layer and no avr-libc headers or functions in the source — registers are defined directly from the ATmega328P datasheet addresses, and only `avr-gcc`'s built-ins (`__builtin_avr_delay_cycles`, `__builtin_va_*`) are used where the compiler must be involved. The fixed-width types come from the compiler's own `<stdint.h>` (the build uses `-ffreestanding`), not from avr-libc. This keeps the binary small and the behavior fully explicit at the register level.
+No Arduino `Wiring`/HAL layer and no avr-libc headers or functions in the source — registers are defined directly from the ATmega328P datasheet addresses, and only one `avr-gcc` built-in (`__builtin_avr_delay_cycles`) is used where the compiler must be involved. The fixed-width types come from the compiler's own `<stdint.h>` (the build uses `-ffreestanding`), not from avr-libc. This keeps the binary small and the behavior fully explicit at the register level.
 
 ## Project layout
 
@@ -31,9 +31,7 @@ adapters/
 │   ├── analog_reader.c               # Tempo input: ADC channel read
 │   ├── shift_reg_reader.c            # Step input: 74HC165 shift register chain read
 │   ├── delay.c                       # Delay: calibrated busy-wait
-│   ├── serial_logger.c / .h          # Log: USART setup + printf-style logging with log levels
-│   ├── utilities.c / .h              # memset, memmove, minimal vsnprintf
-│   ├── varargs.h                     # va_list macros built on compiler builtins
+│   ├── serial_logger.c / .h          # Log: USART setup + text logging with log levels
 │   ├── bits.h                        # BIT_0..BIT_7 mask constants
 │   └── atmega328p_regs.h             # Memory-mapped register addresses and bit positions
 └── host/                     # The ports faked for PC tests
@@ -106,7 +104,7 @@ make misra      # Run cppcheck with the MISRA addon
 make clean      # Remove the build/ directory
 ```
 
-The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, so any warning fails the build. `make test` never touches the board: it links the real core and app loop against fake ports and checks what they do.
+The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, so any warning fails the build. `make test` never touches the board: it links the real core and app loop against fake ports and checks what they do, and it runs the serial logger against fake USART registers to check the exact text it sends.
 
 `make flash` picks the serial port per platform: `COM3` on Windows, the first `/dev/cu.usbserial*`, `/dev/cu.wchusbserial*` or `/dev/cu.usbmodem*` device on macOS, and the first `/dev/ttyUSB*` or `/dev/ttyACM*` device on Linux. Override it if your Nano enumerates differently, e.g. `make flash PORT=COM4` or `make flash PORT=/dev/ttyUSB1`. On Linux your user needs access to the port (usually membership of the `dialout` group).
 
