@@ -71,3 +71,43 @@ MISRA C is a secondary, automated check. BARR-C plus the rules above is the stan
 
 - Make small, incremental changes, keep the build green after each one, and make one logical change per commit.
 - Don't change behavior while refactoring. Report suspected bugs instead of silently fixing them.
+- Commit and push only when asked. The owner flashes the board themselves (`make flash`) and reports back; don't run it.
+- Keep `README.md` and `docs/ARCHITECTURE.md` in step with the code in the same piece of work. ARCHITECTURE.md carries the size figures, test counts, MISRA status and the open items list.
+- The owner wants the project minimal and lightweight, and as clean as possible against the standard: prefer actually resolving a finding over recording a deviation, and when there is a real trade-off, lay out the options with a recommendation and let them choose.
+
+## Project facts
+
+- Target: ATmega328P on an Arduino Nano (old bootloader), 16 MHz, avr-gcc 12.1.0, GNU Make. Developed on Windows; the Makefile also has macOS and Linux branches that have never been run.
+- No Arduino core, no avr-libc headers or functions, no variadic functions, no `printf`, no `memset`/`memcpy`. The only non-project code is the startup object and a few libgcc helpers added at link time. `-ffreestanding` makes `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` come from the compiler.
+- No interrupts or timers yet. Everything is polled and blocking.
+- What the firmware does today: each tick reads 16 four-bit step notes from eight chained 74HC165s (PD2 load, PD3 clock, PD4 data), reads the tempo pot on ADC channel 6, logs the 16 notes over serial at 9600 baud, then waits tempo/4 ms. There is no step advance, gate, CV or transport yet; that output stage is the next feature and goes into `core/` first.
+- `port_status_t` values are printed in the serial log, so never renumber them.
+- Size at the last check: 1328 bytes of flash, 4 bytes of static RAM. `make` prints the current figures.
+
+## Commands
+
+- `make`: build `build/output.hex` and print sizes. Any warning fails the build.
+- `make test`: build and run the three host test programs (`test_seq`, `test_app`, `test_serial_logger`) with the PC's gcc.
+- `make -k misra`: both analysis runs; exits 0 only with zero findings. Pipe through `python tools/misra/summarize.py` for counts by folder, category and rule.
+- `make flash`: upload with avrdude. Defaults to `COM3`; override with `PORT=`.
+- The Makefile's recipes run under `cmd.exe` on Windows. From Git Bash, call it as `cmd //c "make ..."`.
+
+## Things learned the hard way
+
+- **Registers live in two files.** `adapters/target/atmega328p_regs.h` declares each register as `extern volatile`; `adapters/target/atmega328p_regs.ld` gives it its address and is passed to the linker as an extra input. A new register needs both. Use the plain datasheet data address (for example `0x2B`). Registers at 0x20 to 0x3F need the `REG_IO_LOW` attribute or the compiler stops using `sbi`/`cbi`, which changes the shift register pulse timing. A wrong address links silently.
+- **Putting the address inside the attribute does not work** on avr-gcc 12.1.0 (`io_low(0x2B)` fails with "IO definition needs an address"), which is why the linker file exists.
+- **Compiler builtins need a visible prototype** or cppcheck reports rule 17.3. `delay.c` declares `__builtin_avr_delay_cycles` for that reason; avr-gcc accepts the redeclaration and still inlines it.
+- **The compiler can emit calls to `memset` or `memcpy`** for large zero-initialisers and struct copies, and the project no longer provides either. In firmware code, initialise fields explicitly and avoid whole-struct assignment. Tests can use them freely.
+- **cppcheck treats its inputs as one program.** That is why there are two runs, each matching a real link. The host run includes `tests/test_app.c` and leaves out `app/main.c`.
+- **cppcheck does not define `__cppcheck__` when `-D` is on its command line**, so that macro cannot be used to show it different code.
+- **Proving a refactor changed nothing:** build before and after and `cmp` the two `build/output.hex` files. If they differ, diff the `avr-objdump -d` instruction streams with addresses stripped to see exactly which function moved. Save the reference image before editing.
+- **Host-testing a target adapter:** have the test include a fake register header that uses the same include guard as the real one, then `#include` the adapter's `.c` file. `tests/test_serial_logger.c` and `tests/fake_atmega328p_regs.h` are the pattern. The shift register, ADC and delay adapters have no host tests yet.
+- **Git Bash heredocs mangle backslashes** in inline Python and sed scripts here. Write helper scripts to a file with the Write tool and run them, or use the Edit tool.
+- **`*.sh` files must stay LF** (`.gitattributes` enforces it); the repo otherwise checks out as CRLF on Windows.
+
+## Open items
+
+- Logging dominates the loop: about 0.3 s per tick at 9600 baud, more than the largest tempo delay of 255 ms. This has to be dealt with before step advance means anything (log only the current step, raise the baud rate, or lower the log level).
+- The tempo pot is sampled before the notes are logged, so about 0.3 s before the delay it controls.
+- `register_init.c` sets PD0 as an output although it is the UART receive pin (no effect while the receiver is enabled). PB5, PC0 and PC1 are configured but unused, and are free for the output stage.
+- The MISRA result is zero findings from cppcheck, which implements only part of MISRA C. The `io_low` attribute and the delay builtin are compiler extensions it does not flag.
