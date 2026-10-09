@@ -205,7 +205,7 @@ The README said `make flash` defaults to `PORT=COM4`, but the Makefile defaulted
 - Header dependency tracking was missing, so editing a `.h` file did not rebuild the objects that include it. Fixed: the Makefile now compiles with `-MMD -MP` and includes the generated `.d` files.
 - The recipes used `cmd.exe` syntax (`if not exist`, `rmdir /s /q`), so the build was Windows-only. Fixed: the Makefile now picks the folder commands and default serial port per platform. The macOS and Linux branches have not been run on those systems.
 - `flash` passed `-V` (skip verification), which hid bad writes. Fixed: avrdude now verifies after writing.
-- `flash` still passes `-F` (skip the device signature check), which hides a wrong-chip situation. It is kept until a flash without it has been tried on the board, since some Nano clones report a different signature.
+- `flash` passed `-F` (skip the device signature check), which hid a wrong-chip situation. Removed after a flash without it succeeded on the board.
 - `-fno-exceptions` was in the compiler flags and does nothing for C. Removed.
 
 ### 10. USART setup relies on reset defaults

@@ -168,13 +168,13 @@ size: $(TARGET).elf
 # Upload the .hex to the board through the bootloader. The first line stops with
 # a clear message if no port was given and none could be auto-detected.
 # After writing, avrdude reads the flash back and compares it to the .hex, so a
-# "verification error" means the upload did not take; try again.
-#   -F  skip the device signature check (some Nano clones report a different
-#       chip signature; without -F avrdude would refuse to flash those)
+# "verification error" means the upload did not take; try again. avrdude also
+# checks the chip's signature first, so a "signature mismatch" error means the
+# board is not an ATmega328P.
 #   -U flash:w:<file>:i  write <file> to flash, i = Intel HEX format
 flash: $(TARGET).hex
 	$(if $(PORT),,$(error No serial port found. Plug in the board or pass PORT=<device>))
-	$(AVRDUDE) -F -c $(PROGRAMMER) -p ATMEGA328P -P $(PORT) -b $(BAUD) -U flash:w:$<:i
+	$(AVRDUDE) -c $(PROGRAMMER) -p ATMEGA328P -P $(PORT) -b $(BAUD) -U flash:w:$<:i
 
 clean:
 	@$(call rm_rf,$(BUILD_DIR))
