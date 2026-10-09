@@ -7,6 +7,7 @@
 #   make              Build build/output.hex and print the size report
 #   make size         Print the size report (builds first if needed)
 #   make flash        Build if needed, then upload to the board over serial
+#   make test         Build the core for this PC and run its unit tests
 #   make misra        Run cppcheck with the MISRA addon over the source
 #   make clean        Delete the build/ directory
 #   make flash PORT=COM5   Override any variable below from the command line
@@ -44,9 +45,17 @@ ifeq ($(OS),Windows_NT)
     mkdir_p = if not exist "$(subst /,\,$1)" mkdir "$(subst /,\,$1)"
     rm_rf   = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
     DEFAULT_PORT = COM3
+    # For `make test`: the PC's own C compiler, the suffix it gives programs,
+    # and how to run a program given its path.
+    HOST_CC ?= gcc
+    EXE     = .exe
+    run     = $(subst /,\,$1)
 else
     mkdir_p = mkdir -p "$1"
     rm_rf   = rm -rf "$1"
+    HOST_CC ?= cc
+    EXE     =
+    run     = ./$1
     # The port name varies with the board's USB-serial chip and which USB socket
     # it is in, so take the first device that matches the usual patterns. If the
     # wrong one is picked (several serial devices attached), pass PORT= yourself.
@@ -153,7 +162,7 @@ LDFLAGS = -mmcu=$(MCU) -Wl,--gc-sections
 # A leading @ on a command stops make from echoing it.
 
 # These names are commands, not files, so always run them when asked.
-.PHONY: all size flash clean misra
+.PHONY: all size flash clean misra test
 
 # Default target (what plain `make` runs): build the .hex, then report size.
 all: $(TARGET).hex size
@@ -180,6 +189,32 @@ $(BUILD_DIR)/obj/%.o: %.c
 #   data + bss  = static RAM   (2048 bytes total, shared with the stack)
 size: $(TARGET).elf
 	$(SIZE) $<
+
+# ---- Host tests -------------------------------------------------------------
+#
+# `make test` compiles the hardware-free code with the PC's compiler (HOST_CC,
+# not avr-gcc) and runs it. Nothing here touches the board or the firmware
+# build; the programs land in build/host/. A test program exits non-zero if any
+# check fails, which makes `make test` fail.
+#   -std=c99 -pedantic    The core must be plain C99 with no compiler extensions
+#   -Werror               Any warning fails the build
+HOST_DIR    = $(BUILD_DIR)/host
+HOST_CFLAGS = -std=c99 -pedantic -g -Wall -Wextra -Wconversion -Wshadow -Werror \
+              -Icore -Iports -Itests
+
+CORE_SRCS := $(wildcard core/*.c)
+CORE_HDRS := $(wildcard core/*.h)
+TEST_HDRS := $(wildcard tests/*.h)
+
+TEST_SEQ = $(HOST_DIR)/test_seq$(EXE)
+
+test: $(TEST_SEQ)
+	$(call run,$(TEST_SEQ))
+
+# Unit tests for the core alone: no ports, no adapters.
+$(TEST_SEQ): tests/test_seq.c $(CORE_SRCS) $(CORE_HDRS) $(TEST_HDRS)
+	@$(call mkdir_p,$(HOST_DIR))
+	$(HOST_CC) $(HOST_CFLAGS) -o $@ tests/test_seq.c $(CORE_SRCS)
 
 # Static analysis: cppcheck plus its MISRA addon (see CLAUDE.md for how findings
 # are handled). tools/misra/misra.json points the addon at the rule headlines
