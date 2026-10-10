@@ -54,6 +54,7 @@ function createAtmega328p(hexPath, clockHz) {
         adc: new avr8js.AVRADC(cpu, avr8js.adcConfig),
         usart: new avr8js.AVRUSART(cpu, avr8js.usart0Config, clockHz),
         timer2: new avr8js.AVRTimer(cpu, avr8js.timer2Config),
+        spi: new avr8js.AVRSPI(cpu, avr8js.spiConfig, clockHz),
 
         /** Converts a cycle count to milliseconds of chip time. */
         cyclesToMs(cycles) {

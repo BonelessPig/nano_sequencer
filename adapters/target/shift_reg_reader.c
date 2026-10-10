@@ -1,8 +1,14 @@
 /**
  * @file   shift_reg_reader.c
  * @brief  Target implementation of the step input port: reads the 74HC165
- *         shift register chain that holds the step notes.
+ *         shift register chain that holds the step notes, over the SPI bus.
  * @author BonelessPig
+ *
+ * The chain's clock is the bus clock (PB5, SCK) and its output, QH of the
+ * chip nearest the MCU, is the bus data input (PB4, MISO). Its load line is
+ * an ordinary output, PB1. A 74HC165 shows its first bit as soon as it is
+ * loaded and moves to the next on each rising clock edge, which is the edge
+ * SPI mode 0 samples on, so each transfer reads eight bits in order.
  *
  * @copyright Copyright (c) 2026
  *
@@ -10,15 +16,15 @@
 #include "step_input_port.h"
 #include <stddef.h>
 #include "atmega328p_regs.h"
-#include "port_status.h"
 #include "bits.h"
+#include "port_status.h"
+#include "spi.h"
 
 #define SHIFT_REG_CHAIN_BYTES (8U) // Max daisy-chained 74HC165s supported (8 x 8 bits = 64 bits)
-#define BITS_PER_BYTE         (8U)
 
-#define SHIFT_LOAD_BIT BIT_2 // PD2: SH/LD (active-low load pulse)
-#define SHIFT_CLK_BIT  BIT_3 // PD3: CLK (shift clock)
-#define SHIFT_DATA_BIT BIT_4 // PD4: SER data-in (from QH of the chip nearest the MCU)
+#define SHIFT_LOAD_BIT BIT_1 // PB1: SH/LD (active-low load pulse)
+
+#define SHIFT_FILL_BYTE (0U) // Sent while reading; nothing on the bus listens
 
 
 
@@ -43,23 +49,26 @@ port_status_t step_input_read(uint8_t *p_raw_bits, uint8_t byte_count)
     }
     else
     {
-        PORTD &= (uint8_t)~SHIFT_LOAD_BIT; // Latch parallel inputs
-        PORTD |= SHIFT_LOAD_BIT;  // Return to shift mode
+        // Read into a buffer of our own, so that a read that fails part way
+        // leaves the caller's untouched
+        uint8_t bytes[SHIFT_REG_CHAIN_BYTES];
+        uint8_t count = 0U;
 
-        for (uint8_t byte_i = 0U; byte_i < byte_count; byte_i++)
+        PORTB &= (uint8_t)~SHIFT_LOAD_BIT; // Latch parallel inputs
+        PORTB |= SHIFT_LOAD_BIT;  // Return to shift mode
+
+        while ((STATUS_OK == status) && (count < byte_count))
         {
-            uint8_t bits = 0U;
-            for (uint8_t bit_i = 0U; bit_i < BITS_PER_BYTE; bit_i++)
+            status = spi_transfer(SHIFT_FILL_BYTE, &bytes[count]);
+            count++;
+        }
+
+        if (STATUS_OK == status)
+        {
+            for (uint8_t i = 0U; i < byte_count; i++)
             {
-                bits = (uint8_t)(bits << 1U);
-                if (0U != (PIND & SHIFT_DATA_BIT)) // Read current bit before clocking to the next
-                {
-                    bits |= 1U;
-                }
-                PORTD |= SHIFT_CLK_BIT;
-                PORTD &= (uint8_t)~SHIFT_CLK_BIT;
+                p_raw_bits[i] = bytes[i];
             }
-            p_raw_bits[byte_i] = bits;
         }
     }
 

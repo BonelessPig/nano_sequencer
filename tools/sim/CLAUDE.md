@@ -10,6 +10,7 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 
 ## Writing parts and scenarios
 
+- A part on the SPI bus is the exception to the next rule for its clock and data: avr8js's SPI does not move its pins, so the board hands the part each transfer through `spi.onByte` and the part answers with a byte. Its other lines (load, chip select) are still wires. Assert the SPI mode in a scenario, because the model cannot object to a wrong one.
 - A part is driven only through the wires that reach it and models the datasheet's logic, including which inputs are level-sensitive and which are edge-triggered. The first 74HC165 model got that wrong and blamed the firmware.
 - Measure time in CPU cycles from `cpu.cycles`, never wall time, so every run gives the same result.
 - Every run is bounded: use `runUntil` with a limit so a scenario fails instead of hanging.
@@ -20,4 +21,4 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 
 ## Limits
 
-The chip and parts are models. Nothing analog is modelled, parts have no setup or hold limits, and only the GPIO, ADC, USART and Timer/Counter2 models (with its compare match interrupt) have been exercised so far. A scenario passing is not proof on hardware; say so when reporting.
+The chip and parts are models. Nothing analog is modelled, parts have no setup or hold limits, and only the GPIO, ADC, USART, Timer/Counter2 (with its compare match interrupt) and SPI models have been exercised so far. SPI clock edges are not modelled at all. A scenario passing is not proof on hardware; say so when reporting.

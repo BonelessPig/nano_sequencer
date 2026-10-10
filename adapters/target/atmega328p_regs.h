@@ -13,7 +13,7 @@
  *
  * The USART0 registers are in atmega328p_usart_regs.h, because only the debug
  * build's serial logger uses them. The Timer/Counter2 registers are in
- * atmega328p_timer2_regs.h.
+ * atmega328p_timer2_regs.h and the SPI registers in atmega328p_spi_regs.h.
  *
  * Bit positions are taken directly from the ATmega328P datasheet. This file
  * has no dependency on avr-libc's <avr/io.h> — it exists so the rest of the
@@ -27,7 +27,7 @@
 // Marks a register in the low I/O range (data addresses 0x20 to 0x3F). The
 // compiler cannot see the address, so this avr-gcc attribute is what lets it
 // use the single-instruction bit operations (sbi, cbi, sbic, sbis) there. The
-// shift register clock and load pulses rely on those.
+// shift register load pulse relies on those.
 #define REG_IO_LOW __attribute__((io_low))
 
 // ---- I/O Ports: Data Direction, Output, and Input registers ----

@@ -2,24 +2,24 @@
 
 How the firmware is structured, what happens from reset to the main loop, how each part works, and what is still open. The standing rules for the codebase are in [CLAUDE.md](../CLAUDE.md) and the `CLAUDE.md` in each source folder; this document describes what is there.
 
-How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite, the 115200 baud setting, the release build, the step advance, the timer tick with its non-blocking loop, and the addressing, note mapping and rests have not yet. Timing figures marked as measured come from the emulated board; the rest are calculated.
+How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite, the 115200 baud setting, the release build, the step advance, the timer tick with its non-blocking loop, the addressing, note mapping and rests, and the shift registers on the SPI bus (which also needs three wires moved on the board) have not yet. Timing figures marked as measured come from the emulated board; the rest are calculated.
 
 ## At a glance
 
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano), 16 MHz |
-| Flash used | 2534 bytes of 32 KB (debug build); 1800 bytes (release build) |
+| Flash used | 2696 bytes of 32 KB (debug build); 1962 bytes (release build) |
 | RAM used | Debug: 382 bytes static (a 128-byte log queue, 155 bytes of message text and 51 bytes of scale tables copied from flash, 48 bytes of state). Release: 94 bytes (the tables and 42 bytes of state). Plus stack |
 | Interrupts | One: Timer/Counter2 compare match A, 1000 times a second. It adds one to a counter and does nothing else |
 | Main loop | Never blocks. One sequencer tick per millisecond; outputs are applied at the tick boundary |
-| Inputs | 16 steps × 4 bits from eight 74HC165s; one pot on ADC channel 6 for tempo. Both are read every 8 ms |
+| Inputs | 16 steps × 4 bits from eight 74HC165s on the SPI bus; one pot on ADC channel 6 for tempo. Both are read every 8 ms |
 | Tempo | 30 to 285 BPM, a step being a sixteenth note (500 ms down to 52.6 ms per step) |
 | Notes | A step's four switches are its note value: 0 is a rest, 1 to 15 a pitch through a scale and a root |
 | Pattern | The core can play any range of steps forward, in reverse or as a pendulum, looping or once, with a reset. The board has no controls for these yet, so the firmware plays all 16 steps forward, looping, in the chromatic scale |
 | Outputs | Serial log only (115200 baud, debug build); none at all in the release build. No gate, trigger or CV output yet |
-| Tests | 161 host tests in 15 programs (83 for the core, 19 for the app loop, 56 for the seven target adapter sources, 3 for `main.c`) |
-| Coverage | 100% of lines (393) and branches (155) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
+| Tests | 172 host tests in 16 programs (83 for the core, 19 for the app loop, 67 for the eight target adapter sources, 3 for `main.c`) |
+| Coverage | 100% of lines (412) and branches (167) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
 
 ## Hardware
 
@@ -30,13 +30,13 @@ flowchart LR
     panel["Front panel<br/>16 steps x 4 bits"] --> chain["8 x 74HC165<br/>shift register chain"]
     pot["Tempo pot"]
     subgraph mcu["ATmega328P on an Arduino Nano, 16 MHz"]
-        gpio["Port D<br/>PD2 load, PD3 clock, PD4 data"]
+        gpio["SPI bus and port B<br/>PB1 load, PB5 clock (SCK),<br/>PB4 data (MISO)"]
         adc["ADC channel 6"]
         usart["USART0<br/>PD1 transmit"]
         timer["Timer/Counter2<br/>1 kHz tick, no pin"]
     end
-    gpio -->|"load and clock pulses"| chain
-    chain -->|"64 bits, one at a time"| gpio
+    gpio -->|"load pulse, then 64 clocks"| chain
+    chain -->|"64 bits, a byte per transfer"| gpio
     pot -->|"0 V to AVcc"| adc
     usart -.->|"115200 baud"| usb["USB serial chip"]
     usb -.-> pc["PC terminal"]
@@ -60,7 +60,7 @@ flowchart TD
     end
     subgraph target["adapters/target/ (linked into the firmware)"]
         t_init["init.c<br/>register_init.c"]
-        t_shift["shift_reg_reader.c"]
+        t_shift["shift_reg_reader.c<br/>on spi.c"]
         t_adc["analog_reader.c"]
         t_time["timebase.c"]
         t_serial["serial_logger.c<br/>debug build"]
@@ -96,8 +96,8 @@ Ports are bound at link time: the firmware links `adapters/target/`, the tests l
 
 | Port | Function | Target implementation |
 |---|---|---|
-| `platform_port.h` | `platform_init()` | `init.c`: logger, then pin directions and ADC, then the timebase |
-| `step_input_port.h` | `step_input_read(p_raw_bits, byte_count)` | `shift_reg_reader.c`: 74HC165 chain |
+| `platform_port.h` | `platform_init()` | `init.c`: logger, then pin directions and ADC, then the SPI bus, then the timebase |
+| `step_input_port.h` | `step_input_read(p_raw_bits, byte_count)` | `shift_reg_reader.c`: 74HC165 chain, read through the SPI driver `spi.c` |
 | `tempo_input_port.h` | `tempo_input_read(p_raw)` | `analog_reader.c`: ADC channel 6 |
 | `timebase_port.h` | `timebase_elapsed_ticks()` | `timebase.c`: Timer/Counter2 interrupting at 1 kHz |
 | `log_port.h` | `log_step_note(step, semitone)`, `log_step_rest(step)`, `log_error(what, status)`, `log_poll()`, `log_flush()` | `serial_logger.c`: USART0 (debug build), or `null_logger.c`: discards everything (release build) |
@@ -106,7 +106,7 @@ Functions that can fail return `port_status_t` (`STATUS_OK` = 0, `ERR_INVALID_PA
 
 ## What "bare metal" means here
 
-No source file includes an avr-libc header. Registers are declared in `adapters/target/atmega328p_regs.h` (with `atmega328p_usart_regs.h` for USART0 and `atmega328p_timer2_regs.h` for Timer/Counter2) and placed by the linker. Interrupts are enabled by setting the bit in the status register, and the one interrupt handler is an ordinary C function given avr-gcc's `signal` attribute and the name the vector table expects (`__vector_7`). No compiler builtin is used. There is no `printf`, `memset` or any other library function; the logger converts numbers to text itself. The build uses `-ffreestanding`, so `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` are the compiler's own.
+No source file includes an avr-libc header. Registers are declared in `adapters/target/atmega328p_regs.h` (with `atmega328p_usart_regs.h` for USART0, `atmega328p_timer2_regs.h` for Timer/Counter2 and `atmega328p_spi_regs.h` for the SPI) and placed by the linker. Interrupts are enabled by setting the bit in the status register, and the one interrupt handler is an ordinary C function given avr-gcc's `signal` attribute and the name the vector table expects (`__vector_7`). No compiler builtin is used. There is no `printf`, `memset` or any other library function; the logger converts numbers to text itself. The build uses `-ffreestanding`, so `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` are the compiler's own.
 
 The link step is not library-free. The Makefile links with plain `avr-gcc -mmcu=atmega328p`, so the map file shows:
 
@@ -207,11 +207,11 @@ A tick is a millisecond, not a step. A step lasts 24 clock pulses, which at the 
 | | Debug | Release |
 |---|---|---|
 | Panel scan period | 8 ms, within 0.12 ms | 8 ms, within 0.004 ms |
-| Step period, from the first byte of one log line to the first byte of the next | 100 ms, within 0.20 ms | No log; nothing outside the chip shows a step yet |
+| Step period, from the first byte of one log line to the first byte of the next | 100 ms, within 0.25 ms | No log; nothing outside the chip shows a step yet |
 | One log line on the wire | 1.0 ms (a rest) to 1.6 ms, sent a byte per pass while the loop carries on | — |
 | First step logged | 2.3 ms after reset | — |
 
-The step itself begins on a tick boundary in both builds. The 0.20 ms in the debug column is the log's own jitter: a line's first byte goes out at the end of that tick's pass, after the line has been queued and, on a scan tick, after the panel and pot have been read. Over a long run nothing accumulates: 16 steps took 1600 ms to within the same margin.
+The step itself begins on a tick boundary in both builds. The 0.25 ms in the debug column is the log's own jitter: a line's first byte goes out at the end of that tick's pass, after the line has been queued and, on a scan tick, after the panel and pot have been read. Over a long run nothing accumulates: 16 steps took 1600 ms to within the same margin.
 
 The very first step after reset is one tick short (99 ms in that run): the first tick begins step 0 and already counts towards step 1.
 
@@ -375,7 +375,7 @@ The root adds 0 to 11 semitones. There is no octave control yet: how many octave
 
 Each register is declared as an ordinary variable, for example `extern volatile uint8_t PORTD;`, with no address in the C source. The linker places each name at its datasheet address using `atmega328p_regs.ld`, which the Makefile passes as an extra linker input. A register must appear in both files; one missing from the `.ld` file fails at link time with an undefined reference, but a wrong address there links silently.
 
-The USART0 registers and their bit positions are declared in a second header, `atmega328p_usart_regs.h`, on the same scheme and with their addresses in the same `.ld` file. Only `serial_logger.c` includes it. The release build does not link that file, so with the bit positions in the main header they would be macros nothing in the release firmware uses (MISRA rule 2.5). The Timer/Counter2 registers have a header of their own in the same way, `atmega328p_timer2_regs.h`, which also names the interrupt vector and the attribute that makes a function its handler. The status register `SREG` is in the main header.
+The USART0 registers and their bit positions are declared in a second header, `atmega328p_usart_regs.h`, on the same scheme and with their addresses in the same `.ld` file. Only `serial_logger.c` includes it. The release build does not link that file, so with the bit positions in the main header they would be macros nothing in the release firmware uses (MISRA rule 2.5). The Timer/Counter2 registers have a header of their own in the same way, `atmega328p_timer2_regs.h`, which also names the interrupt vector and the attribute that makes a function its handler. The SPI registers are in `atmega328p_spi_regs.h`, included only by `spi.c`. The status register `SREG` is in the main header.
 
 Registers in the low I/O range carry avr-gcc's `io_low` attribute, which lets the compiler keep using single-instruction bit operations (`sbi`, `cbi`, `sbis`) even though it cannot see the address. The generated code is identical to the earlier pointer-cast form. `ADC` is a 16-bit variable at 0x78, which reads ADCL then ADCH.
 
@@ -383,13 +383,19 @@ Registers in the low I/O range carry avr-gcc's `io_low` attribute, which lets th
 
 | Pin | Nano label | Direction | Used for |
 |---|---|---|---|
-| PB5 | D13 (on-board LED) | output | Nothing yet; never written |
+| PB1 | D9 | output, idle high | 74HC165 SH/LD (load, active low) |
+| PB2 | D10 (SS) | output, held high | Nothing wired. It must not be a low input, or the SPI leaves master mode. Set by `spi.c` |
+| PB3 | D11 (MOSI) | input (as at reset) | Nothing yet; the firmware sends zeros that nothing receives |
+| PB4 | D12 (MISO) | input | 74HC165 serial data (QH of nearest chip), through 1 kΩ |
+| PB5 | D13 (SCK, on-board LED) | output | 74HC165 CLK. Set by `spi.c`. The LED glows faintly during reads |
 | PC0 | A0 | input | Nothing yet; never read |
 | PC1 | A1 | output | Nothing yet; never written |
-| PD2 | D2 | output | 74HC165 SH/LD (load, active low) |
-| PD3 | D3 | output | 74HC165 CLK |
-| PD4 | D4 | input | 74HC165 serial data (QH of nearest chip) |
+| PD2, PD3, PD4 | D2, D3, D4 | input (as at reset) | Free. The chain was here until it moved to the SPI bus |
 | ADC6 | A6 | analog | Tempo pot |
+
+`register_init.c` sets PC0, PC1 and the load line. The load line is set high before it is made an output, so it is never driven low on the way. The SPI driver sets its own two pins.
+
+The 1 kΩ in the MISO line is there because PB3 to PB5 are also the pins an ISP programmer uses: it lets the programmer win against the chain's output. It is not needed for the serial bootloader.
 
 The ADC is enabled with a prescaler of 128, giving a 125 kHz ADC clock from 16 MHz. A normal conversion takes 13 ADC clocks, about 104 µs.
 
@@ -411,45 +417,57 @@ flowchart TD
     budget -->|"no"| late(["ERR_TIMEOUT<br/>nothing written"])
 ```
 
+### SPI bus — `spi.c`
+
+The first of the peripheral drivers: code that runs a part of the MCU for the device adapters above it and implements no port itself. Its header, `spi.h`, is private to `adapters/target/`.
+
+`spi_init()` sets PB2 (SS) high and then makes it an output, makes PB5 (SCK) an output, and switches the SPI on as master: mode 0 (clock idle low, data sampled on the rising edge), most significant bit first, system clock divided by 16, which is 1 MHz. It writes both control registers in full, so nothing a bootloader left behind survives. The order matters: SS is an output before master mode is selected, because a low level on SS as an input cancels master mode.
+
+`spi_transfer(tx, p_rx)` writes one byte to the data register, which starts eight clocks, polls for the transfer-complete flag, and reads back the byte that came in. A transfer takes 8 µs. The wait is bounded at 255 polls, well over ten times that, after which it returns `ERR_TIMEOUT`; that can only happen if the SPI is not enabled as master.
+
 ### Step input — `shift_reg_reader.c`
 
-Pulses PD2 low then high to latch all parallel inputs, then for each byte reads PD4 and pulses PD3 eight times. The bit is sampled before the clock pulse, which is correct for the 74HC165: the first bit is already on QH after the load. Bits are shifted in MSB first, which fixes the wiring-to-step mapping:
+Pulses PB1 low then high to latch all parallel inputs, then makes one SPI transfer per byte, sending zeros. A 74HC165 has its first bit on QH as soon as it is loaded and moves to the next on each rising clock edge. SPI mode 0 samples on that same rising edge, so it takes each bit just before the chain moves on, and eight clocks leave the next byte's first bit waiting. Bits arrive MSB first, which fixes the wiring-to-step mapping:
 
 | | Bits 7..4 | Bits 3..0 |
 |---|---|---|
 | 74HC165 inputs | H G F E | D C B A |
 | Chip `k` (0 = nearest the MCU) | step `2k` | step `2k + 1` |
 
-Within each nibble the higher-lettered input is the more significant bit, so input H of the nearest chip is the MSB of step 0. Each chip's Clock Inhibit pin must be tied to GND. The clock and load pulses are a single `sbi`/`cbi` pair, about 125 ns wide at 16 MHz, comfortably above the 74HC165's minimum at 5 V.
+Within each nibble the higher-lettered input is the more significant bit, so input H of the nearest chip is the MSB of step 0. Each chip's Clock Inhibit pin must be tied to GND. The load pulse is a single `cbi`/`sbi` pair, about 125 ns wide at 16 MHz, comfortably above the 74HC165's minimum at 5 V; the clock is 1 MHz, far below the chip's limit.
+
+The bytes are read into a buffer inside the function and copied out only if every transfer succeeded, so a read that fails part way leaves the caller's data as it was.
+
+Sampling on the edge that also shifts relies on the chain's output not changing until a little after the edge. That is how a 74HC165 is normally read over SPI, and the MCU samples at the instant it drives the clock, but it is a timing margin the emulator cannot show: it has to be confirmed on the board (open item 8).
 
 The chain, with data moving right to left towards the MCU. Chip 0's bits arrive first and land in byte 0:
 
 ```mermaid
 flowchart RL
     gnd["SER tied low"] --> c7
-    subgraph chain["74HC165 chain: PD2 (load) and PD3 (clock) go to every chip"]
+    subgraph chain["74HC165 chain: PB1 (load) and PB5 (SCK, clock) go to every chip"]
         c7["Chip 7<br/>steps 14 and 15"]
         mid["Chips 6 to 1<br/>steps 12 down to 2"]
         c0["Chip 0<br/>steps 0 and 1"]
     end
     c7 -->|"QH to SER"| mid
     mid -->|"QH to SER"| c0
-    c0 -->|"QH"| pd4["PD4<br/>data in"]
+    c0 -->|"QH, through 1 kΩ"| pd4["PB4 (MISO)<br/>data in"]
 ```
 
-One read, as the pulses the MCU sends and the bits it gets back:
+One read, as the pulses the MCU sends and the bits it gets back. The SPI hardware does the inner loop; the code sees one transfer per byte:
 
 ```mermaid
 sequenceDiagram
     participant M as MCU (shift_reg_reader.c)
     participant C as 74HC165 chain
-    M->>C: PD2 low (latch all 64 inputs)
-    M->>C: PD2 high (back to shift mode)
+    M->>C: PB1 low (latch all 64 inputs)
+    M->>C: PB1 high (back to shift mode)
     Note over C: first bit is already on QH
     loop 8 bytes
         loop 8 bits, most significant first
-            C-->>M: read PD4
-            M->>C: PD3 high then low (shift to the next bit)
+            C-->>M: MISO sampled as SCK rises
+            M->>C: the same rising edge shifts to the next bit
         end
         Note over M: store the byte in p_raw_bits
     end
@@ -515,7 +533,7 @@ sequenceDiagram
 
 ## Host side — `adapters/host/` and `tests/`
 
-`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every output-port call in order. `make test` builds and runs fifteen programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
+`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every output-port call in order. `make test` builds and runs sixteen programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
 
 Seven link the code they test:
 
@@ -527,14 +545,15 @@ Seven link the code they test:
 - `test_seq`: the sequencer with the modules above linked in. The first tick begins step 0; step length for five tempos (exactly 15000 / BPM ticks, with the first step a tick short); 19 steps a second at the fastest setting; the steps in order with wrap; the pitch or rest of every step and nibble; the note taken from the tick its step begins on; a step beginning on time through a failed read; the tempo floor before any reading; last-valid-tempo reuse; independence of the two valid flags; batched ticks; steps owed after a stall; a rest; the scale and root applied; the addressing controls followed; a one-shot pattern stopping while the clock runs on; reset not moving the clock, held, and restarting a finished one-shot; and null-pointer handling.
 - `test_app`: the real `app.c` and core linked against the fakes, with time scripted. Checks that a pass with no tick only polls the log; that a step is logged one tick after it begins, once; that steps are logged at the tempo and wrap; that a rest is logged as a rest; that all sixteen steps play forward in the chromatic scale; that the inputs are read on the first tick and every eighth after, counted in elapsed ticks; that a failed read logs the right error in the right place, once per step; and that init failure is logged, flushed and returned.
 
-The other eight `#include` the one source file they test, with `tests/fake_atmega328p_regs.h` standing in for the register map (it claims the include guards of all three real register headers) and any function that file calls but does not define supplied as a stub by the test:
+The other nine `#include` the one source file they test, with `tests/fake_atmega328p_regs.h` standing in for the register map (it claims the include guards of all four real register headers) and any function that file calls but does not define supplied as a stub by the test:
 
 - `test_serial_logger`: the USART setup values (divisor 16, double speed, 8N1), the level filter, that nothing is sent until polled, one byte per poll, nothing while the transmit buffer is full, message order, a message that does not fit being dropped whole, the queue wrapping, `log_flush()`, and that every message is byte-for-byte what a `printf`-style format string produces.
 - `test_null_logger`: init succeeds at any level, every message is discarded, polling and flushing do nothing, and no USART register is written.
-- `test_register_init`: which direction bits are set and cleared, that the others and the output levels are left alone, and the ADC enable and prescaler value.
+- `test_register_init`: which direction bits are set and cleared, that port D is not touched, that the load line idles high and was high before it became an output, that other levels are left alone, and the ADC enable and prescaler value.
 - `test_analog_reader`: channel and reference selection, the result, a slow conversion, the timeout at exactly the poll budget, and parameter checks. The fake ADC clears its start bit after a set number of polls.
-- `test_shift_reg_reader`: every bit of the chain lands in the right place, one load pulse and eight clocks per byte, the lines left idle, other port D pins untouched, and parameter checks. The fake models the 74HC165 chain from the load and clock lines, so a read only returns the right bytes if the pulses come in the right order.
-- `test_init`: logger bring-up, then registers, then the timebase; at DEBUG level; each failure returned, and the timebase (and so interrupts) not started after one.
+- `test_spi`: the control register values (master, mode 0, 1 MHz) with stale bits cleared, the pin directions and levels, SS high before it is an output and an output before master mode, bytes sent and received, the complete flag cleared, a slow transfer, the timeout at exactly the poll budget and with the SPI never enabled, and the null check. The fake SPI completes a transfer after a set number of polls, and only if it is enabled as master.
+- `test_shift_reg_reader`: every bit of the chain lands in the right place, one load pulse before the first clock and one transfer per byte, the load line left idle, other port B pins and all of port D untouched, a failed transfer at each position returned with the caller's buffer left alone, and parameter checks. The SPI driver is a stub that clocks the fake's model of the 74HC165 chain, so a read only returns the right bytes if the load pulse comes first and the line is high while it reads.
+- `test_init`: logger bring-up, then registers, then the SPI bus, then the timebase; at DEBUG level; each failure returned, and the timebase (and so interrupts) not started after one.
 - `test_timebase`: the Timer/Counter2 register values, that interrupts are enabled only after the timer is fully set up and without disturbing the other status bits, one tick per interrupt, ticks reported once, a late caller losing none up to 255, and the counter wrap. The fake header turns the interrupt handler into an ordinary function, which the test calls to make a tick happen.
 - `test_main`: `main()` (renamed while included) returns the status when init fails and otherwise loops calling `app_run_once`. The stub leaves the endless loop with `longjmp`.
 
@@ -554,18 +573,19 @@ flowchart LR
     t_main["test_main<br/>3 tests"] -.-> mainc["app/main.c"]
     t_ser["test_serial_logger<br/>18 tests"] -.-> ser["serial_logger.c"]
     t_null["test_null_logger<br/>3 tests"] -.-> nul["null_logger.c"]
-    t_reg["test_register_init<br/>5 tests"] -.-> reg["register_init.c"]
+    t_reg["test_register_init<br/>6 tests"] -.-> reg["register_init.c"]
+    t_spi["test_spi<br/>9 tests"] -.-> spi["spi.c"]
     t_adc["test_analog_reader<br/>9 tests"] -.-> adc["analog_reader.c"]
-    t_shift["test_shift_reg_reader<br/>8 tests"] -.-> shift["shift_reg_reader.c"]
+    t_shift["test_shift_reg_reader<br/>9 tests"] -.-> shift["shift_reg_reader.c"]
     t_init["test_init<br/>4 tests"] -.-> init["init.c"]
     t_time["test_timebase<br/>9 tests"] -.-> time["timebase.c"]
 ```
 
 ```mermaid
 pie showData
-    title Host tests by area (161)
+    title Host tests by area (172)
     "Core" : 83
-    "Target adapters" : 56
+    "Target adapters" : 67
     "App loop" : 19
     "main.c" : 3
 ```
@@ -582,20 +602,20 @@ What this does not show: the fakes are plain variables, so nothing here checks a
 
 | Folder | Holds | Knows about the sequencer |
 |---|---|---|
-| `lib/` | `machine.js`: loads the HEX file and builds the chip (CPU, ports B to D, ADC, USART0, Timer/Counter2) | No |
-| `parts/` | `hc165.js`: a 74HC165 chain driven from its load, clock and data wires | No |
+| `lib/` | `machine.js`: loads the HEX file and builds the chip (CPU, ports B to D, ADC, USART0, Timer/Counter2, SPI) | No |
+| `parts/` | `hc165.js`: a 74HC165 chain, its load line a wire and its clock and data taken a byte at a time from the SPI | No |
 | `boards/` | `nano_sequencer.js`: which part is on which pin, the panel switches, the tempo pot, serial capture | Yes |
 | `scenarios/` | `debug.test.js`, `release.test.js`: what each image must do | Yes |
 
 The first two folders are kept free of anything specific to this project so they can be lifted out for another one.
 
-Eleven scenarios run. For the debug image: every log line matches the switches set on the emulated panel across two passes of the pattern, as a pitch one below the note value or as a rest where all four switches are off; the USART is set to 115200 baud in double-speed mode; the panel is read every 8 ms with 64 clock pulses; a switch changed mid-pattern is heard the next time its step plays; a step lasts 100 ms at 150 BPM, with no drift over 16 steps; a step lasts 500 ms with the pot at zero; and the first step is logged within 3 ms of reset. For the release image: the USART is never enabled, nothing is sent and PD0 and PD1 are left as inputs; Timer/Counter2 holds the 1 kHz settings and interrupts are enabled; the panel is read every 8 ms, to within 0.01 ms, with 64 clock pulses; and the first read is on the first tick.
+Thirteen scenarios run. For the debug image: every log line matches the switches set on the emulated panel across two passes of the pattern, as a pitch one below the note value or as a rest where all four switches are off; the USART is set to 115200 baud in double-speed mode; the panel is read every 8 ms with 64 clock pulses; a switch changed mid-pattern is heard the next time its step plays; a step lasts 100 ms at 150 BPM, with no drift over 16 steps; a step lasts 500 ms with the pot at zero; and the first step is logged within 3 ms of reset. For the release image: the USART is never enabled, nothing is sent and PD0 and PD1 are left as inputs; Timer/Counter2 holds the 1 kHz settings and interrupts are enabled; the SPI runs as master in mode 0, MSB first, at 1 MHz, with SS and the load line idle high; a read is eight transfers of zeros and PD2 to PD4 stay inputs; the panel is read every 8 ms, to within 0.01 ms, with 64 clock pulses; and the first read is on the first tick.
 
 The release image has no log and the firmware has no other output yet, so nothing outside the chip shows when a step begins in that build. What the scenarios do show is that its tick runs at the same 1 kHz. Every object file but the logger is shared between the two builds, so the step timing code is the same machine code in both. A gate output will make it directly observable.
 
 This is the first use of the emulator's timer and interrupt models. The figures it gave are in "The main loop and one tick" above.
 
-What this does not show: the chip and the parts are models. The 74HC165 model follows the datasheet's logic (the load input is level-sensitive) but has no setup, hold or pulse-width limits, nothing analog is modelled, and only the GPIO, ADC, USART and Timer/Counter2 parts of avr8js have been exercised. The emulated clock is exact; the board's 16 MHz resonator is not, and one tick period should be compared against the board. `make sim` is not part of the coverage figure.
+What this does not show: the chip and the parts are models. The 74HC165 model follows the datasheet's logic (the load input is level-sensitive) but has no setup, hold or pulse-width limits, nothing analog is modelled, and only the GPIO, ADC, USART, Timer/Counter2 and SPI parts of avr8js have been exercised. The emulated SPI does not move its pins: it hands the board whole bytes, and the 74HC165 model answers with eight bits sampled before each shift. So the scenarios show that the firmware asked for mode 0 and made the right transfers after a load pulse, but not that mode 0 reads a real chain correctly. The emulated clock is exact; the board's 16 MHz resonator is not, and one tick period should be compared against the board. `make sim` is not part of the coverage figure.
 
 ## Build — `Makefile`
 
@@ -625,7 +645,7 @@ flowchart TD
 
 | | Debug | Release |
 |---|---:|---:|
-| Flash | 2534 bytes | 1800 bytes |
+| Flash | 2696 bytes | 1962 bytes |
 | Static RAM | 382 bytes | 94 bytes |
 | Step timing | From the timer tick | The same |
 
@@ -637,13 +657,14 @@ Sizes of the linked functions and data, from `avr-nm --size-sort` on each `outpu
 
 ```mermaid
 pie showData
-    title Debug build flash, 2534 bytes
+    title Debug build flash, 2696 bytes
     "Core code" : 858
     "Core scale tables" : 51
     "Serial logger code" : 556
     "Serial logger message text" : 155
     "App loop and main" : 392
-    "Step and tempo input adapters" : 134
+    "Step and tempo input adapters" : 228
+    "SPI driver" : 68
     "Vector table and startup" : 132
     "libgcc helpers" : 102
     "Timebase" : 90
@@ -655,16 +676,19 @@ pie showData
 | Core (code and scale tables) | 909 | 910 |
 | Logger (code and message text) | 711 | 16 |
 | App loop and `main` | 392 | 392 |
-| Step and tempo input adapters | 134 | 134 |
+| Step and tempo input adapters | 228 | 228 |
 | Vector table and startup code | 132 | 132 |
+| SPI driver | 68 | 68 |
 | libgcc helpers | 102 | 62 |
 | Timebase (setup, interrupt handler, tick count) | 90 | 90 |
 | Init adapters | 64 | 64 |
-| **Total** | **2534** | **1800** |
+| **Total** | **2696** | **1962** |
 
 Within the core: the sequencer 316 bytes, addressing 178, the plain engine 124, note mapping 106 plus its 51 bytes of tables (52 in the release build, with a byte of padding), the clock 84 and the panel 50.
 
-The core is now the largest part of either image, and the serial logger is over a quarter of the debug one. The release build sheds one libgcc helper that only the logger needs, the 16-bit divide used to print decimal numbers. Both builds now carry the 8-bit divide (note mapping divides by the length of the scale) and the routine that copies initialised data into RAM at startup, which the release build did without until it had the scale tables. The debug build uses 8.2 % and the release build 5.9 % of the 30720 bytes available below the old bootloader.
+The core is now the largest part of either image, and the serial logger is over a quarter of the debug one. The release build sheds one libgcc helper that only the logger needs, the 16-bit divide used to print decimal numbers. Both builds now carry the 8-bit divide (note mapping divides by the length of the scale) and the routine that copies initialised data into RAM at startup, which the release build did without until it had the scale tables. The debug build uses 8.8 % and the release build 6.4 % of the 30720 bytes available below the old bootloader.
+
+Moving the shift registers to the SPI bus cost 162 bytes: the driver, and a step input adapter that grew from 64 to 158 bytes because it now reads into its own buffer and can fail part way.
 
 Static RAM in the debug build is 382 bytes: the 128-byte log queue, 155 bytes of message text, the 51 bytes of scale tables, and 48 bytes of state. `avr-size` (and so `make` and `make check`) reports 176: this toolchain's `avr-size` counts constant data under flash only, although it is also copied to RAM. The release build is under-reported the same way now that it has the tables: 94 bytes used, 42 reported.
 
@@ -701,7 +725,7 @@ Earlier findings from this analysis that have since been fixed are in the git hi
 
 ### 1. Unused pins are configured
 
-PB5, PC0 and PC1 are given a direction in `register_init.c` but never read or written. PD0, the USART receive pin, used to be set as an output there as well; that line was removed, because the release build never enables the receiver and would have driven the pin against the board's USB serial chip. PD0 and PD1 are now left as they are at reset (inputs) unless the serial logger takes them over.
+PC0 and PC1 are given a direction in `register_init.c` but never read or written. PD0, the USART receive pin, used to be set as an output there as well; that line was removed, because the release build never enables the receiver and would have driven the pin against the board's USB serial chip. PD0 and PD1 are now left as they are at reset (inputs) unless the serial logger takes them over.
 
 ### 2. No crash log
 
@@ -727,6 +751,10 @@ Direction, first and last step, one-shot, reset, scale and root are inputs to th
 
 The addressing counts steps played in the cycle, so reversing in the middle of a pattern jumps to the matching point of the reversed cycle; it does not turn round on the step it is on. Nothing can change these controls yet. If turning in place is wanted when they get hardware, it is a change inside `address.c` only.
 
+### 8. The shift registers on the SPI bus have not run on the board
+
+The board has to be rewired before this firmware reads its panel: load from D2 to D9 (PB1), clock from D3 to D13 (PB5), and data from D4 to D12 (PB4) through 1 kΩ. Until then the host tests and the emulated board are the only evidence. Two things in particular only the board can show: that SPI mode 0 samples each bit of a real chain correctly (see "Step input" above), and that the on-board LED on D13 loading the clock line does no harm at 1 MHz. If a bit comes back shifted by one place, the mode is the first thing to look at.
+
 Closed by the timebase work: the tempo range now has a floor (30 to 285 BPM), and the debug and release builds keep the same time, because the step period comes from the timer and not from a delay plus however long the rest of the loop took.
 
 ## What the output stage will need
@@ -735,6 +763,6 @@ Closed by the timebase work: the tempo range now has a floor (30 to 285 BPM), an
 - **A pitch to send and a rest to stay silent on**: done, as a semitone count from 0 to 45. Turning that into a DAC code is `pitch_cal`, still to come.
 - **A usable tempo range**: done, 30 to 285 BPM.
 - **A timing decision**: done. A 1 kHz timer tick, a loop that never blocks, and outputs applied at the tick boundary.
-- **A new output port** (gate, trigger or CV) with a target adapter and a host fake, applied first in the tick's apply step. PB5, PC0 and PC1 are already configured and free.
-- **New register definitions**, in a header per peripheral (and addresses in the `.ld` file), for whatever drives the output: SPI registers for an external DAC.
+- **A new output port** (gate, trigger or CV) with a target adapter and a host fake, applied first in the tick's apply step. PD2 to PD7 are free now that the shift registers are on the SPI bus; the roadmap puts the gate on PD4 and the clock out on PD5.
+- **An SPI bus** for an external DAC: done. The driver is in place and already reads the panel; a DAC needs MOSI made an output and a chip select.
 - **A gate length.** A step now has a duration in clock pulses (24), so a gate length can be a number of pulses within it; the core does not compute one yet.

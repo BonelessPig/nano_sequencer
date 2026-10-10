@@ -4,7 +4,7 @@ A bare-metal firmware project for the ATmega328P (Arduino Nano), written from sc
 
 ## Status
 
-Work in progress. The firmware initializes the ADC, USART, I/O direction registers and a 1 kHz timer tick, then steps through a 16-step pattern at a tempo of 30 to 285 BPM set by a pot. The main loop never blocks: once a millisecond it runs one tick of the sequencer, which reads the 16 step note values from a daisy-chained 74HC165 shift register bank and the tempo pot (every 8 ms) and, when the next step is due, plays it (for now that means logging the step and its pitch, or that it is a rest, over serial, in the debug build only). A step's four switches are its note value: 0 is a rest, and 1 to 15 are notes of a scale. The core can also play any range of the steps forward, in reverse or as a pendulum, looping or once, with a reset, and in five scales from any root; the board has no controls for those yet, so the firmware plays all 16 steps forward in the chromatic scale. The output stage that would make a step audible (gates, triggers, or CV out) is not yet implemented.
+Work in progress. The firmware initializes the ADC, USART, I/O direction registers, the SPI bus and a 1 kHz timer tick, then steps through a 16-step pattern at a tempo of 30 to 285 BPM set by a pot. The main loop never blocks: once a millisecond it runs one tick of the sequencer, which reads the 16 step note values from a daisy-chained 74HC165 shift register bank over the SPI bus and the tempo pot (every 8 ms) and, when the next step is due, plays it (for now that means logging the step and its pitch, or that it is a rest, over serial, in the debug build only). A step's four switches are its note value: 0 is a rest, and 1 to 15 are notes of a scale. The core can also play any range of the steps forward, in reverse or as a pendulum, looping or once, with a reset, and in five scales from any root; the board has no controls for those yet, so the firmware plays all 16 steps forward in the chromatic scale. The output stage that would make a step audible (gates, triggers, or CV out) is not yet implemented.
 
 ## Why bare-metal?
 
@@ -35,15 +35,17 @@ adapters/
 │   ├── init.c                        # Platform bring-up (logger + registers)
 │   ├── register_init.c / .h          # I/O direction + ADC setup
 │   ├── analog_reader.c               # Tempo input: ADC channel read
-│   ├── shift_reg_reader.c            # Step input: 74HC165 shift register chain read
+│   ├── shift_reg_reader.c            # Step input: 74HC165 shift register chain read, over SPI
+│   ├── spi.c / spi.h                 # SPI driver: the MCU as bus master, used by the adapters above
 │   ├── timebase.c / .h               # Timebase: Timer/Counter2 at 1 kHz, the only interrupt
 │   ├── logger.h                      # Logger bring-up and log levels, shared by the two loggers
 │   ├── serial_logger.c               # Log, debug build: USART setup + queued text logging with log levels
 │   ├── null_logger.c                 # Log, release build: discards every message
-│   ├── bits.h                        # BIT_0..BIT_5 mask constants
+│   ├── bits.h                        # Single-bit mask constants
 │   ├── atmega328p_regs.h             # Register declarations and bit positions
 │   ├── atmega328p_usart_regs.h       # The same for USART0, used only by the serial logger
 │   ├── atmega328p_timer2_regs.h      # The same for Timer/Counter2, and its interrupt vector
+│   ├── atmega328p_spi_regs.h         # The same for the SPI, used only by the SPI driver
 │   └── atmega328p_regs.ld            # Register addresses, applied by the linker
 └── host/                     # The ports faked for PC tests
     └── host_ports.c / .h             # Scripted inputs, recorded outputs
@@ -68,8 +70,9 @@ tools/sim/                    # Emulated board (make sim)
 - USART: 115200 baud, 8N1, transmit only in practice (debug build; unused in the release build)
 - Timer/Counter2: compare match interrupt at 1 kHz, the sequencer's tick (drives no pin)
 - Analog inputs: ADC channel 6 (tempo control, 30 to 285 BPM)
-- Step notes: 16 steps × 4 bits, read from a chain of 8 daisy-chained 74HC165 shift registers via `PORTD2` (SH/LD), `PORTD3` (CLK), and `PORTD4` (SER data-in) — each 74HC165's Clock Inhibit/CE pin must be tied to GND in hardware
-- Digital I/O configured in `register_init.c`: `PORTB5`, `PORTD2`, `PORTD3` as outputs, `PORTC0`, `PORTD4` as inputs, `PORTC1` as output
+- SPI: master, mode 0, MSB first, 1 MHz. `PORTB2` (SS) is held high as an output and has nothing wired to it
+- Step notes: 16 steps × 4 bits, read from a chain of 8 daisy-chained 74HC165 shift registers on the SPI bus: `PORTB1` (D9) is SH/LD, `PORTB5` (D13, SCK) is CLK, and `PORTB4` (D12, MISO) takes QH of the nearest chip through 1 kΩ — each 74HC165's Clock Inhibit/CE pin must be tied to GND in hardware
+- Other digital I/O configured in `register_init.c`: `PORTC0` as input, `PORTC1` as output; neither is used yet. `PORTD2` to `PORTD7` are free
 
 ## Dependencies
 
@@ -132,16 +135,16 @@ There are two build configurations, chosen with `CONFIG=`. They differ only in w
 
 | | Logging | Output | Flash | Static RAM |
 |---|---|---|---:|---:|
-| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 2534 bytes | 382 bytes |
-| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 1800 bytes | 94 bytes |
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 2696 bytes | 382 bytes |
+| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 1962 bytes | 94 bytes |
 
 `CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`). The tests, the coverage check and the static analysis always cover both loggers.
 
-The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, so any warning fails the build. `make test` never touches the board: it links the real core and app loop against fake ports and checks what they do, and it compiles each MCU adapter against fake registers to check what it does with them (the exact serial text, the shift register pulse sequence, the ADC timeout, the timer settings, and so on). Time is scripted in these tests, so they check on which millisecond tick each thing happens.
+The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, so any warning fails the build. `make test` never touches the board: it links the real core and app loop against fake ports and checks what they do, and it compiles each MCU adapter against fake registers to check what it does with them (the exact serial text, the shift register load pulse and transfers, the SPI settings, the ADC timeout, the timer settings, and so on). Time is scripted in these tests, so they check on which millisecond tick each thing happens.
 
 `make coverage` runs the same tests built with gcc's coverage instrumentation and prints a table per source file. Every file in `core/`, `app/` and `adapters/target/` must have all of its lines run and all of its branches taken, or the command fails. That is measured on the PC build: it shows the logic is exercised, not that register addresses or pulse timing are right on the chip.
 
-`make sim` builds both configurations and runs the two `output.hex` files, unmodified, on an emulated ATmega328P with the 74HC165 chain, the tempo pot and a serial capture modelled around it. The scenarios check the log text against the switches set on the emulated panel, the load and clock pulses of each panel read and how often it is read, the timer settings, and the length of a step at a given tempo, all counted in CPU cycles. It checks the real machine code, which the host tests cannot, but against models of the chip and the parts: the board is still the final check.
+`make sim` builds both configurations and runs the two `output.hex` files, unmodified, on an emulated ATmega328P with the 74HC165 chain, the tempo pot and a serial capture modelled around it. The scenarios check the log text against the switches set on the emulated panel, the load pulse and SPI transfers of each panel read and how often it is read, the SPI and timer settings, and the length of a step at a given tempo, all counted in CPU cycles. It checks the real machine code, which the host tests cannot, but against models of the chip and the parts: the board is still the final check.
 
 `make check` runs both builds, the tests, coverage, the MISRA analysis and the emulated board in one go. A stage that passes prints one line (with the flash and RAM figures, the coverage total or the scenario count); a stage that fails prints its full output. Every stage runs even if an earlier one failed, and the command fails if any did. It needs all the tools in the table above.
 

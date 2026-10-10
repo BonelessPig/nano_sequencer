@@ -18,13 +18,14 @@
 port_status_t register_init(void)
 {
     // Set Data Direction Registers
-    DDRB |= BIT_5;  // Sets 5th bit (0b00100000) to 1 to make this an output Data Direction Registor for port B (DDRB)
     DDRC &= (uint8_t)~BIT_0; // Clears 0th bit (0b00000001) to 0 to make this an input Data Direction Registor for port C (DDRC)
     DDRC |= BIT_1;  // Sets 1st bit (0b00000010) to 1 to make this an output Data Direction Registor for port C (DDRC)
 
-    DDRD |= BIT_2;  // Shift register SH/LD (load) line, output
-    DDRD |= BIT_3;  // Shift register CLK (clock) line, output
-    DDRD &= (uint8_t)~BIT_4; // Shift register SER (serial data in) line, input
+    // Shift register SH/LD (load) line: high first, so that it is never
+    // driven low on its way to being an output. The bus pins the chain's
+    // clock and data are on belong to the SPI driver (spi.c)
+    PORTB |= BIT_1;
+    DDRB  |= BIT_1;
 
     // ADC Initialization
     ADCSRA = (uint8_t)((1U << ADEN) |   // Enable ADC

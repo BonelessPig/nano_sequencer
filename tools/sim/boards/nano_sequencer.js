@@ -1,10 +1,11 @@
 'use strict';
 /**
  * The sequencer board as it is wired today: an ATmega328P at 16 MHz with
- * eight 74HC165s on PD2 (load), PD3 (clock) and PD4 (data), the tempo pot on
- * ADC channel 6, and USART0 going to a PC. Scenarios set the panel and the
- * pot, run the firmware, and read back what it did. Nothing is wired to
- * Timer/Counter2; the firmware uses it for its 1 kHz tick.
+ * eight 74HC165s on the SPI bus (clock on SCK, data on MISO) and their load
+ * line on PB1, the tempo pot on ADC channel 6, and USART0 going to a PC.
+ * Scenarios set the panel and the pot, run the firmware, and read back what
+ * it did. Nothing is wired to Timer/Counter2; the firmware uses it for its
+ * 1 kHz tick.
  */
 const path = require('node:path');
 const { createAtmega328p } = require('../lib/machine');
@@ -16,7 +17,7 @@ const NOTE_BITS = 4;
 const TEMPO_ADC_CHANNEL = 6;
 const ADC_REFERENCE_VOLTS = 5;
 const ADC_STEPS = 1024;
-const SHIFT_REG_PINS = { load: 2, clock: 3, data: 4 };
+const SHIFT_REG_LOAD_PIN = 1; // On port B
 const BUILD_DIR = path.resolve(__dirname, '..', '..', '..', 'build');
 
 /**
@@ -28,6 +29,7 @@ function createBoard(config) {
     const machine = createAtmega328p(hexPath, CLOCK_HZ);
     const notes = new Array(STEP_COUNT).fill(0);
     const serial = { bytes: 0, lines: [] };
+    const spiSent = [];
     let partial = '';
     let partialStart = 0;
 
@@ -42,7 +44,17 @@ function createBoard(config) {
         return bits;
     }
 
-    const chain = attachHc165Chain(machine.cpu, machine.portD, SHIFT_REG_PINS, panelBits);
+    const chain = attachHc165Chain(machine.cpu, machine.portB, SHIFT_REG_LOAD_PIN, panelBits);
+
+    // The chain is the only thing on the bus: every transfer clocks it eight
+    // times, and the byte it gives back arrives when the transfer ends
+    machine.spi.onByte = (sent) => {
+        const received = chain.shiftByte();
+
+        spiSent.push(sent);
+        machine.cpu.addClockEvent(
+            () => machine.spi.completeTransfer(received), machine.spi.transferCycles);
+    };
 
     machine.usart.onByteTransmit = (byte) => {
         serial.bytes++;
@@ -64,6 +76,7 @@ function createBoard(config) {
         machine,
         serial,
         panelReads: chain.reads,
+        spiSent,
 
         /** Sets all 16 step switches; each note is 0 to 15. */
         setNotes(newNotes) {

@@ -10,10 +10,10 @@ Host test programs, built and run on the PC by `make test`. Test code is outside
 
 ## Host-testing a target adapter
 
-- Have the test include `fake_atmega328p_regs.h` first. It uses the same include guards as all three real register headers, so the adapter's own `#include` of them does nothing. Then `#include` the adapter's `.c` file.
+- Have the test include `fake_atmega328p_regs.h` first. It uses the same include guards as all four real register headers, so the adapter's own `#include` of them does nothing. Then `#include` the adapter's `.c` file.
 - `test_serial_logger.c` is the pattern.
 - A new one needs its registers added to the fake header (and to its `fake_regs_reset()`), a `test_<name>.c`, and its name in `INCLUDING_TESTS` in the Makefile.
-- Functions the file calls but does not define are stubs in the test.
+- Functions the file calls but does not define are stubs in the test. For a device adapter that means its driver: `test_shift_reg_reader.c` stubs `spi_transfer()` and has the stub clock the fake's 74HC165 model, and the driver's own register use is tested in `test_spi.c`.
 - An interrupt handler is tested by calling it: the fake header gives it an ordinary function name (`fake_timer2_compa_isr`).
 - Where the hardware responds (the ADC clearing its start bit, the shift register chain presenting bits), the fake models it, so the test only passes if the code drives it in the right order.
 

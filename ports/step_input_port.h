@@ -21,7 +21,8 @@
  * @param  byte_count  Number of bytes to read, 1 to 8. One byte is 8 input
  *                     bits (two 4-bit steps).
  * @return STATUS_OK on success; ERR_INVALID_PARAM for a null buffer or a
- *         byte_count outside 1 to 8, in which case the buffer is not written.
+ *         byte_count outside 1 to 8; ERR_TIMEOUT if the hardware did not
+ *         answer. The buffer is only written on success.
  * @note   Not ISR-safe. Blocks for the duration of the read (well under a
  *         millisecond on the target).
  */

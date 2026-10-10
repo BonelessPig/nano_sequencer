@@ -19,6 +19,13 @@ const TIMSK2 = 0x70;            // Timer/Counter2 registers, data addresses
 const TCCR2A = 0xB0;
 const TCCR2B = 0xB1;
 const OCR2A = 0xB3;
+const DDRB = 0x24;              // Port B registers, data addresses
+const PORTB = 0x25;
+const SS_PIN = 0x04;            // PB2
+const LOAD_PIN = 0x02;          // PB1, the shift register load line
+const SCK_PIN = 0x20;           // PB5
+const OLD_CHAIN_PINS = 0x1C;    // PD2, PD3, PD4: where the chain used to be
+const SPI_HZ = 1000000;
 const RUN_LIMIT_MS = 5000;
 
 function releaseBoard() {
@@ -49,6 +56,31 @@ test('sets Timer/Counter2 for a 1 kHz interrupt and enables interrupts', () => {
     assert.equal(data[TCCR2B], 0x04); // System clock / 64
     assert.equal(data[TIMSK2], 0x02); // Compare match A interrupt
     assert.equal(data[SREG] & SREG_INTERRUPTS_ON, SREG_INTERRUPTS_ON);
+});
+
+test('runs the SPI bus as master in mode 0, MSB first, at 1 MHz', () => {
+    const board = releaseBoard();
+    const data = board.machine.cpu.data;
+
+    board.runUntilPanelReads(2, RUN_LIMIT_MS);
+
+    assert.equal(board.machine.spi.isMaster, true);
+    assert.equal(board.machine.spi.spiMode, 0);
+    assert.equal(board.machine.spi.dataOrder, 'msbFirst');
+    assert.equal(board.machine.spi.spiFrequency, SPI_HZ);
+    // SS, SCK and the load line are outputs, and SS and load idle high
+    assert.equal(data[DDRB] & (SS_PIN | SCK_PIN | LOAD_PIN), SS_PIN | SCK_PIN | LOAD_PIN);
+    assert.equal(data[PORTB] & (SS_PIN | LOAD_PIN), SS_PIN | LOAD_PIN);
+});
+
+test('reads the chain in eight transfers and leaves its old pins alone', () => {
+    const board = releaseBoard();
+
+    board.runUntilPanelReads(3, RUN_LIMIT_MS);
+
+    // Two complete reads: eight bytes each, all zeros sent
+    assert.deepEqual(board.spiSent.slice(0, 16), new Array(16).fill(0));
+    assert.equal(board.machine.cpu.data[DDRD] & OLD_CHAIN_PINS, 0);
 });
 
 test('reads the panel every 8 ms, with 64 clock pulses', () => {

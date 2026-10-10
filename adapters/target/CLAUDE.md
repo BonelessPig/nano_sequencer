@@ -5,11 +5,20 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 ## Registers
 
 - **Registers live in two files.** `atmega328p_regs.h` declares each register as `extern volatile`; `atmega328p_regs.ld` gives it its address and is passed to the linker as an extra input. A new register needs both. Use the plain datasheet data address (for example `0x2B`). A register missing from the `.ld` file fails at link time; a wrong address links silently, so check it against the datasheet.
-- Registers at 0x20 to 0x3F need the `REG_IO_LOW` attribute or the compiler stops using `sbi`/`cbi`, which changes the shift register pulse timing.
+- Registers at 0x20 to 0x3F need the `REG_IO_LOW` attribute or the compiler stops using `sbi`/`cbi`, which changes the shift register load pulse.
 - Putting the address inside the attribute does not work on avr-gcc 12.1.0 (`io_low(0x2B)` fails with "IO definition needs an address"), which is why the linker file exists.
 - **A macro used by only one build configuration is a rule 2.5 finding in the other.** Definitions that only one configuration's files use go in a header only those files include. That is why the USART0 registers and bit positions are in `atmega328p_usart_regs.h` (same `.ld` file), included only by `serial_logger.c`.
-- Group a new peripheral's registers in a header of its own on the same pattern (`atmega328p_timer2_regs.h`), with only the bit positions the code uses.
+- Group a new peripheral's registers in a header of its own on the same pattern (`atmega328p_timer2_regs.h`, `atmega328p_spi_regs.h`), with only the bit positions the code uses, and check each position against the toolchain's `avr/iom328p.h`. An unused bit position is a rule 2.5 finding, and so is an unused mask in `bits.h`.
 - A new register also goes into `tests/fake_atmega328p_regs.h` and its `fake_regs_reset()`.
+
+## Drivers and devices
+
+- Two levels. A **driver** runs one MCU peripheral and implements no port (`spi.c`); its header is private to this folder. A **device adapter** implements a port for one external part, using a driver (`shift_reg_reader.c` implements `step_input_port.h` on the SPI driver).
+- A driver owns its peripheral's registers and pins: only `spi.c` includes `atmega328p_spi_regs.h` or touches SCK and SS. A device adapter owns the part's own lines (the 74HC165 load line, a chip select).
+- A driver call that waits is bounded by a poll budget and returns `ERR_TIMEOUT`, like the ADC read.
+- The SPI is master, mode 0, MSB first, 1 MHz. Every part on the bus must work in that mode, or the mode becomes a parameter of the transfer. SS (PB2) stays an output: as a low input it cancels master mode.
+- A pin that idles high is set high before it is made an output.
+- A driver's init goes in `platform_init()` after `register_init()` and before `timebase_init()`.
 
 ## Compiler
 
@@ -34,8 +43,10 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 
 ## Pins
 
-- In use: PD2 (74HC165 load), PD3 (clock), PD4 (data in), ADC channel 6 (tempo pot). Timer/Counter2 is the 1 kHz tick and drives no pin.
-- PB5, PC0 and PC1 are given a direction but are unused and free.
+- In use: PB1 (74HC165 load), PB5 (SCK, the chain's clock), PB4 (MISO, the chain's data, through 1 kΩ), PB2 (SS, held high, nothing wired), ADC channel 6 (tempo pot). Timer/Counter2 is the 1 kHz tick and drives no pin.
+- PB3 (MOSI) is left an input until a part listens on the bus.
+- PD2 to PD7 are free. PC0 and PC1 are given a direction but are unused and free.
+- PB3 to PB5 are also the ISP programmer's pins; the 1 kΩ on MISO is what lets a programmer override the chain.
 
 ## Testing and analysis
 

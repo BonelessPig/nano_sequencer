@@ -24,9 +24,9 @@ static void test_output_pins_are_set_from_all_inputs(void)
     fake_regs_reset(); // Every direction bit 0 (input), as after a reset
     (void)register_init();
 
-    TEST_ASSERT_EQUAL(0x20, g_fake_ddrb); // PB5
+    TEST_ASSERT_EQUAL(0x02, g_fake_ddrb); // PB1 (shift register load)
     TEST_ASSERT_EQUAL(0x02, g_fake_ddrc); // PC1
-    TEST_ASSERT_EQUAL(0x0C, g_fake_ddrd); // PD2 (load), PD3 (clock); PD0 (UART receive) stays an input
+    TEST_ASSERT_EQUAL(0x00, g_fake_ddrd); // Nothing: PD0 and PD1 are the UART's, PD2 to PD7 are free
 }
 
 
@@ -41,7 +41,7 @@ static void test_input_pins_are_cleared_and_other_bits_kept(void)
 
     TEST_ASSERT_EQUAL(0xFF, g_fake_ddrb);
     TEST_ASSERT_EQUAL(0xFE, g_fake_ddrc); // PC0 made an input
-    TEST_ASSERT_EQUAL(0xEF, g_fake_ddrd); // PD4 (shift register data) made an input
+    TEST_ASSERT_EQUAL(0xFF, g_fake_ddrd); // Port D is not touched
 }
 
 
@@ -57,17 +57,36 @@ static void test_adc_is_enabled_with_prescaler_128(void)
 
 
 
-static void test_output_levels_are_left_alone(void)
+static void test_load_line_idles_high_and_other_levels_are_left_alone(void)
 {
+    // Once with every other level low and once with them high
     fake_regs_reset();
-    g_fake_portb = 0x5AU;
+    (void)register_init();
+    TEST_ASSERT_EQUAL(0x02, g_fake_portb); // PB1 high: the chain in shift mode
+    TEST_ASSERT_EQUAL(0x00, g_fake_portc);
+    TEST_ASSERT_EQUAL(0x00, g_fake_portd);
+
+    fake_regs_reset();
+    g_fake_portb = 0x58U;
     g_fake_portc = 0xA5U;
     g_fake_portd = 0x3CU;
     (void)register_init();
-
     TEST_ASSERT_EQUAL(0x5A, g_fake_portb);
     TEST_ASSERT_EQUAL(0xA5, g_fake_portc);
     TEST_ASSERT_EQUAL(0x3C, g_fake_portd);
+}
+
+
+
+static void test_load_line_is_high_before_it_becomes_an_output(void)
+{
+    // Made an output while its level was still low, the pin would pull the
+    // load line low for a moment
+    fake_regs_reset();
+    (void)register_init();
+
+    TEST_ASSERT(g_fake_b_ddrb_accessed);
+    TEST_ASSERT(0U != (g_fake_portb_at_first_ddrb & FAKE_SHIFT_LOAD_MASK));
 }
 
 
@@ -78,6 +97,7 @@ int main(void)
     RUN_TEST(test_output_pins_are_set_from_all_inputs);
     RUN_TEST(test_input_pins_are_cleared_and_other_bits_kept);
     RUN_TEST(test_adc_is_enabled_with_prescaler_128);
-    RUN_TEST(test_output_levels_are_left_alone);
+    RUN_TEST(test_load_line_idles_high_and_other_levels_are_left_alone);
+    RUN_TEST(test_load_line_is_high_before_it_becomes_an_output);
     return TEST_RESULT();
 }

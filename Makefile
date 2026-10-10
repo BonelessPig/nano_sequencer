@@ -275,7 +275,7 @@ TEST_CORE := $(patsubst %,$(HOST_DIR)/%$(EXE),$(CORE_TESTS))
 # the program test_<name>; add new ones to this list.
 INCLUDING_TESTS = test_serial_logger test_null_logger test_register_init \
                   test_analog_reader test_shift_reg_reader test_init \
-                  test_timebase test_main
+                  test_timebase test_spi test_main
 TEST_INCLUDING := $(patsubst %,$(HOST_DIR)/%$(EXE),$(INCLUDING_TESTS))
 
 TEST_PROGRAMS = $(TEST_CORE) $(TEST_APP) $(TEST_INCLUDING)

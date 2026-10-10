@@ -39,4 +39,5 @@ MISRA C is a secondary, automated check. BARR-C plus the rules in `README.md` is
 - Two file-static objects with the same name in different files of one run are a rule 5.9 (advisory) finding. The host run sees `app/app.c` and `adapters/host/host_ports.c` together, so their statics need different names.
 - A file-scope constant table used by one function is a rule 8.9 (advisory) finding; declare it `static const` inside the function.
 - A macro in a core header that only a test or a comment uses is a rule 2.5 (advisory) finding in every run, because findings in `tests/` are suppressed but uses there do not count. Leave the macro out and let the test define its own.
+- A bit mask in `adapters/target/bits.h` that nothing uses any more is a rule 2.5 (advisory) finding. Remove it and add it back when a pin needs it.
 - The current result is zero findings, with one inline suppression (the rule 8.7 false positive, above) and no true deviations. That is zero from this tool, not a claim of full compliance.
