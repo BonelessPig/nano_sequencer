@@ -135,6 +135,26 @@ The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Wer
 
 `make flash` picks the serial port per platform: `COM3` on Windows, the first `/dev/cu.usbserial*`, `/dev/cu.wchusbserial*` or `/dev/cu.usbmodem*` device on macOS, and the first `/dev/ttyUSB*` or `/dev/ttyACM*` device on Linux. Override it if your Nano enumerates differently, e.g. `make flash PORT=COM4` or `make flash PORT=/dev/ttyUSB1`. On Linux your user needs access to the port (usually membership of the `dialout` group).
 
+## Coding standard
+
+If you fork this or send changes, write to the same standard. The firmware source (`core/`, `ports/`, `adapters/` and `app/`) follows BARR-C:2018 (the Barr Group Embedded C Coding Standard) for style and naming, plus these MISRA-style safety rules:
+
+- Use C99 and fixed-width types from `<stdint.h>` for anything with a meaningful size.
+- Don't allocate dynamically (no malloc/free) and don't use recursion. All memory is static or on the stack, with bounded sizes.
+- Every `switch` has a `default`, and there's no fallthrough without a comment.
+- Every `if`/`else`/`for`/`while` body uses braces.
+- Each function has a single, clear purpose. Keep functions short and nesting shallow.
+- Don't use implicit conversions that lose data or change signedness. Cast explicitly and make sure the cast is justified.
+- Check the return value of every function that can fail, or explicitly cast it to `(void)`.
+- Use no magic numbers. Use named constants or enums.
+- Make anything not used outside its file `static`. Minimize globals, and mark globals shared with an ISR `volatile` and access them atomically or with interrupts masked.
+- Don't use the preprocessor for logic when a `static inline` function or an enum works.
+- Document every port function in its header: purpose, units, valid ranges, and whether it's ISR-safe.
+
+Line length: aim for 80 characters and never exceed 100. Some existing lines are over; new and changed lines should not be.
+
+The checks that back this up are the warning flags the firmware is built with, `make test`, `make coverage`, `make misra` and `make sim`, described above. MISRA C is a secondary, automated check through cppcheck, which implements only part of it; how findings and deviations are handled is set out in [CLAUDE.md](CLAUDE.md). Test code in `tests/` and the emulation tooling in `tools/sim/` are outside the standard.
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).

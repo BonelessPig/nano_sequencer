@@ -15,19 +15,7 @@ This is bare-metal C firmware for a microcontroller step sequencer. These rules 
 
 ## Coding standard
 
-Follow BARR-C:2018 (the Barr Group Embedded C Coding Standard) for style and naming. Also follow these MISRA-style safety rules:
-
-- Use C99 and fixed-width types from `<stdint.h>` for anything with a meaningful size.
-- Don't allocate dynamically (no malloc/free) and don't use recursion. All memory is static or on the stack, with bounded sizes.
-- Every `switch` has a `default`, and there's no fallthrough without a comment.
-- Every `if`/`else`/`for`/`while` body uses braces.
-- Each function has a single, clear purpose. Keep functions short and nesting shallow.
-- Don't use implicit conversions that lose data or change signedness. Cast explicitly and make sure the cast is justified.
-- Check the return value of every function that can fail, or explicitly cast it to `(void)`.
-- Use no magic numbers. Use named constants or enums.
-- Make anything not used outside its file `static`. Minimize globals, and mark globals shared with an ISR `volatile` and access them atomically or with interrupts masked.
-- Don't use the preprocessor for logic when a `static inline` function or an enum works.
-- Document every port function in its header: purpose, units, valid ranges, and whether it's ISR-safe.
+Follow BARR-C:2018 plus the MISRA-style safety rules and line length limits listed under "Coding standard" in `README.md`; that list is the project's standard and applies to every change.
 
 ## Build and checks
 
@@ -51,7 +39,7 @@ Follow BARR-C:2018 (the Barr Group Embedded C Coding Standard) for style and nam
 
 ## Handling MISRA findings
 
-MISRA C is a secondary, automated check. BARR-C plus the rules above is the standard we write to. cppcheck only implements part of MISRA, and the headlines file has only one-line rule summaries, so use judgment:
+MISRA C is a secondary, automated check. BARR-C plus the rules in `README.md` is the standard we write to. cppcheck only implements part of MISRA, and the headlines file has only one-line rule summaries, so use judgment:
 
 - **Mandatory**: always fix, no deviations.
 - **Required**: fix by default. If fixing would make the code worse or isn't possible (common in `adapters/target/` for register access and vendor headers), add a deviation instead.
@@ -81,7 +69,6 @@ MISRA C is a secondary, automated check. BARR-C plus the rules above is the stan
 - Target: ATmega328P on an Arduino Nano (old bootloader), 16 MHz, avr-gcc 12.1.0, GNU Make. Developed on Windows; the Makefile also has macOS and Linux branches that have never been run.
 - No Arduino core, no avr-libc headers or functions, no variadic functions, no `printf`, no `memset`/`memcpy`. The only non-project code is the startup object and a few libgcc helpers added at link time. `-ffreestanding` makes `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` come from the compiler.
 - No interrupts or timers yet. Everything is polled and blocking.
-- `make sim`: build both configurations and run each `output.hex` on an emulated ATmega328P (avr8js under Node) with the 74HC165 chain, tempo pot and serial capture modelled in `tools/sim/`. Scenarios are `tools/sim/scenarios/*.test.js`; `lib/` and `parts/` stay free of anything sequencer-specific. A new external part needs a model in `parts/` and its wiring in `boards/nano_sequencer.js`. The JavaScript there is test tooling, outside the C coding standard.
 - What the firmware does today: each tick reads 16 four-bit step notes from eight chained 74HC165s (PD2 load, PD3 clock, PD4 data), reads the tempo pot on ADC channel 6, plays the next step of the pattern (the core advances one step per tick and wraps after 16), logs that step and its note over serial at 115200 baud (debug build only), then waits tempo/4 ms. There is no gate, CV or transport yet; new parts of that output stage go into `core/` first.
 - `port_status_t` values are printed in the serial log, so never renumber them.
 - Two build configurations, `CONFIG=debug` (default) and `CONFIG=release`. The only difference is which logger is linked: `serial_logger.c` or `null_logger.c`, both implementing `log_port.h` and `logger.h`. There are no configuration macros; keep it that way and add per-configuration behaviour as another link-time choice. Outputs go to `build/<config>/`; objects are shared in `build/obj/`.
@@ -94,6 +81,7 @@ MISRA C is a secondary, automated check. BARR-C plus the rules above is the stan
 - `make test`: build and run the ten host test programs with the PC's gcc: `test_seq`, `test_app`, and one per target adapter source plus `test_main`.
 - `make coverage`: rebuild the tests with gcov instrumentation, run them, and print line and branch coverage per file. Exits 0 only if every `.c` in `core/`, `app/` and `adapters/target/` is at 100% of both. `adapters/host/` is reported but not enforced.
 - `make -k misra`: all three analysis runs (debug, release, host); exits 0 only with zero findings. Pipe through `python tools/misra/summarize.py` for counts by folder, category and rule.
+- `make sim`: build both configurations and run each `output.hex` on an emulated ATmega328P (avr8js under Node) with the 74HC165 chain, tempo pot and serial capture modelled in `tools/sim/`. Scenarios are `tools/sim/scenarios/*.test.js`; `lib/` and `parts/` stay free of anything sequencer-specific. A new external part needs a model in `parts/` and its wiring in `boards/nano_sequencer.js`. The JavaScript there is test tooling, outside the C coding standard.
 - `make flash`: upload with avrdude. Defaults to `COM3`; override with `PORT=`. Flashes the debug image unless `CONFIG=release` is given.
 - The Makefile's recipes run under `cmd.exe` on Windows. From Git Bash, call it as `cmd //c "make ..."`.
 
