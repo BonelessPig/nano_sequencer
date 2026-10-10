@@ -12,16 +12,11 @@
  */
 #include <stdbool.h>
 #include <stdint.h>
+#include "address.h"
 #include "clock.h"
-
-#define SEQ_STEP_COUNT       (16U) // Number of sequencer steps
-#define SEQ_NOTE_BITS        (4U)  // Bits per step's note value; must evenly divide 8
-#define SEQ_BITS_PER_BYTE    (8U)
-
-// Raw input bytes needed to hold every step's note bits (8 with the values above)
-#define SEQ_RAW_BYTE_COUNT   ((SEQ_STEP_COUNT * SEQ_NOTE_BITS) / SEQ_BITS_PER_BYTE)
-
-#define SEQ_NOTE_MAX         ((1U << SEQ_NOTE_BITS) - 1U) // Largest note value (15)
+#include "engine_plain.h"
+#include "note_map.h"
+#include "panel.h"
 
 // A step is a sixteenth note: four to the quarter note, 24 clock pulses each
 #define SEQ_STEPS_PER_BEAT   (4U)
@@ -37,11 +32,11 @@
  */
 typedef struct
 {
-    clock_state_t clock;          // Turns elapsed ticks into pulses at the tempo
-    uint16_t      last_tempo_raw; // Most recent valid tempo reading, 0 to 1023 (10-bit)
-    uint16_t      step_pulses;    // Pulses since the last step began; a step is due
-                                  // at SEQ_PULSES_PER_STEP
-    uint8_t       current_step;   // Step that begins next, 0 to SEQ_STEP_COUNT - 1
+    clock_state_t        clock;          // Turns elapsed ticks into pulses at the tempo
+    uint16_t             last_tempo_raw; // Most recent valid tempo reading, 0 to 1023
+    uint16_t             step_pulses;    // Pulses since the last step was due; the
+                                         // next is due at SEQ_PULSES_PER_STEP
+    engine_plain_state_t engine;         // Where the engine has got to in the pattern
 } seq_state_t;
 
 /**
@@ -49,13 +44,15 @@ typedef struct
  */
 typedef struct
 {
-    // Step-note bits packed MSB first: step 0 is the high nibble of byte 0,
-    // step 1 the low nibble of byte 0, step 2 the high nibble of byte 1, ...
-    uint8_t  raw_steps[SEQ_RAW_BYTE_COUNT];
-    bool     b_steps_valid; // false if raw_steps could not be read
-    uint16_t tempo_raw;     // Tempo control position, 0 to 1023 (10-bit)
-    bool     b_tempo_valid; // false if tempo_raw could not be read
-    uint8_t  elapsed_ticks; // Timebase ticks (milliseconds) since the previous tick
+    // The panel's step bits, packed as panel.h describes
+    uint8_t           raw_steps[PANEL_RAW_BYTE_COUNT];
+    bool              b_steps_valid; // false if raw_steps could not be read
+    uint16_t          tempo_raw;     // Tempo control position, 0 to 1023 (10-bit)
+    bool              b_tempo_valid; // false if tempo_raw could not be read
+    uint8_t           elapsed_ticks; // Timebase ticks (milliseconds) since the previous tick
+    address_config_t  address;       // Direction, first and last step, one-shot
+    note_map_config_t note_map;      // Scale and root
+    bool              b_reset;       // true to send the pattern back to its start
 } seq_inputs_t;
 
 /**
@@ -65,36 +62,52 @@ typedef struct
 {
     bool    b_step_started; // true on the tick a step begins; the fields below
                             // describe that step, and are 0 and false otherwise
-    uint8_t step;           // Step that began, 0 to SEQ_STEP_COUNT - 1
-    uint8_t note;           // Note value of that step, 0 to SEQ_NOTE_MAX; 0 if not valid
-    bool    b_note_valid;   // false if the step inputs were not valid on that tick
+    uint8_t step;           // Panel step that began, 0 to PANEL_STEP_COUNT - 1
+    bool    b_note_valid;   // false if the step inputs were not valid on that
+                            // tick, so what the step holds is not known
+    bool    b_rest;         // true if the step is valid and plays nothing
+    uint8_t semitone;       // Pitch of the step if it is valid and not a rest:
+                            // semitones above the lowest pitch, 0 to 45
 } seq_outputs_t;
 
 /**
- * @brief  Puts the state into its power-on condition: step 0 begins on the
- *         first tick, and there is no tempo reading yet, so the tempo is
- *         SEQ_BPM_MIN until one arrives.
+ * @brief  Puts the state into its power-on condition: the first step of the
+ *         pattern begins on the first tick, and there is no tempo reading
+ *         yet, so the tempo is SEQ_BPM_MIN until one arrives.
  * @param  p_state  State to initialize. Ignored if null.
  */
 void seq_init(seq_state_t *p_state);
 
 /**
  * @brief  Runs one tick: moves the clock on by the elapsed time and, if that
- *         brings a step due, begins it and decodes its note. Reads *p_state
- *         and *p_in, writes *p_state and *p_out, and has no other effect.
+ *         brings a step due, begins it and works out its pitch. Reads
+ *         *p_state and *p_in, writes *p_state and *p_out, and has no other
+ *         effect.
  *
  *         A step lasts SEQ_PULSES_PER_STEP clock pulses, which is 15000 / BPM
- *         milliseconds. Steps follow one another, wrapping from the last back
- *         to step 0. The first tick after seq_init() begins step 0 whatever
- *         the elapsed time, and that tick's time counts towards step 1, so
- *         the first step is one tick shorter than the rest.
+ *         milliseconds. The first tick after seq_init() begins the first
+ *         step whatever the elapsed time, and that tick's time counts
+ *         towards the second, so the first step is one tick shorter than
+ *         the rest.
  *
- *         The note is taken from the inputs of the tick on which its step
- *         begins, so a change on the panel is heard the next time its step
- *         comes round. A step begins on time even if the step inputs are not
- *         valid (its note is then 0), so a failed read does not shift the
- *         pattern in time. At most one step begins per tick: after a stall
- *         of more than a step, the steps owed begin on successive ticks.
+ *         Which step begins is up to the engine (the plain engine, see
+ *         engine_plain.h) and the addressing controls in p_in->address (see
+ *         address.h). When a one-shot pattern has finished, the clock keeps
+ *         running and steps keep falling due, but none begins.
+ *
+ *         While p_in->b_reset is true the pattern is held at its start: the
+ *         next step to begin is the first of the cycle, at the time it
+ *         would have begun anyway. A reset does not move the clock.
+ *
+ *         The step's note value is taken from the inputs of the tick on
+ *         which it begins, so a change on the panel is heard the next time
+ *         its step comes round. A value of 0 is a rest; any other is turned
+ *         into a pitch by the scale and root in p_in->note_map (see
+ *         note_map.h). A step begins on time even if the step inputs are
+ *         not valid (it is then neither a rest nor a pitch), so a failed
+ *         read does not shift the pattern in time. At most one step begins
+ *         per tick: after a stall of more than a step, the steps owed begin
+ *         on successive ticks.
  *
  *         The tempo is SEQ_BPM_MIN plus the tempo reading divided by
  *         SEQ_TEMPO_RAW_PER_BPM (30 to 285 BPM over the valid range). If the

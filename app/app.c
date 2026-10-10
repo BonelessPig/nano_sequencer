@@ -10,6 +10,9 @@
 #include "app.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include "address.h"
+#include "note_map.h"
+#include "panel.h"
 #include "seq.h"
 #include "log_port.h"
 #include "platform_port.h"
@@ -32,6 +35,28 @@ static uint8_t       g_ticks_until_scan  = 0U;        // Ticks before the inputs
 
 
 /**
+ * @brief  Logs the step that began: its pitch, that it is a rest, or the
+ *         failed step read that left it unknown.
+ */
+static void log_step(void)
+{
+    if (!g_outputs.b_note_valid)
+    {
+        log_error(LOG_ERROR_STEP_READ, g_step_read_status);
+    }
+    else if (g_outputs.b_rest)
+    {
+        log_step_rest(g_outputs.step);
+    }
+    else
+    {
+        log_step_note(g_outputs.step, g_outputs.semitone);
+    }
+}
+
+
+
+/**
  * @brief  Acts on what the previous tick computed: when a step began, logs it
  *         (or the failed step read), and a failed tempo read with it.
  */
@@ -39,14 +64,7 @@ static void apply_outputs(void)
 {
     if (g_outputs.b_step_started)
     {
-        if (g_outputs.b_note_valid)
-        {
-            log_step_note(g_outputs.step, g_outputs.note);
-        }
-        else
-        {
-            log_error(LOG_ERROR_STEP_READ, g_step_read_status);
-        }
+        log_step();
 
         if (STATUS_OK != g_tempo_read_status)
         {
@@ -63,7 +81,7 @@ static void apply_outputs(void)
  */
 static void scan_inputs(void)
 {
-    g_step_read_status = step_input_read(g_inputs.raw_steps, (uint8_t)SEQ_RAW_BYTE_COUNT);
+    g_step_read_status = step_input_read(g_inputs.raw_steps, (uint8_t)PANEL_RAW_BYTE_COUNT);
     g_inputs.b_steps_valid = (STATUS_OK == g_step_read_status);
 
     g_tempo_read_status = tempo_input_read(&g_inputs.tempo_raw);
@@ -95,6 +113,24 @@ static void gather_inputs(uint8_t elapsed_ticks)
 
 
 /**
+ * @brief  Sets the controls the board has no hardware for yet to fixed
+ *         values: all sixteen steps, forward, looping, never reset, and the
+ *         chromatic scale from the lowest pitch.
+ */
+static void set_fixed_controls(void)
+{
+    g_inputs.address.direction  = ADDRESS_FORWARD;
+    g_inputs.address.first_step = 0U;
+    g_inputs.address.last_step  = (uint8_t)(PANEL_STEP_COUNT - 1U);
+    g_inputs.address.b_one_shot = false;
+    g_inputs.note_map.scale     = NOTE_MAP_SCALE_CHROMATIC;
+    g_inputs.note_map.root      = 0U;
+    g_inputs.b_reset            = false;
+}
+
+
+
+/**
  * @brief  Puts everything the tick carries from one pass to the next into
  *         its starting condition: nothing to apply, no inputs read yet, and
  *         a scan due on the first tick.
@@ -103,7 +139,7 @@ static void reset_tick_state(void)
 {
     seq_init(&g_seq_state);
 
-    for (uint8_t i = 0U; i < SEQ_RAW_BYTE_COUNT; i++)
+    for (uint8_t i = 0U; i < PANEL_RAW_BYTE_COUNT; i++)
     {
         g_inputs.raw_steps[i] = 0U;
     }
@@ -111,11 +147,13 @@ static void reset_tick_state(void)
     g_inputs.tempo_raw     = 0U;
     g_inputs.b_tempo_valid = false;
     g_inputs.elapsed_ticks = 0U;
+    set_fixed_controls();
 
     g_outputs.b_step_started = false;
     g_outputs.step           = 0U;
-    g_outputs.note           = 0U;
     g_outputs.b_note_valid   = false;
+    g_outputs.b_rest         = false;
+    g_outputs.semitone       = 0U;
 
     g_step_read_status  = STATUS_OK;
     g_tempo_read_status = STATUS_OK;

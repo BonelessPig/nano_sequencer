@@ -22,9 +22,10 @@
  */
 typedef enum
 {
-    HOST_EVENT_STEP_NOTE = 0, // log_step_note(step, note):  a = step, b = note
-    HOST_EVENT_ERROR,         // log_error(what, status):     a = what, b = status
-    HOST_EVENT_FLUSH          // log_flush():                 a = 0,    b = 0
+    HOST_EVENT_STEP_NOTE = 0, // log_step_note(step, semitone): a = step, b = semitone
+    HOST_EVENT_STEP_REST,     // log_step_rest(step):           a = step, b = 0
+    HOST_EVENT_ERROR,         // log_error(what, status):       a = what, b = status
+    HOST_EVENT_FLUSH          // log_flush():                   a = 0,    b = 0
 } host_event_kind_t;
 
 /**

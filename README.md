@@ -4,7 +4,7 @@ A bare-metal firmware project for the ATmega328P (Arduino Nano), written from sc
 
 ## Status
 
-Work in progress. The firmware initializes the ADC, USART, I/O direction registers and a 1 kHz timer tick, then steps through a 16-step pattern at a tempo of 30 to 285 BPM set by a pot. The main loop never blocks: once a millisecond it runs one tick of the sequencer, which reads the 16 step note values from a daisy-chained 74HC165 shift register bank and the tempo pot (every 8 ms) and, when the next step is due, plays it (for now that means logging the step and its note over serial, in the debug build only). The output stage that would make a step audible (gates, triggers, or CV out) is not yet implemented.
+Work in progress. The firmware initializes the ADC, USART, I/O direction registers and a 1 kHz timer tick, then steps through a 16-step pattern at a tempo of 30 to 285 BPM set by a pot. The main loop never blocks: once a millisecond it runs one tick of the sequencer, which reads the 16 step note values from a daisy-chained 74HC165 shift register bank and the tempo pot (every 8 ms) and, when the next step is due, plays it (for now that means logging the step and its pitch, or that it is a rest, over serial, in the debug build only). A step's four switches are its note value: 0 is a rest, and 1 to 15 are notes of a scale. The core can also play any range of the steps forward, in reverse or as a pendulum, looping or once, with a reset, and in five scales from any root; the board has no controls for those yet, so the firmware plays all 16 steps forward in the chromatic scale. The output stage that would make a step audible (gates, triggers, or CV out) is not yet implemented.
 
 ## Why bare-metal?
 
@@ -16,8 +16,13 @@ The code follows a ports-and-adapters layout: the sequencer logic is a pure core
 
 ```
 core/                         # Pure sequencer logic; also compiles on a PC
-├── seq.c / seq.h                     # seq_tick(): raw inputs and elapsed ticks in, step + note out
-└── clock.c / clock.h                 # clock_advance(): elapsed ticks to pulses at a tempo, with no drift
+├── seq.c / seq.h                     # seq_tick(): raw inputs and elapsed ticks in, step + pitch out
+├── clock.c / clock.h                 # clock_advance(): elapsed ticks to pulses at a tempo, with no drift
+├── engine.h                          # The engine interface: what every engine is given and hands back
+├── engine_plain.c / engine_plain.h   # The plain engine: each step's switches are its note value
+├── address.c / address.h             # address_next(): direction, first and last step, one-shot, reset
+├── note_map.c / note_map.h           # note_map_semitone(): note value to pitch through a scale and root
+└── panel.c / panel.h                 # panel_step_value(): one step's four switches from the raw bytes
 ports/                        # What the app needs from the outside world (headers only)
 ├── port_status.h                     # Shared status/error codes
 ├── platform_port.h                   # One-time platform bring-up
@@ -127,8 +132,8 @@ There are two build configurations, chosen with `CONFIG=`. They differ only in w
 
 | | Logging | Output | Flash | Static RAM |
 |---|---|---|---:|---:|
-| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 1794 bytes | 315 bytes |
-| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 1106 bytes | 31 bytes |
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 2534 bytes | 382 bytes |
+| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 1800 bytes | 94 bytes |
 
 `CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`). The tests, the coverage check and the static analysis always cover both loggers.
 

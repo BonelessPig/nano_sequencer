@@ -2,22 +2,24 @@
 
 How the firmware is structured, what happens from reset to the main loop, how each part works, and what is still open. The standing rules for the codebase are in [CLAUDE.md](../CLAUDE.md) and the `CLAUDE.md` in each source folder; this document describes what is there.
 
-How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite, the 115200 baud setting, the release build, the step advance, and the timer tick with its non-blocking loop have not yet. Timing figures marked as measured come from the emulated board; the rest are calculated.
+How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite, the 115200 baud setting, the release build, the step advance, the timer tick with its non-blocking loop, and the addressing, note mapping and rests have not yet. Timing figures marked as measured come from the emulated board; the rest are calculated.
 
 ## At a glance
 
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano), 16 MHz |
-| Flash used | 1794 bytes of 32 KB (debug build); 1106 bytes (release build) |
-| RAM used | Debug: 315 bytes static (a 128-byte log queue, 150 bytes of message text copied from flash, 37 bytes of state). Release: 31 bytes. Plus stack |
+| Flash used | 2534 bytes of 32 KB (debug build); 1800 bytes (release build) |
+| RAM used | Debug: 382 bytes static (a 128-byte log queue, 155 bytes of message text and 51 bytes of scale tables copied from flash, 48 bytes of state). Release: 94 bytes (the tables and 42 bytes of state). Plus stack |
 | Interrupts | One: Timer/Counter2 compare match A, 1000 times a second. It adds one to a counter and does nothing else |
 | Main loop | Never blocks. One sequencer tick per millisecond; outputs are applied at the tick boundary |
 | Inputs | 16 steps × 4 bits from eight 74HC165s; one pot on ADC channel 6 for tempo. Both are read every 8 ms |
 | Tempo | 30 to 285 BPM, a step being a sixteenth note (500 ms down to 52.6 ms per step) |
+| Notes | A step's four switches are its note value: 0 is a rest, 1 to 15 a pitch through a scale and a root |
+| Pattern | The core can play any range of steps forward, in reverse or as a pendulum, looping or once, with a reset. The board has no controls for these yet, so the firmware plays all 16 steps forward, looping, in the chromatic scale |
 | Outputs | Serial log only (115200 baud, debug build); none at all in the release build. No gate, trigger or CV output yet |
-| Tests | 105 host tests in 11 programs (30 for the core, 17 for the app loop, 55 for the seven target adapter sources, 3 for `main.c`) |
-| Coverage | 100% of lines (275) and branches (98) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
+| Tests | 161 host tests in 15 programs (83 for the core, 19 for the app loop, 56 for the seven target adapter sources, 3 for `main.c`) |
+| Coverage | 100% of lines (393) and branches (155) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
 
 ## Hardware
 
@@ -47,7 +49,7 @@ The sequencer logic is a pure core. It never touches hardware: the app gathers i
 ```mermaid
 flowchart TD
     main["app/main.c<br/>init, then loop forever"] --> app["app/app.c<br/>gather, tick, apply"]
-    app -->|"calls"| core["core/seq.c, clock.c<br/>pure logic, no hardware"]
+    app -->|"calls"| core["core/: seq, clock, engine_plain,<br/>address, note_map, panel<br/>pure logic, no hardware"]
     app -->|"calls through"| ports
     subgraph ports["ports/ (headers only)"]
         p_platform["platform_port.h"]
@@ -98,7 +100,7 @@ Ports are bound at link time: the firmware links `adapters/target/`, the tests l
 | `step_input_port.h` | `step_input_read(p_raw_bits, byte_count)` | `shift_reg_reader.c`: 74HC165 chain |
 | `tempo_input_port.h` | `tempo_input_read(p_raw)` | `analog_reader.c`: ADC channel 6 |
 | `timebase_port.h` | `timebase_elapsed_ticks()` | `timebase.c`: Timer/Counter2 interrupting at 1 kHz |
-| `log_port.h` | `log_step_note(step, note)`, `log_error(what, status)`, `log_poll()`, `log_flush()` | `serial_logger.c`: USART0 (debug build), or `null_logger.c`: discards everything (release build) |
+| `log_port.h` | `log_step_note(step, semitone)`, `log_step_rest(step)`, `log_error(what, status)`, `log_poll()`, `log_flush()` | `serial_logger.c`: USART0 (debug build), or `null_logger.c`: discards everything (release build) |
 
 Functions that can fail return `port_status_t` (`STATUS_OK` = 0, `ERR_INVALID_PARAM` = 2, `ERR_TIMEOUT` = 4, and so on). The numbers appear in the debug build's serial log, so they are fixed. `timebase_elapsed_ticks()` cannot fail and returns the tick count itself.
 
@@ -129,7 +131,7 @@ sequenceDiagram
     loop forever: app_run_once()
         A->>P: timebase_elapsed_ticks()
         opt a tick has passed
-            A->>P: log_step_note() if the last tick began a step
+            A->>P: log_step_note() or log_step_rest() if the last tick began a step
             A->>P: step_input_read(), tempo_input_read() every 8th tick
             A->>C: seq_tick(state, inputs, outputs)
         end
@@ -161,16 +163,16 @@ stateDiagram-v2
 - **None:** the pass gives the log the chance to send one byte and returns. Between ticks the loop spins through this path, a few microseconds a time.
 - **One or more:** the pass runs one tick of the sequencer, in the three steps below, and then polls the log as well. More than one only happens if a pass overran; the count is handed to the core, so no time is lost.
 
-1. **Apply outputs.** What the previous tick computed is acted on first. If a step began, log the step and its note (or one error if the step read had failed), and an error if the tempo read had failed.
+1. **Apply outputs.** What the previous tick computed is acted on first. If a step began, log the step and its pitch, or that it is a rest (or one error if the step read had failed), and an error if the tempo read had failed.
 2. **Gather inputs.** Note the elapsed ticks. Every eighth tick (125 times a second) read 8 raw bytes from the step input port and one reading from the tempo port; each read's success becomes a valid flag in `seq_inputs_t`. Between scans the core is given the last snapshot again.
-3. **Run the core.** `seq_tick()` moves its clock on by the elapsed ticks and, if that brings a step due, begins it and decodes its note. The result is kept until the next tick.
+3. **Run the core.** `seq_tick()` moves its clock on by the elapsed ticks and, if that brings a step due, begins it and works out its pitch. The result is kept until the next tick.
 
 Outputs are applied at the start of the next tick, not at the end of this one, so they change at the same point in every tick however long the reads and the core took. The price is that every output is one tick (1 ms) late, always by the same amount. Today the only output is the log; a gate will be applied the same way.
 
 ```mermaid
 flowchart LR
     subgraph apply["1. Apply outputs (from the last tick)"]
-        logn["log_step_note<br/>if a step began and its note is valid"]
+        logn["log_step_note or log_step_rest<br/>if a step began and its note is valid"]
         loge["log_error<br/>if a step began and a read had failed"]
     end
     subgraph gather["2. Gather inputs"]
@@ -179,10 +181,10 @@ flowchart LR
         tr["tempo_input_read<br/>every 8th tick"]
     end
     subgraph run["3. Run the core"]
-        in["seq_inputs_t<br/>raw_steps: 8 bytes<br/>b_steps_valid<br/>tempo_raw: 0 to 1023<br/>b_tempo_valid<br/>elapsed_ticks"]
+        in["seq_inputs_t<br/>raw_steps: 8 bytes<br/>b_steps_valid<br/>tempo_raw: 0 to 1023<br/>b_tempo_valid<br/>elapsed_ticks<br/>address: direction, first, last, one-shot<br/>note_map: scale, root<br/>b_reset"]
         tick["seq_tick"]
-        state[("seq_state_t<br/>clock phase<br/>last_tempo_raw<br/>step_pulses<br/>current_step")]
-        out["seq_outputs_t<br/>b_step_started<br/>step: 0 to 15<br/>note: 0 to 15<br/>b_note_valid"]
+        state[("seq_state_t<br/>clock phase<br/>last_tempo_raw<br/>step_pulses<br/>engine position")]
+        out["seq_outputs_t<br/>b_step_started<br/>step: 0 to 15<br/>b_note_valid<br/>b_rest<br/>semitone: 0 to 45"]
     end
     tb --> in
     sr --> in
@@ -196,22 +198,24 @@ flowchart LR
 
 The two read statuses are kept beside the snapshot (not passed through the core), so a failed read can be logged with its status code. A failed read is reported once per step, along with the step it affected, not once per scan.
 
+The last three inputs in the diagram (the addressing controls, the scale and root, and reset) have no hardware behind them yet. The app sets them once, in `set_fixed_controls()`: all sixteen steps, forward, looping, never reset, in the chromatic scale from the lowest pitch. When there are switches or pots for them, that function is what a port read replaces.
+
 A tick is a millisecond, not a step. A step lasts 24 clock pulses, which at the tempo set by the pot is 500 ms down to 52.6 ms, so most ticks compute nothing new and apply nothing. Sixteen steps go once round the pattern.
 
 **Timing, measured on the emulated board** at 150 BPM, where a step is exactly 100 ms:
 
 | | Debug | Release |
 |---|---|---|
-| Panel scan period | 8 ms, within 0.12 ms | 8 ms, within 0.002 ms |
-| Step period, from the first byte of one log line to the first byte of the next | 100 ms, within 0.17 ms | No log; nothing outside the chip shows a step yet |
-| One log line on the wire | 1.4 to 1.6 ms, sent a byte per pass while the loop carries on | — |
-| First step logged | 2.2 ms after reset | — |
+| Panel scan period | 8 ms, within 0.12 ms | 8 ms, within 0.004 ms |
+| Step period, from the first byte of one log line to the first byte of the next | 100 ms, within 0.20 ms | No log; nothing outside the chip shows a step yet |
+| One log line on the wire | 1.0 ms (a rest) to 1.6 ms, sent a byte per pass while the loop carries on | — |
+| First step logged | 2.3 ms after reset | — |
 
-The step itself begins on a tick boundary in both builds. The 0.17 ms in the debug column is the log's own jitter: a line's first byte goes out at the end of that tick's pass, after the line has been queued and, on a scan tick, after the panel and pot have been read. Over a long run nothing accumulates: 16 steps took 1600 ms to within the same margin.
+The step itself begins on a tick boundary in both builds. The 0.20 ms in the debug column is the log's own jitter: a line's first byte goes out at the end of that tick's pass, after the line has been queued and, on a scan tick, after the panel and pot have been read. Over a long run nothing accumulates: 16 steps took 1600 ms to within the same margin.
 
 The very first step after reset is one tick short (99 ms in that run): the first tick begins step 0 and already counts towards step 1.
 
-## The core — `core/seq.c` and `core/clock.c`
+## The core — `core/`
 
 ```c
 void seq_init(seq_state_t *p_state);
@@ -219,9 +223,39 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
 
 void    clock_init(clock_state_t *p_state);
 uint8_t clock_advance(clock_state_t *p_state, uint16_t bpm, uint8_t elapsed_ticks);
+
+void engine_plain_init(engine_plain_state_t *p_state);
+bool engine_plain_step(engine_plain_state_t *p_state, const engine_inputs_t *p_in,
+                       engine_step_t *p_step);
+
+void address_init(address_state_t *p_state);
+bool address_next(address_state_t *p_state, const address_config_t *p_config,
+                  uint8_t *p_step);
+
+bool    note_map_semitone(const note_map_config_t *p_config, uint8_t note,
+                          uint8_t *p_semitone);
+uint8_t panel_step_value(const uint8_t *p_raw_steps, uint8_t step);
 ```
 
-`seq_tick()` reads the state and inputs, writes the state and outputs, and does nothing else. It calls `clock_advance()`, which is the same kind of function one level down.
+`seq_tick()` reads the state and inputs, writes the state and outputs, and does nothing else. Every function under it is the same kind of function one level down, and each module has its own test program.
+
+```mermaid
+flowchart TD
+    seq["seq<br/>when a step is due"] --> clock["clock<br/>ticks to pulses"]
+    seq --> engine["engine_plain<br/>which step, and its note value"]
+    seq --> note["note_map<br/>note value to pitch, or rest"]
+    engine --> address["address<br/>next step in the range"]
+    engine --> panel["panel<br/>a step's four switches"]
+```
+
+| Module | Question it answers | State it keeps |
+|---|---|---|
+| `seq` | Is a step due on this tick, and what are the outputs? | Tempo reading, pulses into the step, and the two below |
+| `clock` | How many pulses fell in these ticks? | 2 bytes of phase |
+| `engine_plain` | Which step plays now, and what is its note value? | The addressing state |
+| `address` | Which step comes next in this direction and range? | A count of steps played in the cycle, and a finished flag |
+| `note_map` | What pitch is this note value in this scale? | None |
+| `panel` | What do the four switches of this step read? | None |
 
 ### The clock
 
@@ -233,10 +267,12 @@ The tempo is limited to 300 BPM, which keeps the counter within 16 bits and mean
 
 - **Tempo.** The tempo reading (0 to 1023) maps linearly onto 30 to 285 BPM: 30 plus the reading divided by 4. The floor means the pot cannot stop the pattern or run it at an unusable speed. When a tempo read fails, the previous reading is reused, so the pattern keeps its pace. Before any valid reading the tempo is 30 BPM.
 - **Step length.** A step is a sixteenth note: 24 pulses, or 15000 / BPM milliseconds. `step_pulses` counts the pulses since the current step began.
-- **Step advance.** When `step_pulses` reaches 24 the next step begins: the outputs carry `b_step_started`, the step and its note, and the position moves on, wrapping from step 15 to step 0. On every other tick `b_step_started` is false and the other outputs are zero. The first tick after `seq_init()` begins step 0 at once.
-- **Note decoding.** The 64 input bits are packed MSB first, 4 bits per step: step 0 is the high nibble of byte 0, step 1 the low nibble, step 2 the high nibble of byte 1, and so on. Only the step that is beginning is decoded, from the inputs of that tick, so a change on the panel is heard the next time its step comes round. If the step inputs are flagged invalid, the note is 0 and `b_note_valid` is false; the step still begins on time, so a failed read does not shift the pattern.
+- **Step advance.** When `step_pulses` reaches 24 a step is due, and the engine is asked for it. If it has one, the outputs carry `b_step_started`, the step and what it plays. On every other tick `b_step_started` is false and the other outputs are zero. The first tick after `seq_init()` begins the first step of the pattern at once.
+- **What a step plays.** Only the step that is beginning is read, from the inputs of that tick, so a change on the panel is heard the next time its step comes round. Its note value goes through the note mapping: 0 sets `b_rest`, anything else gives `semitone`. If the step inputs are flagged invalid, `b_note_valid` is false and the step is neither a rest nor a pitch; it still begins on time, so a failed read does not shift the pattern.
+- **Reset.** While `b_reset` is true the engine is sent back to the start of its pattern on every tick. The clock is not touched, so the first step plays at the next step boundary, where the next step would have been anyway, and holding reset repeats the first step.
+- **A finished pattern.** When a one-shot pattern has played, the clock keeps running and steps keep falling due, but none begins. A reset, or going back to looping, starts it again on the beat.
 - **After a stall.** At most one step begins per tick. If the loop were held up for longer than a step, the steps owed would begin on successive ticks rather than being skipped.
-- **State.** The clock's phase, the last valid tempo reading, the pulse count within the step, and the step that begins next: 7 bytes.
+- **State.** The clock's phase, the last valid tempo reading, the pulse count within the step, and the engine's state: 8 bytes.
 
 ```mermaid
 flowchart TD
@@ -249,17 +285,38 @@ flowchart TD
     keep --> clock
     clock["pulses = clock_advance(30 + last_tempo_raw / 4 BPM, elapsed_ticks)<br/>step_pulses += pulses"] --> due{"step_pulses at least 24?"}
     due -->|"no"| idle["b_step_started = false<br/>step, note = 0"]
-    due -->|"yes"| begin["step_pulses -= 24<br/>b_step_started = true<br/>step = current_step"]
+    due -->|"yes"| ask["step_pulses -= 24<br/>engine_plain_step: is there a step?"]
+    ask -->|"no: a one-shot pattern has finished"| idle
+    ask -->|"yes"| begin["b_step_started = true<br/>step = the engine's step"]
     begin --> steps{"b_steps_valid?"}
-    steps -->|"yes"| decode["note = that step's nibble of raw_steps<br/>b_note_valid = true"]
-    steps -->|"no"| zero["note = 0<br/>b_note_valid = false"]
-    decode --> advance
-    zero --> advance
-    advance["current_step = the next step<br/>15 wraps to 0"] --> out(["return"])
+    steps -->|"no"| unknown["b_note_valid = false<br/>neither rest nor pitch"]
+    steps -->|"yes"| map{"note_map_semitone:<br/>note value 0?"}
+    map -->|"yes"| rest["b_note_valid = true<br/>b_rest = true"]
+    map -->|"no"| pitch["b_note_valid = true<br/>semitone = the pitch"]
+    unknown --> out(["return"])
+    rest --> out
+    pitch --> out
     idle --> out
 ```
 
-Over successive steps the position goes round the pattern:
+The chart leaves out reset: when `b_reset` is set, the engine is sent back to the start of its pattern before the clock is advanced, on every tick, and that has no output of its own.
+
+### The plain engine and the engine interface
+
+An engine decides what each step of the pattern is. The sequencer owns the clock and says when a step is due; the engine says which step it is and what note value it holds. Every engine is to have a state type, an init function that doubles as its reset, and a step function taking the same `engine_inputs_t` (the panel bits and the addressing controls) and filling in the same `engine_step_t` (a step number and a note value). `core/engine.h` holds those two types and describes the pattern.
+
+`engine_plain` is the first and simplest: it asks the addressing for the next step and reads that step's four switches as the note value. Its state is the addressing state and nothing else. `seq.c` calls it directly; a selector between engines belongs with the second engine.
+
+### Addressing
+
+`address_next()` gives the step to play and moves on. The controls are a direction, a first and a last step, and a one-shot flag:
+
+- **The range** is the steps from the first to the last. If the first is the higher of the two, the range runs through step 15 and round to step 0 (first 14, last 1 is steps 14, 15, 0, 1), so every pair of settings is a valid range of 1 to 16 steps.
+- **A cycle** is one pass over the range: first to last going forward, last to first in reverse, and out and back as a pendulum with each end played once (0 1 2 3 2 1, then 0 again).
+- **One-shot** stops after one cycle; `address_next()` then returns false until `address_init()` (the reset) or until one-shot is cleared.
+- **The state** is how many steps of the cycle have been played, not a step number. That makes reset the same in every direction (the count goes to 0) and the end of a cycle one comparison. The cost is that a change of direction or range in the middle of a cycle carries the count over, so the pattern jumps to the matching point of the new cycle and does not turn round where it stands. A count beyond the end of a shortened cycle starts the cycle again.
+
+Forward over the whole panel, which is what the firmware plays today, goes round like this:
 
 ```mermaid
 stateDiagram-v2
@@ -277,7 +334,9 @@ stateDiagram-v2
     Step15: Step 15
 ```
 
-Which nibble of the eight raw bytes belongs to each step:
+### The panel
+
+`panel_step_value()` picks one step's four switches out of the raw bytes. The 64 bits are packed MSB first, 4 bits per step: step 0 is the high nibble of byte 0, step 1 the low nibble, step 2 the high nibble of byte 1, and so on. Every engine reads the same bits through this function and gives them its own meaning.
 
 ```mermaid
 flowchart LR
@@ -295,6 +354,20 @@ flowchart LR
     b7 -->|"bits 7..4"| s14["step 14"]
     b7 -->|"bits 3..0"| s15["step 15"]
 ```
+
+### Note mapping
+
+`note_map_semitone()` turns a note value into a pitch. A value of 0 is a rest. Values 1 to 15 are the first fifteen notes of a scale, counting up from the root and carrying on into the next octaves: in a major scale 1 is the root, 8 the root an octave up, and 15 the root two octaves up. A pitch is a count of semitones above the lowest one the sequencer plays (note value 1 with a root of 0), from 0 to 45.
+
+| Scale | Semitones above the root | Pitch of note values 1 to 15, root 0 |
+|---|---|---|
+| Chromatic | every one | 0 to 14 |
+| Major | 0 2 4 5 7 9 11 | 0 to 24 |
+| Natural minor | 0 2 3 5 7 8 10 | 0 to 24 |
+| Major pentatonic | 0 2 4 7 9 | 0 to 33 |
+| Minor pentatonic | 0 3 5 7 10 | 0 to 34 |
+
+The root adds 0 to 11 semitones. There is no octave control yet: how many octaves are worth having depends on the DAC, which is not chosen. The scale tables are 51 bytes of constant data, which this toolchain keeps in RAM as well as flash; keeping them in flash only would take a compiler extension, which the core does not use.
 
 ## Target adapters — `adapters/target/`
 
@@ -388,7 +461,7 @@ sequenceDiagram
 
 A divisor of 16 gives 117647 baud, 2.1 % fast. That is the usual setting for 115200 on a 16 MHz AVR and what USB serial bridges are routinely run at, but it is not exact. Normal-speed mode cannot do better (its nearest divisor is 8.5 % off), which is why double speed is used. The rates that are exact at 16 MHz are 250000, 500000 and 1000000; changing `BAUD` in `serial_logger.c` is enough to switch, and the divisor follows from it.
 
-Nothing in the logger waits for the UART. The port functions `log_step_note()` and `log_error()` own the message wording. Each checks the log level, then writes the message in pieces, fixed text through `write_text()` and numbers through `write_decimal()` (unpadded decimal digits), into a 128-byte ring queue. `log_poll()`, called on every pass of the main loop, sends one queued byte if the transmit buffer is empty and otherwise returns at once. The level is set to DEBUG at init, so step notes (DEBUG) and errors (ERROR) both print.
+Nothing in the logger waits for the UART. The port functions `log_step_note()`, `log_step_rest()` and `log_error()` own the message wording (`Step 3 Note = 11`, where the number is the pitch in semitones, and `Step 5 Rest`). Each checks the log level, then writes the message in pieces, fixed text through `write_text()` and numbers through `write_decimal()` (unpadded decimal digits), into a 128-byte ring queue. `log_poll()`, called on every pass of the main loop, sends one queued byte if the transmit buffer is empty and otherwise returns at once. The level is set to DEBUG at init, so step notes (DEBUG) and errors (ERROR) both print.
 
 A message that does not fit in what is left of the queue is dropped whole: the bytes of it already queued are taken back out, so a partial line is never sent. The queue holds the two longest messages together (53 characters each). In normal running it never fills: the fastest tempo produces a 19-character line every 52.6 ms, and a line is gone in 1.6 ms.
 
@@ -415,7 +488,7 @@ flowchart TD
 
 ### Log — `null_logger.c` (release build)
 
-The same five functions (`logger_init()`, `log_step_note()`, `log_error()`, `log_poll()`, `log_flush()`) with empty bodies. It touches no registers, so the USART is never set up or enabled, and it keeps no state. The app still calls the log port; each call returns immediately.
+The same six functions (`logger_init()`, `log_step_note()`, `log_step_rest()`, `log_error()`, `log_poll()`, `log_flush()`) with empty bodies. It touches no registers, so the USART is never set up or enabled, and it keeps no state. The app still calls the log port; each call returns immediately.
 
 ### Timebase — `timebase.c`
 
@@ -442,17 +515,21 @@ sequenceDiagram
 
 ## Host side — `adapters/host/` and `tests/`
 
-`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every output-port call in order. `make test` builds and runs eleven programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
+`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every output-port call in order. `make test` builds and runs fifteen programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
 
-Three link the code they test:
+Seven link the code they test:
 
 - `test_clock`: the clock alone. Exactly BPM × 96 pulses in a minute across the tempo range, no drift over ten minutes, the same count whether ticks arrive singly or in batches, the remainder carried between pulses, the 300 BPM limit, a tempo of 0, and null-pointer handling.
-- `test_seq`: the core alone. The first tick begins step 0; step length for five tempos (exactly 15000 / BPM ticks, with the first step a tick short); 19 steps a second at the fastest setting; the steps in order with wrap; decoding of every step and nibble; the note taken from the tick its step begins on; a step beginning on time through a failed read; the tempo floor before any reading; last-valid-tempo reuse; independence of the two valid flags; batched ticks; steps owed after a stall; and null-pointer handling.
-- `test_app`: the real `app.c` and core linked against the fakes, with time scripted. Checks that a pass with no tick only polls the log; that a step is logged one tick after it begins, once; that steps are logged at the tempo and wrap; that the inputs are read on the first tick and every eighth after, counted in elapsed ticks; that a failed read logs the right error in the right place, once per step; and that init failure is logged, flushed and returned.
+- `test_panel`: every step and nibble decodes from the right bits, a step number beyond the panel wraps, and a null buffer reads as 0.
+- `test_address`: each direction over the whole panel and over a range, pendulum cycles of 30, 2 and 1 steps, a range that runs round through step 0, one-shot in every direction, reset, clearing and setting one-shot mid-cycle, a direction or range changed mid-cycle, out-of-range settings, and null-pointer handling.
+- `test_note_map`: the rest, the pitch of all fifteen note values in each of the five scales, every root in every scale, the highest pitch, out-of-range notes, roots and scales, and null-pointer handling.
+- `test_engine_plain`: steps in addressing order with their panel values, the panel read as it is when the step is asked for, a finished one-shot giving no step, reset, and null-pointer handling (the pattern does not move on).
+- `test_seq`: the sequencer with the modules above linked in. The first tick begins step 0; step length for five tempos (exactly 15000 / BPM ticks, with the first step a tick short); 19 steps a second at the fastest setting; the steps in order with wrap; the pitch or rest of every step and nibble; the note taken from the tick its step begins on; a step beginning on time through a failed read; the tempo floor before any reading; last-valid-tempo reuse; independence of the two valid flags; batched ticks; steps owed after a stall; a rest; the scale and root applied; the addressing controls followed; a one-shot pattern stopping while the clock runs on; reset not moving the clock, held, and restarting a finished one-shot; and null-pointer handling.
+- `test_app`: the real `app.c` and core linked against the fakes, with time scripted. Checks that a pass with no tick only polls the log; that a step is logged one tick after it begins, once; that steps are logged at the tempo and wrap; that a rest is logged as a rest; that all sixteen steps play forward in the chromatic scale; that the inputs are read on the first tick and every eighth after, counted in elapsed ticks; that a failed read logs the right error in the right place, once per step; and that init failure is logged, flushed and returned.
 
 The other eight `#include` the one source file they test, with `tests/fake_atmega328p_regs.h` standing in for the register map (it claims the include guards of all three real register headers) and any function that file calls but does not define supplied as a stub by the test:
 
-- `test_serial_logger`: the USART setup values (divisor 16, double speed, 8N1), the level filter, that nothing is sent until polled, one byte per poll, nothing while the transmit buffer is full, message order, a message that does not fit being dropped whole, the queue wrapping, `log_flush()`, and that every message is byte-for-byte what the earlier `printf`-style format strings produced.
+- `test_serial_logger`: the USART setup values (divisor 16, double speed, 8N1), the level filter, that nothing is sent until polled, one byte per poll, nothing while the transmit buffer is full, message order, a message that does not fit being dropped whole, the queue wrapping, `log_flush()`, and that every message is byte-for-byte what a `printf`-style format string produces.
 - `test_null_logger`: init succeeds at any level, every message is discarded, polling and flushing do nothing, and no USART register is written.
 - `test_register_init`: which direction bits are set and cleared, that the others and the output levels are left alone, and the ADC enable and prescaler value.
 - `test_analog_reader`: channel and reference selection, the result, a slow conversion, the timeout at exactly the poll budget, and parameter checks. The fake ADC clears its start bit after a set number of polls.
@@ -461,19 +538,21 @@ The other eight `#include` the one source file they test, with `tests/fake_atmeg
 - `test_timebase`: the Timer/Counter2 register values, that interrupts are enabled only after the timer is fully set up and without disturbing the other status bits, one tick per interrupt, ticks reported once, a late caller losing none up to 255, and the counter wrap. The fake header turns the interrupt handler into an ordinary function, which the test calls to make a tick happen.
 - `test_main`: `main()` (renamed while included) returns the status when init fails and otherwise loops calling `app_run_once`. The stub leaves the endless loop with `longjmp`.
 
-Which program tests which source file. Solid arrows link the real file; dotted arrows `#include` it against the fake registers:
+Which program tests which source file. Solid arrows link the real file; dotted arrows `#include` it against the fake registers. Each core program is linked with all of `core/`, so `test_seq` runs the real engine, addressing and note mapping under the sequencer:
 
 ```mermaid
 flowchart LR
-    t_seq["test_seq<br/>20 tests"] --> seq["core/seq.c"]
-    t_seq --> clock["core/clock.c"]
-    t_clock["test_clock<br/>10 tests"] --> clock
-    t_app["test_app<br/>17 tests"] --> app["app/app.c"]
-    t_app --> seq
-    t_app --> clock
+    t_seq["test_seq<br/>27 tests"] --> seq["core/seq.c"]
+    t_clock["test_clock<br/>10 tests"] --> clock["core/clock.c"]
+    t_engine["test_engine_plain<br/>6 tests"] --> engine["core/engine_plain.c"]
+    t_address["test_address<br/>23 tests"] --> address["core/address.c"]
+    t_note["test_note_map<br/>12 tests"] --> note["core/note_map.c"]
+    t_panel["test_panel<br/>5 tests"] --> panel["core/panel.c"]
+    t_app["test_app<br/>19 tests"] --> app["app/app.c"]
+    t_app --> core["all of core/"]
     t_app --> hostp["adapters/host/host_ports.c"]
     t_main["test_main<br/>3 tests"] -.-> mainc["app/main.c"]
-    t_ser["test_serial_logger<br/>17 tests"] -.-> ser["serial_logger.c"]
+    t_ser["test_serial_logger<br/>18 tests"] -.-> ser["serial_logger.c"]
     t_null["test_null_logger<br/>3 tests"] -.-> nul["null_logger.c"]
     t_reg["test_register_init<br/>5 tests"] -.-> reg["register_init.c"]
     t_adc["test_analog_reader<br/>9 tests"] -.-> adc["analog_reader.c"]
@@ -484,10 +563,10 @@ flowchart LR
 
 ```mermaid
 pie showData
-    title Host tests by area (105)
-    "Target adapters" : 55
-    "Core" : 30
-    "App loop" : 17
+    title Host tests by area (161)
+    "Core" : 83
+    "Target adapters" : 56
+    "App loop" : 19
     "main.c" : 3
 ```
 
@@ -510,7 +589,7 @@ What this does not show: the fakes are plain variables, so nothing here checks a
 
 The first two folders are kept free of anything specific to this project so they can be lifted out for another one.
 
-Eleven scenarios run. For the debug image: every log line matches the switches set on the emulated panel across two passes of the pattern; the USART is set to 115200 baud in double-speed mode; the panel is read every 8 ms with 64 clock pulses; a switch changed mid-pattern is heard the next time its step plays; a step lasts 100 ms at 150 BPM, with no drift over 16 steps; a step lasts 500 ms with the pot at zero; and the first step is logged within 3 ms of reset. For the release image: the USART is never enabled, nothing is sent and PD0 and PD1 are left as inputs; Timer/Counter2 holds the 1 kHz settings and interrupts are enabled; the panel is read every 8 ms, to within 0.01 ms, with 64 clock pulses; and the first read is on the first tick.
+Eleven scenarios run. For the debug image: every log line matches the switches set on the emulated panel across two passes of the pattern, as a pitch one below the note value or as a rest where all four switches are off; the USART is set to 115200 baud in double-speed mode; the panel is read every 8 ms with 64 clock pulses; a switch changed mid-pattern is heard the next time its step plays; a step lasts 100 ms at 150 BPM, with no drift over 16 steps; a step lasts 500 ms with the pot at zero; and the first step is logged within 3 ms of reset. For the release image: the USART is never enabled, nothing is sent and PD0 and PD1 are left as inputs; Timer/Counter2 holds the 1 kHz settings and interrupts are enabled; the panel is read every 8 ms, to within 0.01 ms, with 64 clock pulses; and the first read is on the first tick.
 
 The release image has no log and the firmware has no other output yet, so nothing outside the chip shows when a step begins in that build. What the scenarios do show is that its tick runs at the same 1 kHz. Every object file but the logger is shared between the two builds, so the step timing code is the same machine code in both. A gate output will make it directly observable.
 
@@ -546,8 +625,8 @@ flowchart TD
 
 | | Debug | Release |
 |---|---:|---:|
-| Flash | 1794 bytes | 1106 bytes |
-| Static RAM | 315 bytes | 31 bytes |
+| Flash | 2534 bytes | 1800 bytes |
+| Static RAM | 382 bytes | 94 bytes |
 | Step timing | From the timer tick | The same |
 
 A lower baud rate for release was considered and has no use: the release build never switches the USART on, so it has no baud rate.
@@ -558,33 +637,36 @@ Sizes of the linked functions and data, from `avr-nm --size-sort` on each `outpu
 
 ```mermaid
 pie showData
-    title Debug build flash, 1794 bytes
-    "Serial logger code" : 490
-    "Serial logger message text" : 150
-    "App loop and main" : 338
-    "Core (sequencer and clock)" : 318
+    title Debug build flash, 2534 bytes
+    "Core code" : 858
+    "Core scale tables" : 51
+    "Serial logger code" : 556
+    "Serial logger message text" : 155
+    "App loop and main" : 392
     "Step and tempo input adapters" : 134
     "Vector table and startup" : 132
+    "libgcc helpers" : 102
     "Timebase" : 90
-    "libgcc helpers" : 78
     "Init adapters" : 64
 ```
 
 | Part | Debug | Release |
 |---|---:|---:|
-| Logger (code and message text) | 640 | 14 |
-| App loop and `main` | 338 | 338 |
-| Core (sequencer and clock) | 318 | 318 |
+| Core (code and scale tables) | 909 | 910 |
+| Logger (code and message text) | 711 | 16 |
+| App loop and `main` | 392 | 392 |
 | Step and tempo input adapters | 134 | 134 |
 | Vector table and startup code | 132 | 132 |
+| libgcc helpers | 102 | 62 |
 | Timebase (setup, interrupt handler, tick count) | 90 | 90 |
-| libgcc helpers | 78 | 16 |
 | Init adapters | 64 | 64 |
-| **Total** | **1794** | **1106** |
+| **Total** | **2534** | **1800** |
 
-The serial logger is over a third of the debug image. The release build also sheds two libgcc helpers that only the logger needed: the 16-bit divide used to print decimal numbers, and the routine that copies initialised data (the message text) into RAM at startup. Either build uses under 6 % of the 30720 bytes available below the old bootloader.
+Within the core: the sequencer 316 bytes, addressing 178, the plain engine 124, note mapping 106 plus its 51 bytes of tables (52 in the release build, with a byte of padding), the clock 84 and the panel 50.
 
-Static RAM in the debug build is 315 bytes: the 128-byte log queue, the 150 bytes of message text, and 37 bytes of state. `avr-size` (and so `make` and `make check`) reports 165: this toolchain's `avr-size` counts the message text under flash only, although it is also copied to RAM. The release build has no message text, and its 31 bytes are reported correctly.
+The core is now the largest part of either image, and the serial logger is over a quarter of the debug one. The release build sheds one libgcc helper that only the logger needs, the 16-bit divide used to print decimal numbers. Both builds now carry the 8-bit divide (note mapping divides by the length of the scale) and the routine that copies initialised data into RAM at startup, which the release build did without until it had the scale tables. The debug build uses 8.2 % and the release build 5.9 % of the 30720 bytes available below the old bootloader.
+
+Static RAM in the debug build is 382 bytes: the 128-byte log queue, 155 bytes of message text, the 51 bytes of scale tables, and 48 bytes of state. `avr-size` (and so `make` and `make check`) reports 176: this toolchain's `avr-size` counts constant data under flash only, although it is also copied to RAM. The release build is under-reported the same way now that it has the tables: 94 bytes used, 42 reported.
 
 ## Static analysis
 
@@ -633,15 +715,24 @@ The 1 kHz tick, the interrupt and the non-blocking loop have been checked on the
 
 The first tick begins step 0 and also counts towards step 1, so step 0 lasts 1 ms less than the others. It is harmless for a free-running pattern and will want fixing when there is a run/stop control and a step can begin on an external event.
 
-### 5. `make check` under-reports the debug build's static RAM
+### 5. `make check` under-reports static RAM
 
-It prints 165 bytes where 315 are used, for the reason given under "Where the flash goes". The figures before this change were under-reported the same way (5 printed, 155 used).
+For the debug build it prints 176 bytes where 382 are used, and for the release build 42 where 94 are used, for the reason given under "Where the flash goes".
+
+### 6. The pattern controls have no hardware
+
+Direction, first and last step, one-shot, reset, scale and root are inputs to the core and are tested there, but nothing on the board sets them. `app.c` fixes them in `set_fixed_controls()`, so on the board (and the emulated one) only the forward, looping, chromatic path is ever taken, and nothing but the host tests exercises the rest. The roadmap gives them switches and pots in phases 6 and 7.
+
+### 7. A change of direction or range mid-cycle jumps
+
+The addressing counts steps played in the cycle, so reversing in the middle of a pattern jumps to the matching point of the reversed cycle; it does not turn round on the step it is on. Nothing can change these controls yet. If turning in place is wanted when they get hardware, it is a change inside `address.c` only.
 
 Closed by the timebase work: the tempo range now has a floor (30 to 285 BPM), and the debug and release builds keep the same time, because the step period comes from the timer and not from a delay plus however long the rest of the loop took.
 
 ## What the output stage will need
 
-- **Step advance**: done. `seq_state_t` holds the current step; `seq_outputs_t` says when a step begins, which one and its note, and the app logs it.
+- **Step advance**: done. The engine holds the position in the pattern; `seq_outputs_t` says when a step begins, which one, and its pitch or that it is a rest, and the app logs it.
+- **A pitch to send and a rest to stay silent on**: done, as a semitone count from 0 to 45. Turning that into a DAC code is `pitch_cal`, still to come.
 - **A usable tempo range**: done, 30 to 285 BPM.
 - **A timing decision**: done. A 1 kHz timer tick, a loop that never blocks, and outputs applied at the tick boundary.
 - **A new output port** (gate, trigger or CV) with a target adapter and a host fake, applied first in the tick's apply step. PB5, PC0 and PC1 are already configured and free.

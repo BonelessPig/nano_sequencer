@@ -46,6 +46,7 @@ static void test_messages_are_discarded(void)
     (void)logger_init(LOGLVL_TRACE);
 
     log_step_note(15U, 9U);
+    log_step_rest(15U);
     log_error(LOG_ERROR_INIT, ERR_GENERAL);
     log_error(LOG_ERROR_STEP_READ, ERR_INVALID_PARAM);
     log_error(LOG_ERROR_TEMPO_READ, ERR_TIMEOUT);

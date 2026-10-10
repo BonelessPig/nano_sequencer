@@ -4,7 +4,7 @@ Host test programs, built and run on the PC by `make test`. Test code is outside
 
 ## Which kind of test
 
-- **Core:** one program per core module (`test_seq.c`, `test_clock.c`), each linked with `core/*.c` alone. No ports, no adapters. A new one goes in `CORE_TESTS` in the Makefile.
+- **Core:** one program per core module (`test_seq.c`, `test_clock.c`, `test_address.c` and so on), each linked with `core/*.c` alone. No ports, no adapters. A new one goes in `CORE_TESTS` in the Makefile. A module is tested fully by its own program; `test_seq.c` then checks that the sequencer uses it, not every case again.
 - **App loop:** `test_app.c` links the real `app/app.c` and core against the fakes in `adapters/host/`.
 - **Target adapters and `main.c`:** one program per source file, which `#include`s the `.c` file it tests.
 

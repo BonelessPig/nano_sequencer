@@ -25,14 +25,23 @@ typedef enum
 } log_error_id_t;
 
 /**
- * @brief  Reports the step being played and its note value (debug-level output).
- * @param  step  Step index, 0 to 15.
- * @param  note  Note value, 0 to 15.
+ * @brief  Reports the step being played and the pitch of its note
+ *         (debug-level output).
+ * @param  step      Step index, 0 to 15.
+ * @param  semitone  Pitch in semitones above the lowest pitch, 0 to 45.
  * @note   Not ISR-safe. Does not block: the message is queued for log_poll()
  *         to send. If the queue has no room for the whole message, the
  *         message is dropped.
  */
-void log_step_note(uint8_t step, uint8_t note);
+void log_step_note(uint8_t step, uint8_t semitone);
+
+/**
+ * @brief  Reports that the step being played is a rest (debug-level output).
+ * @param  step  Step index, 0 to 15.
+ * @note   Not ISR-safe. Does not block; queued or dropped like
+ *         log_step_note().
+ */
+void log_step_rest(uint8_t step);
 
 /**
  * @brief  Reports a failed operation (error-level output).

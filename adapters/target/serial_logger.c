@@ -186,11 +186,11 @@ port_status_t logger_init(log_level_t level)
 
 
 /**
- * @brief Logs one step's note value at DEBUG level (see log_port.h).
+ * @brief Logs one step's pitch at DEBUG level (see log_port.h).
  * @param step step index
- * @param note note value for that step
+ * @param semitone pitch of that step's note, in semitones
  */
-void log_step_note(uint8_t step, uint8_t note)
+void log_step_note(uint8_t step, uint8_t semitone)
 {
     if (is_level_enabled(LOGLVL_DEBUG))
     {
@@ -198,8 +198,26 @@ void log_step_note(uint8_t step, uint8_t note)
         write_text("Step ");
         write_decimal(step);
         write_text(" Note = ");
-        write_decimal(note);
+        write_decimal(semitone);
         write_text("\r\n");
+        end_message();
+    }
+}
+
+
+
+/**
+ * @brief Logs a step that is a rest at DEBUG level (see log_port.h).
+ * @param step step index
+ */
+void log_step_rest(uint8_t step)
+{
+    if (is_level_enabled(LOGLVL_DEBUG))
+    {
+        begin_message();
+        write_text("Step ");
+        write_decimal(step);
+        write_text(" Rest\r\n");
         end_message();
     }
 }

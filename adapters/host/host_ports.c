@@ -232,9 +232,16 @@ uint8_t timebase_elapsed_ticks(void)
 
 
 
-void log_step_note(uint8_t step, uint8_t note)
+void log_step_note(uint8_t step, uint8_t semitone)
 {
-    record_event(HOST_EVENT_STEP_NOTE, step, note);
+    record_event(HOST_EVENT_STEP_NOTE, step, semitone);
+}
+
+
+
+void log_step_rest(uint8_t step)
+{
+    record_event(HOST_EVENT_STEP_REST, step, 0U);
 }
 
 

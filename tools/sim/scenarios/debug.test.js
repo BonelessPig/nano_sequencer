@@ -33,7 +33,15 @@ function assertNear(actual, expected, tolerance, what) {
         `${what}: ${actual} ms, expected ${expected} within ${tolerance}`);
 }
 
-test('logs every step with the note set on the panel, and wraps', () => {
+// The firmware plays the chromatic scale from the lowest pitch: a note value
+// of 0 is a rest, and any other is logged as its pitch, one less
+function expectedLine(step, noteValue) {
+    return (noteValue === 0)
+        ? `Step ${step} Rest`
+        : `Step ${step} Note = ${noteValue - 1}`;
+}
+
+test('logs every step with the pitch set on the panel or as a rest, and wraps', () => {
     const board = debugBoard(FASTEST_READING);
     const lineCount = (STEP_COUNT * 2) + 1;
 
@@ -41,8 +49,10 @@ test('logs every step with the note set on the panel, and wraps', () => {
 
     board.serial.lines.forEach((line, i) => {
         const step = i % STEP_COUNT;
-        assert.equal(line.text, `Step ${step} Note = ${PANEL[step]}`);
+        assert.equal(line.text, expectedLine(step, PANEL[step]));
     });
+    assert.equal(board.serial.lines[5].text, 'Step 5 Rest');
+    assert.equal(board.serial.lines[10].text, 'Step 10 Note = 14');
 });
 
 test('sends at 115200 baud in double-speed mode', () => {
@@ -77,8 +87,8 @@ test('a switch changed mid-pattern is heard when its step next plays', () => {
     board.setNotes(changed);
     board.runUntilLines(STEP_COUNT * 2, RUN_LIMIT_MS);
 
-    assert.equal(board.serial.lines[2].text, 'Step 2 Note = 7');
-    assert.equal(board.serial.lines[STEP_COUNT + 2].text, 'Step 2 Note = 9');
+    assert.equal(board.serial.lines[2].text, expectedLine(2, PANEL[2]));
+    assert.equal(board.serial.lines[STEP_COUNT + 2].text, expectedLine(2, 9));
 });
 
 test('a step lasts 100 ms at 150 BPM', () => {

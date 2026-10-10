@@ -111,6 +111,22 @@ static void test_step_note_text_matches_the_printf_format(void)
 
 
 
+static void test_step_rest_text_matches_the_printf_format(void)
+{
+    char expected[EXPECTED_CAPACITY];
+
+    (void)logger_init(LOGLVL_DEBUG);
+    for (unsigned int step = 0U; step <= 255U; step += (step < 16U) ? 1U : 239U)
+    {
+        fake_uart_clear();
+        log_step_rest((uint8_t)step);
+        (void)snprintf(expected, sizeof(expected), "Step %d Rest\r\n", (int)step);
+        expect_uart(expected);
+    }
+}
+
+
+
 static void test_error_text_matches_the_printf_format(void)
 {
     static const port_status_t statuses[] =
@@ -160,10 +176,11 @@ static void test_level_filters_messages(void)
     log_error(LOG_ERROR_INIT, ERR_GENERAL);
     expect_uart("");
 
-    // ERROR: errors pass, debug-level step notes do not
+    // ERROR: errors pass, debug-level step notes and rests do not
     (void)logger_init(LOGLVL_ERROR);
     fake_uart_clear();
     log_step_note(1U, 2U);
+    log_step_rest(3U);
     expect_uart("");
     log_error(LOG_ERROR_INIT, ERR_GENERAL);
     expect_uart("Initialization failed, status code = 1\r\n");
@@ -178,8 +195,10 @@ static void test_level_filters_messages(void)
     (void)logger_init(LOGLVL_TRACE);
     fake_uart_clear();
     log_step_note(1U, 2U);
+    log_step_rest(3U);
     log_error(LOG_ERROR_STEP_READ, ERR_INVALID_PARAM);
-    expect_uart("Step 1 Note = 2\r\nStep note read failed, status code = 2\r\n");
+    expect_uart("Step 1 Note = 2\r\nStep 3 Rest\r\n"
+                "Step note read failed, status code = 2\r\n");
 }
 
 
@@ -375,6 +394,7 @@ int main(void)
     RUN_TEST(test_init_programs_the_usart);
     RUN_TEST(test_decimal_has_no_padding_or_sign);
     RUN_TEST(test_step_note_text_matches_the_printf_format);
+    RUN_TEST(test_step_rest_text_matches_the_printf_format);
     RUN_TEST(test_error_text_matches_the_printf_format);
     RUN_TEST(test_unknown_error_id_sends_nothing);
     RUN_TEST(test_level_filters_messages);

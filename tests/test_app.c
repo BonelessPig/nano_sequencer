@@ -19,7 +19,9 @@
 #define TICKS_PER_STEP    (100U)  // At TEMPO_RAW_150_BPM
 #define SCAN_PERIOD_TICKS (8U)    // How often the app re-reads its inputs
 
-// Step n holds note 15 - n, so the step and the note are never the same number
+// Step n holds note value 15 - n, so the step and the note are never the same
+// number. In the chromatic scale the app plays, that is pitch 14 - n, and
+// step 15 (note value 0) is a rest
 static const uint8_t g_descending_notes[HOST_RAW_STEP_BYTES] =
 {
     0xFEU, 0xDCU, 0xBAU, 0x98U, 0x76U, 0x54U, 0x32U, 0x10U
@@ -134,7 +136,7 @@ static void test_step_is_logged_one_tick_after_it_begins(void)
     // The second tick starts by applying it
     run_ticks(1U);
     TEST_ASSERT_EQUAL(1, host_event_count());
-    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 15U);
+    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
 
     // And it is applied once, not on every tick after
     run_ticks(10U);
@@ -145,7 +147,7 @@ static void test_step_is_logged_one_tick_after_it_begins(void)
 
 static void test_steps_are_logged_at_the_tempo_and_wrap(void)
 {
-    const uint16_t step_count = (uint16_t)(SEQ_STEP_COUNT + 2U); // Once round and two more
+    const uint16_t step_count = (uint16_t)(PANEL_STEP_COUNT + 2U); // Once round and two more
 
     start_app();
     run_ticks(2U); // Step 0 begins on tick 1 and is logged on tick 2
@@ -163,9 +165,16 @@ static void test_steps_are_logged_at_the_tempo_and_wrap(void)
 
     for (uint16_t count = 0U; count < step_count; count++)
     {
-        const uint16_t step = (uint16_t)(count % SEQ_STEP_COUNT);
+        const uint16_t step = (uint16_t)(count % PANEL_STEP_COUNT);
 
-        expect_event(count, HOST_EVENT_STEP_NOTE, step, (uint16_t)(15U - step));
+        if (step < 15U)
+        {
+            expect_event(count, HOST_EVENT_STEP_NOTE, step, (uint16_t)(14U - step));
+        }
+        else
+        {
+            expect_event(count, HOST_EVENT_STEP_REST, step, 0U);
+        }
     }
 }
 
@@ -181,7 +190,7 @@ static void test_fastest_tempo_logs_19_steps_a_second(void)
     TEST_ASSERT_EQUAL(19, host_event_count());
     run_ticks(1U);
     TEST_ASSERT_EQUAL(20, host_event_count());
-    expect_event(19U, HOST_EVENT_STEP_NOTE, 3U, 12U);
+    expect_event(19U, HOST_EVENT_STEP_NOTE, 3U, 11U);
 }
 
 
@@ -231,7 +240,7 @@ static void test_tick_reads_the_whole_chain(void)
 {
     start_app();
     run_ticks(1U);
-    TEST_ASSERT_EQUAL(SEQ_RAW_BYTE_COUNT, host_last_step_byte_count());
+    TEST_ASSERT_EQUAL(PANEL_RAW_BYTE_COUNT, host_last_step_byte_count());
 }
 
 
@@ -252,7 +261,50 @@ static void test_elapsed_ticks_reach_the_core(void)
     TEST_ASSERT_EQUAL(1, host_event_count()); // Step 1 begins on the tenth pass
     app_run_once();
     TEST_ASSERT_EQUAL(2, host_event_count());
-    expect_event(1U, HOST_EVENT_STEP_NOTE, 1U, 14U);
+    expect_event(1U, HOST_EVENT_STEP_NOTE, 1U, 13U);
+}
+
+
+
+static void test_rest_is_logged_as_a_rest(void)
+{
+    static const uint8_t rest_then_notes[HOST_RAW_STEP_BYTES] =
+    {
+        0x01U, 0x23U, 0x45U, 0x67U, 0x89U, 0xABU, 0xCDU, 0xEFU
+    };
+
+    start_app();
+    host_set_steps(rest_then_notes, STATUS_OK);
+    run_ticks(2U);
+    TEST_ASSERT_EQUAL(1, host_event_count());
+    expect_event(0U, HOST_EVENT_STEP_REST, 0U, 0U);
+
+    // Note value 1 is the lowest pitch, 0, which is not a rest
+    run_ticks(TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(2, host_event_count());
+    expect_event(1U, HOST_EVENT_STEP_NOTE, 1U, 0U);
+}
+
+
+
+static void test_app_plays_all_sixteen_steps_forward_and_chromatic(void)
+{
+    // Step n holds note value n: the pitches go up a semitone a step
+    static const uint8_t ascending[HOST_RAW_STEP_BYTES] =
+    {
+        0x01U, 0x23U, 0x45U, 0x67U, 0x89U, 0xABU, 0xCDU, 0xEFU
+    };
+
+    start_app();
+    host_set_steps(ascending, STATUS_OK);
+    run_ticks((PANEL_STEP_COUNT * TICKS_PER_STEP) + 2U);
+
+    TEST_ASSERT_EQUAL(PANEL_STEP_COUNT + 1U, host_event_count());
+    for (uint16_t step = 1U; step < PANEL_STEP_COUNT; step++)
+    {
+        expect_event(step, HOST_EVENT_STEP_NOTE, step, (uint16_t)(step - 1U));
+    }
+    expect_event((uint16_t)PANEL_STEP_COUNT, HOST_EVENT_STEP_REST, 0U, 0U); // Wrapped
 }
 
 
@@ -283,7 +335,7 @@ static void test_tempo_read_failure_logs_error_and_keeps_the_tempo(void)
     // Step 1 is still 100 ticks after step 0. Its note first, then the error
     run_ticks(1U);
     TEST_ASSERT_EQUAL(3, host_event_count());
-    expect_event(1U, HOST_EVENT_STEP_NOTE, 1U, 14U);
+    expect_event(1U, HOST_EVENT_STEP_NOTE, 1U, 13U);
     expect_event(2U, HOST_EVENT_ERROR, (uint16_t)LOG_ERROR_TEMPO_READ, (uint16_t)ERR_TIMEOUT);
 }
 
@@ -328,7 +380,7 @@ static void test_init_resets_the_step_and_discards_pending_outputs(void)
     TEST_ASSERT_EQUAL(0, host_event_count());
     run_ticks(1U);
     TEST_ASSERT_EQUAL(1, host_event_count());
-    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 15U);
+    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
 }
 
 
@@ -343,7 +395,7 @@ static void test_init_forgets_earlier_read_failures(void)
     start_app();
     run_ticks(2U);
     TEST_ASSERT_EQUAL(1, host_event_count());
-    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 15U);
+    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
 }
 
 
@@ -361,6 +413,8 @@ int main(void)
     RUN_TEST(test_scan_timing_counts_elapsed_ticks_not_passes);
     RUN_TEST(test_tick_reads_the_whole_chain);
     RUN_TEST(test_elapsed_ticks_reach_the_core);
+    RUN_TEST(test_rest_is_logged_as_a_rest);
+    RUN_TEST(test_app_plays_all_sixteen_steps_forward_and_chromatic);
     RUN_TEST(test_step_read_failure_logs_error_instead_of_the_note);
     RUN_TEST(test_tempo_read_failure_logs_error_and_keeps_the_tempo);
     RUN_TEST(test_both_reads_failing_logs_both_errors_in_order);

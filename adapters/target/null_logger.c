@@ -31,12 +31,23 @@ port_status_t logger_init(log_level_t level)
 /**
  * @brief Discards a step note message (see log_port.h).
  * @param step ignored
- * @param note ignored
+ * @param semitone ignored
  */
-void log_step_note(uint8_t step, uint8_t note)
+void log_step_note(uint8_t step, uint8_t semitone)
 {
     (void)step;
-    (void)note;
+    (void)semitone;
+}
+
+
+
+/**
+ * @brief Discards a step rest message (see log_port.h).
+ * @param step ignored
+ */
+void log_step_rest(uint8_t step)
+{
+    (void)step;
 }
 
 
