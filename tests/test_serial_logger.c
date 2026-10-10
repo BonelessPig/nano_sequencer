@@ -35,11 +35,12 @@ static void expect_uart(const char *p_expected)
 
 static void test_init_programs_the_usart(void)
 {
-    TEST_ASSERT_EQUAL(STATUS_OK, serial_init(LOGLVL_DEBUG));
+    TEST_ASSERT_EQUAL(STATUS_OK, logger_init(LOGLVL_DEBUG));
 
-    // 16 MHz / (16 * 9600) - 1 = 103
+    // 115200 baud in double-speed mode: 16 MHz / (8 * 115200) - 1 = 16.4, nearest is 16
     TEST_ASSERT_EQUAL(0, g_fake_ubrr0h);
-    TEST_ASSERT_EQUAL(103, g_fake_ubrr0l);
+    TEST_ASSERT_EQUAL(16, g_fake_ubrr0l);
+    TEST_ASSERT_EQUAL(0x02, g_fake_ucsr0a & 0xDFU); // Double speed on; ignore the buffer-empty flag
     TEST_ASSERT_EQUAL(0x18, g_fake_ucsr0b); // Receiver and transmitter enabled
     TEST_ASSERT_EQUAL(0x06, g_fake_ucsr0c); // 8 data bits, no parity, 1 stop bit
 }
@@ -66,7 +67,7 @@ static void test_step_note_text_matches_the_printf_format(void)
 {
     char expected[EXPECTED_CAPACITY];
 
-    (void)serial_init(LOGLVL_DEBUG);
+    (void)logger_init(LOGLVL_DEBUG);
     // Every step and note the sequencer can produce, plus the 8-bit extremes
     for (unsigned int step = 0U; step <= 255U; step += (step < 16U) ? 1U : 239U)
     {
@@ -90,7 +91,7 @@ static void test_error_text_matches_the_printf_format(void)
     };
     char expected[EXPECTED_CAPACITY];
 
-    (void)serial_init(LOGLVL_DEBUG);
+    (void)logger_init(LOGLVL_DEBUG);
     for (size_t i = 0U; i < (sizeof(statuses) / sizeof(statuses[0])); i++)
     {
         fake_uart_clear();
@@ -114,7 +115,7 @@ static void test_error_text_matches_the_printf_format(void)
 
 static void test_unknown_error_id_sends_nothing(void)
 {
-    (void)serial_init(LOGLVL_DEBUG);
+    (void)logger_init(LOGLVL_DEBUG);
     fake_uart_clear();
     log_error((log_error_id_t)99, ERR_GENERAL);
     expect_uart("");
@@ -125,14 +126,14 @@ static void test_unknown_error_id_sends_nothing(void)
 static void test_level_filters_messages(void)
 {
     // OFF: nothing at all
-    (void)serial_init(LOGLVL_OFF);
+    (void)logger_init(LOGLVL_OFF);
     fake_uart_clear();
     log_step_note(1U, 2U);
     log_error(LOG_ERROR_INIT, ERR_GENERAL);
     expect_uart("");
 
     // ERROR: errors pass, debug-level step notes do not
-    (void)serial_init(LOGLVL_ERROR);
+    (void)logger_init(LOGLVL_ERROR);
     fake_uart_clear();
     log_step_note(1U, 2U);
     expect_uart("");
@@ -140,13 +141,13 @@ static void test_level_filters_messages(void)
     expect_uart("Initialization failed, status code = 1\r\n");
 
     // FATAL is less verbose than ERROR, so errors are dropped too
-    (void)serial_init(LOGLVL_FATAL);
+    (void)logger_init(LOGLVL_FATAL);
     fake_uart_clear();
     log_error(LOG_ERROR_INIT, ERR_GENERAL);
     expect_uart("");
 
     // DEBUG and TRACE: both kinds pass
-    (void)serial_init(LOGLVL_TRACE);
+    (void)logger_init(LOGLVL_TRACE);
     fake_uart_clear();
     log_step_note(1U, 2U);
     log_error(LOG_ERROR_STEP_READ, ERR_INVALID_PARAM);
@@ -158,10 +159,10 @@ static void test_level_filters_messages(void)
 static void test_off_is_never_an_enabled_message_level(void)
 {
     // No message is sent at level OFF today; this pins the rule for when one might be
-    (void)serial_init(LOGLVL_TRACE);
+    (void)logger_init(LOGLVL_TRACE);
     TEST_ASSERT(!is_level_enabled(LOGLVL_OFF));
 
-    (void)serial_init(LOGLVL_OFF);
+    (void)logger_init(LOGLVL_OFF);
     TEST_ASSERT(!is_level_enabled(LOGLVL_OFF));
 }
 
@@ -169,7 +170,7 @@ static void test_off_is_never_an_enabled_message_level(void)
 
 static void test_write_waits_while_the_transmit_buffer_is_full(void)
 {
-    (void)serial_init(LOGLVL_DEBUG);
+    (void)logger_init(LOGLVL_DEBUG);
     fake_uart_clear();
     g_fake_uart_busy_polls = 25U;
     write_char('A');

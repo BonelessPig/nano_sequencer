@@ -11,6 +11,9 @@
  * appear in both files; one declared here but missing there fails at link time
  * with "undefined reference".
  *
+ * The USART0 registers are in atmega328p_usart_regs.h, because only the debug
+ * build's serial logger uses them.
+ *
  * Bit positions are taken directly from the ATmega328P datasheet. This file
  * has no dependency on avr-libc's <avr/io.h> — it exists so the rest of the
  * codebase can name registers without pulling in avr-libc.
@@ -51,21 +54,5 @@ extern volatile uint16_t ADC;    // ADC Data Register (10-bit result)
 #define ADPS0 0 // ADC Prescaler Select Bit 0 in ADCSRA
 
 #define REFS0 6 // Reference Selection Bit 0 in ADMUX
-
-// ---- USART0 ----
-extern volatile uint8_t UBRR0H; // USART Baud Rate Register High Byte
-extern volatile uint8_t UBRR0L; // USART Baud Rate Register Low  Byte
-
-extern volatile uint8_t UCSR0A; // USART Control and Status Register A
-extern volatile uint8_t UCSR0B; // USART Control and Status Register B
-extern volatile uint8_t UCSR0C; // USART Control and Status Register C
-
-extern volatile uint8_t UDR0;   // USART I/O Data Register
-
-#define UDRE0  5 // USART Data Register Empty flag in UCSR0A
-#define RXEN0  4 // Rx Enable bit in UCSR0B
-#define TXEN0  3 // Tx Enable bit in UCSR0B
-#define UCSZ01 2 // Character Size bit 1 in UCSR0C
-#define UCSZ00 1 // Character Size bit 0 in UCSR0C
 
 #endif /* ATMEGA328P_REGS_H */

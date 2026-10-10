@@ -26,7 +26,7 @@ static void test_output_pins_are_set_from_all_inputs(void)
 
     TEST_ASSERT_EQUAL(0x20, g_fake_ddrb); // PB5
     TEST_ASSERT_EQUAL(0x02, g_fake_ddrc); // PC1
-    TEST_ASSERT_EQUAL(0x0D, g_fake_ddrd); // PD0, PD2 (load), PD3 (clock)
+    TEST_ASSERT_EQUAL(0x0C, g_fake_ddrd); // PD2 (load), PD3 (clock); PD0 (UART receive) stays an input
 }
 
 

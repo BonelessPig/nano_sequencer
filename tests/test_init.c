@@ -14,14 +14,14 @@
 
 #define NOT_CALLED (0U)
 
-static port_status_t g_serial_status   = STATUS_OK; // What the serial_init stub returns
+static port_status_t g_serial_status   = STATUS_OK; // What the logger_init stub returns
 static port_status_t g_register_status = STATUS_OK; // What the register_init stub returns
-static log_level_t   g_serial_level    = LOGLVL_OFF; // Level serial_init was last given
+static log_level_t   g_serial_level    = LOGLVL_OFF; // Level logger_init was last given
 static unsigned int  g_call_count      = 0U;         // Stub calls so far
-static unsigned int  g_serial_call     = NOT_CALLED; // Position of the serial_init call, from 1
+static unsigned int  g_serial_call     = NOT_CALLED; // Position of the logger_init call, from 1
 static unsigned int  g_register_call   = NOT_CALLED; // Position of the register_init call, from 1
 
-port_status_t serial_init(log_level_t level)
+port_status_t logger_init(log_level_t level)
 {
     g_call_count++;
     g_serial_call  = g_call_count;

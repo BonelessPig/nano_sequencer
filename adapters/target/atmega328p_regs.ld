@@ -1,10 +1,11 @@
 /*
- * atmega328p_regs.ld - where each register declared in atmega328p_regs.h lives.
+ * atmega328p_regs.ld - where each register declared in atmega328p_regs.h and
+ * atmega328p_usart_regs.h lives.
  *
  * The Makefile passes this file to the linker alongside the object files. Each
  * line gives a register name its data-space address from the ATmega328P
- * datasheet ("Register Summary"). Keep the two files in step: a register needs
- * a declaration in the header and an address here.
+ * datasheet ("Register Summary"). Keep the files in step: a register needs
+ * a declaration in one of the headers and an address here.
  *
  * A wrong address here links without any warning and makes the firmware write
  * to the wrong register, so check new entries against the datasheet.

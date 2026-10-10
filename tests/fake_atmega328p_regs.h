@@ -1,11 +1,13 @@
 #ifndef ATMEGA328P_REGS_H
 #define ATMEGA328P_REGS_H
+#define ATMEGA328P_USART_REGS_H // This file stands in for the USART header too
 /**
  * @file   fake_atmega328p_regs.h
- * @brief  Stand-in for adapters/target/atmega328p_regs.h so a target adapter
- *         can be compiled and tested on a PC. It uses the same include guard
- *         as the real header, so including this first makes the adapter's own
- *         #include of the real one a no-op. Registers become plain variables,
+ * @brief  Stand-in for adapters/target/atmega328p_regs.h and
+ *         atmega328p_usart_regs.h so a target adapter can be compiled and
+ *         tested on a PC. It claims the real headers' include guards, so
+ *         including this first makes the adapter's own #include of a real
+ *         one a no-op. Registers become plain variables,
  *         with three small hardware models behind them:
  *           - USART:  bytes written to the data register are captured, and the
  *                     "transmit buffer empty" flag can be held off for a while
@@ -34,6 +36,7 @@
 #define REFS0 6 // Reference Selection Bit 0 in ADMUX
 
 #define UDRE0  5 // USART Data Register Empty flag in UCSR0A
+#define U2X0   1 // Double Transmission Speed bit in UCSR0A
 #define RXEN0  4 // Rx Enable bit in UCSR0B
 #define TXEN0  3 // Tx Enable bit in UCSR0B
 #define UCSZ01 2 // Character Size bit 1 in UCSR0C

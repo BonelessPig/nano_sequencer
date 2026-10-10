@@ -4,7 +4,8 @@
 # Works on Windows, macOS and Linux (see "Platform differences" below).
 #
 # Usage:
-#   make              Build build/output.hex and print the size report
+#   make              Build build/debug/output.hex and print the size report
+#   make CONFIG=release   The same for the release build (see "Build configuration")
 #   make size         Print the size report (builds first if needed)
 #   make flash        Build if needed, then upload to the board over serial
 #   make test         Build the code for this PC and run its unit tests
@@ -15,8 +16,8 @@
 #
 # What a build does, in order:
 #   1. Compile   each .c file     ->  build/obj/**/*.o   (one avr-gcc call per file)
-#   2. Link      all .o files     ->  build/output.elf   (adds startup code + libgcc)
-#   3. Convert   output.elf       ->  build/output.hex   (the format avrdude uploads)
+#   2. Link      all .o files     ->  build/<config>/output.elf   (adds startup code + libgcc)
+#   3. Convert   output.elf       ->  build/<config>/output.hex   (the format avrdude uploads)
 #   4. Report    flash and RAM usage of output.elf
 #
 # make only redoes a step when its inputs are newer than its output, so a second
@@ -77,6 +78,26 @@ endif
 MCU        = atmega328p
 F_CPU      = 16000000UL
 
+# ---- Build configuration ----------------------------------------------------
+
+# CONFIG picks which logger is linked into the firmware. Nothing else differs:
+# every file is compiled the same way for both, so they share build/obj/.
+#   debug     serial_logger.c: text log over USART0 at 115200 baud (the default)
+#   release   null_logger.c: no logging, and the USART is never switched on
+# Each configuration gets its own output folder, so switching between them
+# can never leave a stale image behind. CONFIG applies to `make`, `make size`
+# and `make flash`; the tests and the analysis always cover both loggers.
+CONFIG ?= debug
+
+LOGGERS = serial_logger null_logger
+ifeq ($(CONFIG),debug)
+    LOGGER = serial_logger
+else ifeq ($(CONFIG),release)
+    LOGGER = null_logger
+else
+    $(error CONFIG must be debug or release, not "$(CONFIG)")
+endif
+
 # ---- Upload settings --------------------------------------------------------
 
 # PROGRAMMER "arduino" talks to the serial bootloader already on the Nano.
@@ -107,7 +128,7 @@ GCOV = gcov
 # ---- Files ------------------------------------------------------------------
 
 BUILD_DIR = build
-TARGET    = $(BUILD_DIR)/output
+TARGET    = $(BUILD_DIR)/$(CONFIG)/output
 
 # The source is split by role (CLAUDE.md has the rules for what goes where):
 #   core/             Pure sequencer logic; no hardware access, also builds on a PC
@@ -119,9 +140,11 @@ TARGET    = $(BUILD_DIR)/output
 SRC_DIRS     = app core adapters/target
 INCLUDE_DIRS = core ports adapters/target
 
-# SRCS: every .c file in SRC_DIRS. A new .c file in one of those folders is
-# picked up automatically; a new folder must be added to SRC_DIRS.
-SRCS := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))
+# SRCS: every .c file in SRC_DIRS, less the loggers this configuration does not
+# use. A new .c file in one of those folders is picked up automatically; a new
+# folder must be added to SRC_DIRS.
+UNUSED_LOGGER_SRCS := $(patsubst %,adapters/target/%.c,$(filter-out $(LOGGER),$(LOGGERS)))
+SRCS := $(filter-out $(UNUSED_LOGGER_SRCS),$(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)))
 
 # OBJS: the matching object file for each source, mirrored under build/obj/
 # (app/main.c -> build/obj/app/main.o).
@@ -194,6 +217,7 @@ $(TARGET).hex: $(TARGET).elf
 # Step 2: link all object files into one .elf. An "undefined reference" error
 # here means a function is declared and called but its .c file is not in SRCS.
 $(TARGET).elf: $(OBJS) $(REGS_LD)
+	@$(call mkdir_p,$(@D))
 	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(REGS_LD)
 
 # Step 1: compile one .c file to one .o file. The first line creates the output
@@ -241,8 +265,9 @@ TEST_APP = $(HOST_DIR)/test_app$(EXE)
 # Tests that #include the source file they test (one each for the target
 # adapters and main.c) rather than linking it. tests/test_<name>.c builds into
 # the program test_<name>; add new ones to this list.
-INCLUDING_TESTS = test_serial_logger test_register_init test_analog_reader \
-                  test_shift_reg_reader test_init test_delay test_main
+INCLUDING_TESTS = test_serial_logger test_null_logger test_register_init \
+                  test_analog_reader test_shift_reg_reader test_init test_delay \
+                  test_main
 TEST_INCLUDING := $(patsubst %,$(HOST_DIR)/%$(EXE),$(INCLUDING_TESTS))
 
 TEST_PROGRAMS = $(TEST_SEQ) $(TEST_APP) $(TEST_INCLUDING)
@@ -294,21 +319,25 @@ coverage:
 # file, which is not in the repo; if it is missing, run
 # tools/misra/fetch_misra_headlines.sh first. Exits non-zero if anything is found.
 #
-# The analysis runs twice, once per set of adapters, because cppcheck treats
-# everything it is given as one program. The target and host adapters each
-# define the same port functions (only one set is ever linked), and analysing
-# both together would report every port as defined twice.
+# The analysis runs three times, once per program that is actually linked,
+# because cppcheck treats everything it is given as one program. The target and
+# host adapters each define the same port functions, as do the two target
+# loggers (only one of each is ever linked), and analysing them together would
+# report every such function as defined twice.
 #
 # Each run analyses the same files that are linked together for that build:
-#   misra-target   core, ports, all of app (including main.c), adapters/target
+#   misra-debug    core, ports, all of app (including main.c), adapters/target
+#                    without null_logger.c
+#   misra-release  the same without serial_logger.c
 #   misra-host     core, ports, app/app.c, adapters/host, tests/test_app.c
 # The host run mirrors the test_app program. It leaves out app/main.c because
 # the test supplies its own main, and it includes the test file only so
 # cppcheck can see that the host fakes' control functions are called from
 # another file. Test code is not held to the coding standard, so findings
 # located in tests/ are not reported (MISRA_HOST_SCOPE).
-#   make misra         Both runs; stops at the first one that reports findings
-#   make -k misra      Both runs even if the first reports findings
+#   make misra         All runs; stops at the first one that reports findings
+#   make -k misra      All runs even if an earlier one reports findings
+#   -i <file>       Leave that file out of the run
 #   MISRA_INCLUDES  Where cppcheck looks for the project's own headers
 #   -DF_CPU=...     Same define the compiler gets; without it the headers hit
 #                     their #error and cppcheck skips the code
@@ -318,11 +347,14 @@ MISRA_FLAGS      = --addon=tools/misra/misra.json --std=c99 \
                    --inline-suppr --error-exitcode=1 -DF_CPU=$(F_CPU)
 MISRA_HOST_SCOPE = -I app -I adapters/host -I tests "--suppress=*:tests/*"
 
-.PHONY: misra-target misra-host
-misra: misra-target misra-host
+.PHONY: misra-debug misra-release misra-host
+misra: misra-debug misra-release misra-host
 
-misra-target:
-	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) core ports app adapters/target
+misra-debug:
+	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) -i adapters/target/null_logger.c core ports app adapters/target
+
+misra-release:
+	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) -i adapters/target/serial_logger.c core ports app adapters/target
 
 misra-host:
 	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_HOST_SCOPE) core ports app/app.c adapters/host tests/test_app.c

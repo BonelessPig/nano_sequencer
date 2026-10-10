@@ -1,6 +1,7 @@
 /**
  * @file   serial_logger.c
- * @brief  Target implementation of the log port: text logging over USART0.
+ * @brief  Target implementation of the log port for the debug build: text
+ *         logging over USART0. The release build links null_logger.c instead.
  *         Messages are sent piece by piece (fixed text, then numbers as
  *         decimal digits), so no formatting buffer is needed.
  * @author BonelessPig
@@ -9,13 +10,13 @@
  * @copyright Copyright (c) 2025
  *
  */
-#include "serial_logger.h"
+#include "logger.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "log_port.h"
 #include "port_status.h"
-#include "atmega328p_regs.h"
+#include "atmega328p_usart_regs.h"
 
 // F_CPU is provided by the build (see Makefile / -DF_CPU) rather than defined
 // here, so there is a single source of truth for the clock speed.
@@ -23,11 +24,15 @@
 #error "F_CPU must be defined by the build (e.g. -DF_CPU=16000000UL)"
 #endif
 
-#define BAUD (9600UL) // Desired baud rate
+#define BAUD (115200UL) // Desired baud rate
 
-// Calculated per the ATmega328P datasheet, in place of <util/setbaud.h>
-#define UBRR_SAMPLES_PER_BIT (16UL) // Normal-speed mode samples each bit 16 times
-#define UBRR_VALUE  (((F_CPU) / (UBRR_SAMPLES_PER_BIT * BAUD)) - 1UL) // USART Baud Rate Register value
+// Calculated per the ATmega328P datasheet, in place of <util/setbaud.h>.
+// Double-speed mode is used because its finer divisor steps get much closer to
+// 115200 at 16 MHz (2.1 % fast) than normal speed can (8.5 % fast). The
+// division rounds to the nearest divisor rather than down.
+#define UBRR_SAMPLES_PER_BIT (8UL) // Double-speed mode samples each bit 8 times
+#define UBRR_CLOCKS_PER_BIT  (UBRR_SAMPLES_PER_BIT * BAUD) // CPU clocks per bit at a divisor of 1
+#define UBRR_VALUE  ((((F_CPU) + (UBRR_CLOCKS_PER_BIT / 2UL)) / UBRR_CLOCKS_PER_BIT) - 1UL) // USART Baud Rate Register value
 #define BYTE_RANGE  (256UL) // Number of values one byte can hold
 #define UBRRH_VALUE ((uint8_t)(UBRR_VALUE / BYTE_RANGE)) // High byte of UBRR value
 #define UBRRL_VALUE ((uint8_t)(UBRR_VALUE % BYTE_RANGE)) // Low  byte of UBRR value
@@ -109,18 +114,18 @@ static void write_decimal(uint16_t value)
 
 
 /**
- * @brief Initializes the serial logger with the specified log level.
+ * @brief Sets up USART0 and the log level (see logger.h).
  * @param level level to set for logging
  * @return port_status_t status code (STATUS_OK for success)
  */
-port_status_t serial_init(log_level_t level)
+port_status_t logger_init(log_level_t level)
 {
     UBRR0H = UBRRH_VALUE; // Set baud rate high byte
     UBRR0L = UBRRL_VALUE; // Set baud rate low byte
 
     // Set these explicitly rather than relying on reset defaults, in case a
-    // bootloader left them changed (e.g. double-speed mode enabled)
-    UCSR0A = 0U; // Normal speed (U2X0 = 0), no multi-processor mode
+    // bootloader left them changed
+    UCSR0A = (uint8_t)(1U << U2X0); // Double speed, no multi-processor mode
     UCSR0C = (uint8_t)((1U << UCSZ01) | (1U << UCSZ00)); // Frame format: 8 data bits, no parity, 1 stop bit
 
     UCSR0B = (uint8_t)((1U << RXEN0) | (1U << TXEN0)); // Enable receiver and transmitter

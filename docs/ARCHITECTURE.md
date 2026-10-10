@@ -2,20 +2,20 @@
 
 How the firmware is structured, what happens from reset to the main loop, how each part works, and what is still open. The standing rules for the codebase are in [CLAUDE.md](../CLAUDE.md); this document describes what is there.
 
-How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite has not yet. Timing figures are calculated, not measured.
+How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite, the 115200 baud setting and the release build have not yet. Timing figures are calculated, not measured.
 
 ## At a glance
 
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano), 16 MHz |
-| Flash used | 1328 bytes of 32 KB |
-| RAM used | 4 bytes static (2-byte log level, 2-byte sequencer state), plus stack |
+| Flash used | 1328 bytes of 32 KB (debug build); 796 bytes (release build) |
+| RAM used | 4 bytes static (2-byte log level, 2-byte sequencer state), plus stack. The release build has no log level, so 2 bytes |
 | Interrupts | None. Everything is polled and blocking |
 | Inputs | 16 steps × 4 bits from eight 74HC165s; one pot on ADC channel 6 for tempo |
-| Outputs | Serial log only (9600 baud). No gate, trigger or CV output yet |
-| Tests | 61 host tests in 9 programs (12 for the core, 9 for the app loop, 37 for the six target adapters, 3 for `main.c`) |
-| Coverage | 100% of lines (167) and branches (76) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
+| Outputs | Serial log only (115200 baud, debug build); none at all in the release build. No gate, trigger or CV output yet |
+| Tests | 63 host tests in 10 programs (12 for the core, 9 for the app loop, 39 for the seven target adapter sources, 3 for `main.c`) |
+| Coverage | 100% of lines (172) and branches (76) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
 
 ## Structure: ports and adapters
 
@@ -42,23 +42,23 @@ graph TD
 | `app/` | Wires ports to the core; holds `main` | No |
 | `tests/` | Host test programs and a small assert-based harness | No |
 
-Ports are bound at link time: the firmware links `adapters/target/`, the tests link `adapters/host/`, and both use the same headers. There are no function-pointer tables.
+Ports are bound at link time: the firmware links `adapters/target/`, the tests link `adapters/host/`, and both use the same headers. There are no function-pointer tables. The debug and release builds are the same idea one level down: `adapters/target/` holds two implementations of the log port, and the Makefile links one of them (see Build configurations below).
 
 ### The ports
 
 | Port | Function | Target implementation |
 |---|---|---|
-| `platform_port.h` | `platform_init()` | `init.c`: serial logger, then pin directions and ADC |
+| `platform_port.h` | `platform_init()` | `init.c`: logger, then pin directions and ADC |
 | `step_input_port.h` | `step_input_read(p_raw_bits, byte_count)` | `shift_reg_reader.c`: 74HC165 chain |
 | `tempo_input_port.h` | `tempo_input_read(p_raw)` | `analog_reader.c`: ADC channel 6 |
 | `delay_port.h` | `delay_wait_ms(ms)` | `delay.c`: calibrated busy-wait |
-| `log_port.h` | `log_step_note(step, note)`, `log_error(what, status)` | `serial_logger.c`: USART0 |
+| `log_port.h` | `log_step_note(step, note)`, `log_error(what, status)` | `serial_logger.c`: USART0 (debug build), or `null_logger.c`: discards everything (release build) |
 
-Functions that can fail return `port_status_t` (`STATUS_OK` = 0, `ERR_INVALID_PARAM` = 2, `ERR_TIMEOUT` = 4, and so on). The numbers appear in the serial log, so they are fixed.
+Functions that can fail return `port_status_t` (`STATUS_OK` = 0, `ERR_INVALID_PARAM` = 2, `ERR_TIMEOUT` = 4, and so on). The numbers appear in the debug build's serial log, so they are fixed.
 
 ## What "bare metal" means here
 
-No source file includes an avr-libc header. Registers are declared in `adapters/target/atmega328p_regs.h` and placed by the linker, and the delay comes from the `__builtin_avr_delay_cycles` compiler builtin. There is no `printf`, `memset` or any other library function; the logger converts numbers to text itself. The build uses `-ffreestanding`, so `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` are the compiler's own.
+No source file includes an avr-libc header. Registers are declared in `adapters/target/atmega328p_regs.h` (and `atmega328p_usart_regs.h` for USART0) and placed by the linker, and the delay comes from the `__builtin_avr_delay_cycles` compiler builtin. There is no `printf`, `memset` or any other library function; the logger converts numbers to text itself. The build uses `-ffreestanding`, so `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` are the compiler's own.
 
 The link step is not library-free. The Makefile links with plain `avr-gcc -mmcu=atmega328p`, so the map file shows:
 
@@ -99,7 +99,7 @@ If `platform_init()` fails, `app_init()` logs it and `main` returns the status; 
 
 There is no notion of a "current step" yet. A tick is a sample-and-print sweep, and the tempo pot sets the pause between sweeps.
 
-**Where the time goes.** Logging is blocking and dominates. Each line (`Step N Note = M\r\n`) is 17 to 19 characters, so a sweep sends about 280 to 295 characters. At 9600 baud that is roughly 0.3 s per tick, more than the largest possible tempo delay of 255 ms. The shift register read and the ADC conversion together take well under a millisecond.
+**Where the time goes.** In the debug build, logging is blocking and is the largest fixed cost. Each line (`Step N Note = M\r\n`) is 17 to 19 characters, so a sweep sends about 280 to 295 characters. At 115200 baud that is roughly 25 ms per tick (it was about 0.3 s at 9600 baud, more than the largest possible tempo delay of 255 ms). The shift register read and the ADC conversion together take well under a millisecond, and in the release build they are all that is left besides the delay.
 
 ## The core — `core/seq.c`
 
@@ -120,6 +120,8 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
 
 Each register is declared as an ordinary variable, for example `extern volatile uint8_t PORTD;`, with no address in the C source. The linker places each name at its datasheet address using `atmega328p_regs.ld`, which the Makefile passes as an extra linker input. A register must appear in both files; one missing from the `.ld` file fails at link time with an undefined reference, but a wrong address there links silently.
 
+The USART0 registers and their bit positions are declared in a second header, `atmega328p_usart_regs.h`, on the same scheme and with their addresses in the same `.ld` file. Only `serial_logger.c` includes it. The release build does not link that file, so with the bit positions in the main header they would be macros nothing in the release firmware uses (MISRA rule 2.5).
+
 Registers in the low I/O range carry avr-gcc's `io_low` attribute, which lets the compiler keep using single-instruction bit operations (`sbi`, `cbi`, `sbis`) even though it cannot see the address. The generated code is identical to the earlier pointer-cast form. `ADC` is a 16-bit variable at 0x78, which reads ADCL then ADCH.
 
 ### Pin and ADC setup — `register_init.c`
@@ -129,7 +131,6 @@ Registers in the low I/O range carry avr-gcc's `io_low` attribute, which lets th
 | PB5 | D13 (on-board LED) | output | Nothing yet; never written |
 | PC0 | A0 | input | Nothing yet; never read |
 | PC1 | A1 | output | Nothing yet; never written |
-| PD0 | D0 / RXD | output | See open item 2 |
 | PD2 | D2 | output | 74HC165 SH/LD (load, active low) |
 | PD3 | D3 | output | 74HC165 CLK |
 | PD4 | D4 | input | 74HC165 serial data (QH of nearest chip) |
@@ -152,11 +153,17 @@ Pulses PD2 low then high to latch all parallel inputs, then for each byte reads 
 
 Within each nibble the higher-lettered input is the more significant bit, so input H of the nearest chip is the MSB of step 0. Each chip's Clock Inhibit pin must be tied to GND. The clock and load pulses are a single `sbi`/`cbi` pair, about 125 ns wide at 16 MHz, comfortably above the 74HC165's minimum at 5 V.
 
-### Log — `serial_logger.c`
+### Log — `serial_logger.c` (debug build)
 
-`serial_init()` sets the baud divisor from `F_CPU` (`16000000 / (16 × 9600) − 1 = 103`, about 0.2 % error), sets normal speed and 8N1 explicitly, and enables the transmitter and receiver. Nothing reads from the UART.
+`logger_init()` sets the baud divisor from `F_CPU` for 115200 baud in double-speed mode (`16000000 / (8 × 115200) − 1 = 16.4`, rounded to the nearest divisor, 16), sets double speed and 8N1 explicitly, and enables the transmitter and receiver. Nothing reads from the UART.
+
+A divisor of 16 gives 117647 baud, 2.1 % fast. That is the usual setting for 115200 on a 16 MHz AVR and what USB serial bridges are routinely run at, but it is not exact. Normal-speed mode cannot do better (its nearest divisor is 8.5 % off), which is why double speed is used. The rates that are exact at 16 MHz are 250000, 500000 and 1000000; changing `BAUD` in `serial_logger.c` is enough to switch, and the divisor follows from it.
 
 The port functions `log_step_note()` and `log_error()` own the message wording. Each checks the log level, then sends the message in pieces: fixed text through `write_text()` and numbers through `write_decimal()`, which produces unpadded decimal digits. Every byte goes through `write_char()`, which busy-waits on `UDRE0`. There is no format buffer, so nothing can be truncated. The level is set to DEBUG at init, so step notes (DEBUG) and errors (ERROR) both print.
+
+### Log — `null_logger.c` (release build)
+
+The same three functions (`logger_init()`, `log_step_note()`, `log_error()`) with empty bodies. It touches no registers, so the USART is never set up or enabled, and it keeps no state. The app still calls the log port 16 times per tick; each call returns immediately.
 
 ### Delay — `delay.c`
 
@@ -164,20 +171,21 @@ The port functions `log_step_note()` and `log_error()` own the message wording. 
 
 ## Host side — `adapters/host/` and `tests/`
 
-`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every output-port call in order. `make test` builds and runs nine programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
+`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every output-port call in order. `make test` builds and runs ten programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
 
 Two link the code they test:
 
 - `test_seq`: the core alone. Decoding of every step and nibble, the delay maths, last-valid-tempo reuse, independence of the two valid flags, and null-pointer handling.
 - `test_app`: the real `app.c` and core linked against the fakes. Checks that a tick logs 16 notes in order and then delays once, that a failed read logs the right error in the right place, and that init failure is logged and returned.
 
-The other seven `#include` the one source file they test, with `tests/fake_atmega328p_regs.h` standing in for the register map (it claims the real header's include guard) and any function that file calls but does not define supplied as a stub by the test:
+The other eight `#include` the one source file they test, with `tests/fake_atmega328p_regs.h` standing in for the register map (it claims the include guards of both real register headers) and any function that file calls but does not define supplied as a stub by the test:
 
-- `test_serial_logger`: the USART setup values, the level filter, the wait for a full transmit buffer, and that every message is byte-for-byte what the earlier `printf`-style format strings produced.
+- `test_serial_logger`: the USART setup values (divisor 16, double speed, 8N1), the level filter, the wait for a full transmit buffer, and that every message is byte-for-byte what the earlier `printf`-style format strings produced.
+- `test_null_logger`: init succeeds at any level, every message is discarded, and no USART register is written.
 - `test_register_init`: which direction bits are set and cleared, that the others and the output levels are left alone, and the ADC enable and prescaler value.
 - `test_analog_reader`: channel and reference selection, the result, a slow conversion, the timeout at exactly the poll budget, and parameter checks. The fake ADC clears its start bit after a set number of polls.
 - `test_shift_reg_reader`: every bit of the chain lands in the right place, one load pulse and eight clocks per byte, the lines left idle, other port D pins untouched, and parameter checks. The fake models the 74HC165 chain from the load and clock lines, so a read only returns the right bytes if the pulses come in the right order.
-- `test_init`: serial bring-up before registers, at DEBUG level, and each failure returned.
+- `test_init`: logger bring-up before registers, at DEBUG level, and each failure returned.
 - `test_delay`: one call to the delay builtin per millisecond, each for `F_CPU / 1000` cycles. The test defines a function with the builtin's name.
 - `test_main`: `main()` (renamed while included) returns the status when init fails and otherwise loops calling `app_run_once`. The stub leaves the endless loop with `longjmp`.
 
@@ -189,11 +197,23 @@ What this does not show: the fakes are plain variables, so nothing here checks a
 
 ## Build — `Makefile`
 
-`make` compiles every `.c` under `app/`, `core/` and `adapters/target/` into `build/obj/`, links `build/output.elf`, converts to Intel HEX, and prints a size report. `make flash` uploads with avrdude at 57600 baud (the old-bootloader Nano setting), with the signature check and verification on. `make test`, `make coverage` and `make misra` are described above and in the README. The Makefile handles Windows, macOS and Linux; only Windows has been exercised.
+`make` compiles every `.c` under `app/`, `core/` and `adapters/target/` (less the logger the configuration does not use) into `build/obj/`, links `build/<config>/output.elf`, converts to Intel HEX, and prints a size report. `make flash` uploads with avrdude at 57600 baud (the old-bootloader Nano setting), with the signature check and verification on. `make test`, `make coverage` and `make misra` are described above and in the README. The Makefile handles Windows, macOS and Linux; only Windows has been exercised.
+
+### Build configurations
+
+`CONFIG=debug` (the default) and `CONFIG=release` differ in one thing: which of `serial_logger.c` and `null_logger.c` is linked. There are no configuration macros and no conditional compilation; every source file is compiled the same way for both, so the two share `build/obj/`. Each has its own output folder (`build/debug/`, `build/release/`), so switching back and forth cannot leave a stale image. `make flash CONFIG=release` uploads the release image. `make test`, `make coverage` and `make misra` do not take a configuration: they always cover both loggers.
+
+| | Debug | Release |
+|---|---:|---:|
+| Flash | 1328 bytes | 796 bytes |
+| Static RAM | 4 bytes | 2 bytes |
+| Time per tick besides the tempo delay | about 25 ms | under 1 ms |
+
+A lower baud rate for release was considered and has no use: the release build never switches the USART on, so it has no baud rate.
 
 ## Static analysis
 
-`make misra` runs cppcheck with its MISRA addon twice, each time over the files that are linked together for that build: the firmware (`core/`, `ports/`, `app/`, `adapters/target/`) and the `test_app` host program (`core/`, `ports/`, `app/app.c`, `adapters/host/`, `tests/test_app.c`). Counts before the refactor are in [misra-baseline.md](misra-baseline.md): 165 findings, 5 of them mandatory and 101 required. There are now none, and no inline suppressions or deviations in the source.
+`make misra` runs cppcheck with its MISRA addon three times, each time over the files that are linked together for that build: the debug firmware (`core/`, `ports/`, `app/`, `adapters/target/` without `null_logger.c`), the release firmware (the same without `serial_logger.c`) and the `test_app` host program (`core/`, `ports/`, `app/app.c`, `adapters/host/`, `tests/test_app.c`). Counts before the refactor are in [misra-baseline.md](misra-baseline.md): 165 findings, 5 of them mandatory and 101 required. There are now none, and no inline suppressions or deviations in the source.
 
 Two things about scope: findings located in `tests/` are not reported, because test code is not held to the coding standard; the test file is in the host run only so cppcheck can see the host fakes being called. And cppcheck implements only part of MISRA C, so zero findings means zero from this tool, not a claim of full compliance. The `io_low` attribute in the register header and the delay builtin are compiler extensions that the tool does not flag.
 
@@ -203,22 +223,22 @@ How findings are handled is set out in CLAUDE.md.
 
 Earlier findings from this analysis that have since been fixed are in the git history (log level filter, flash port default, header dependency tracking, register map, UART setup, robustness gaps, stale comments, Makefile flags, coding-standard cleanup of the target adapters). What remains:
 
-### 1. Blocking logging sets the real loop time
+### 1. Blocking logging still puts a floor under the debug build's loop time
 
-A tick spends about 0.3 s in the UART. Once the loop advances one step per tempo period, logging 16 lines per step would cap the tempo at roughly three steps per second regardless of the pot. Options are to log only the current step, raise the baud rate, or lower the log level.
+A debug-build tick spends about 25 ms in the UART (down from 0.3 s at 9600 baud). The tempo delay runs from 0 to 255 ms, so at the fast end of the pot the log is still most of the period: once the loop advances one step per tempo period, logging 16 lines per step caps the debug build at roughly 40 steps per second. The release build has no such cost. Options if that matters: log only the current step, lower the log level, or move to one of the exact higher rates (250000 baud and up).
 
-### 2. PD0 is set as an output
+### 2. Unused pins are configured
 
-`DDRD |= BIT_0` makes PD0 an output, but PD0 is the USART receive pin and `RXEN0` is enabled, which overrides the direction setting. The line has no effect while the receiver is on. PB5, PC0 and PC1 are configured but never used.
+PB5, PC0 and PC1 are given a direction in `register_init.c` but never read or written. PD0, the USART receive pin, used to be set as an output there as well; that line was removed, because the release build never enables the receiver and would have driven the pin against the board's USB serial chip. PD0 and PD1 are now left as they are at reset (inputs) unless the serial logger takes them over.
 
 ### 3. Tempo is sampled before logging
 
-Because inputs are gathered before outputs are applied, the tempo pot is read about 0.3 s before the delay it controls (it used to be read just before). The serial output and the loop period are unchanged.
+Because inputs are gathered before outputs are applied, the tempo pot is read before the notes are logged: about 25 ms before the delay it controls in the debug build (0.3 s at the old baud rate), and immediately before it in the release build.
 
 ## What the output stage will need
 
 - **Step advance in the core first**, with tests: a current-step index in `seq_state_t`, advanced once per tick, and the note for that step in `seq_outputs_t`.
 - **A new output port** (gate, trigger or CV) with a target adapter and a host fake. PB5, PC0 and PC1 are already configured and free.
-- **New register definitions** in `atmega328p_regs.h` for whatever drives the output: timer registers for PWM-based CV, or SPI registers for an external DAC.
+- **New register definitions** in `atmega328p_regs.h` (and addresses in the `.ld` file) for whatever drives the output: timer registers for PWM-based CV, or SPI registers for an external DAC.
 - **A timing decision.** `delay_wait_ms` blocks, so the inputs are only re-read between steps. A timer interrupt would be the next step up; under the project rules it would only bump a tick counter, with the core still called from the main loop.
-- **Dealing with open item 1 first**, since it limits how fast the loop can run.
+- **Keeping open item 1 in mind**, since it limits how fast the debug build's loop can run.

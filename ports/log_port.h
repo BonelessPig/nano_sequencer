@@ -3,7 +3,8 @@
 /**
  * @file   log_port.h
  * @brief  Port: diagnostic output. The adapter owns the wording and the
- *         transport (serial on the target).
+ *         transport (serial in the target's debug build; the release build
+ *         discards every message).
  * @author BonelessPig
  *
  * @copyright Copyright (c) 2026
@@ -26,8 +27,8 @@ typedef enum
  * @brief  Reports one step's note value (debug-level output).
  * @param  step  Step index, 0 to 15.
  * @param  note  Note value, 0 to 15.
- * @note   Not ISR-safe. Blocks until the message has been sent (about 20 ms
- *         per message at 9600 baud on the target).
+ * @note   Not ISR-safe. Blocks until the message has been sent (under 2 ms
+ *         per message at 115200 baud in the target's debug build).
  */
 void log_step_note(uint8_t step, uint8_t note);
 

@@ -4,7 +4,7 @@ A bare-metal firmware project for the ATmega328P (Arduino Nano), written from sc
 
 ## Status
 
-Work in progress. Currently the firmware initializes the ADC, USART, and I/O direction registers, then continuously reads 16 step note values from a daisy-chained 74HC165 shift register bank plus an analog channel used to modulate the inter-step delay, logging each reading over serial. The digital output/sequencing logic (driving gates, triggers, or CV out) is not yet implemented.
+Work in progress. Currently the firmware initializes the ADC, USART, and I/O direction registers, then continuously reads 16 step note values from a daisy-chained 74HC165 shift register bank plus an analog channel used to modulate the inter-step delay, logging each reading over serial (debug build; the release build has no logging). The digital output/sequencing logic (driving gates, triggers, or CV out) is not yet implemented.
 
 ## Why bare-metal?
 
@@ -26,14 +26,17 @@ ports/                        # What the app needs from the outside world (heade
 └── log_port.h                        # Diagnostic output
 adapters/
 ├── target/                   # The ports implemented for the ATmega328P
-│   ├── init.c                        # Platform bring-up (serial + registers)
+│   ├── init.c                        # Platform bring-up (logger + registers)
 │   ├── register_init.c / .h          # I/O direction + ADC setup
 │   ├── analog_reader.c               # Tempo input: ADC channel read
 │   ├── shift_reg_reader.c            # Step input: 74HC165 shift register chain read
 │   ├── delay.c                       # Delay: calibrated busy-wait
-│   ├── serial_logger.c / .h          # Log: USART setup + text logging with log levels
+│   ├── logger.h                      # Logger bring-up and log levels, shared by the two loggers
+│   ├── serial_logger.c               # Log, debug build: USART setup + text logging with log levels
+│   ├── null_logger.c                 # Log, release build: discards every message
 │   ├── bits.h                        # BIT_0..BIT_5 mask constants
 │   ├── atmega328p_regs.h             # Register declarations and bit positions
+│   ├── atmega328p_usart_regs.h       # The same for USART0, used only by the serial logger
 │   └── atmega328p_regs.ld            # Register addresses, applied by the linker
 └── host/                     # The ports faked for PC tests
     └── host_ports.c / .h             # Scripted inputs, recorded outputs
@@ -49,10 +52,10 @@ tools/coverage/               # Coverage report script (make coverage)
 
 - MCU: ATmega328P (as used on the Arduino Nano)
 - Clock: 16 MHz
-- USART: 9600 baud
+- USART: 115200 baud, 8N1, transmit only in practice (debug build; unused in the release build)
 - Analog inputs: ADC channel 6 (delay/tempo control)
 - Step notes: 16 steps × 4 bits, read from a chain of 8 daisy-chained 74HC165 shift registers via `PORTD2` (SH/LD), `PORTD3` (CLK), and `PORTD4` (SER data-in) — each 74HC165's Clock Inhibit/CE pin must be tied to GND in hardware
-- Digital I/O configured in `register_init.c`: `PORTB5`, `PORTD0`, `PORTD2`, `PORTD3` as outputs, `PORTC0`, `PORTD4` as inputs, `PORTC1` as output
+- Digital I/O configured in `register_init.c`: `PORTB5`, `PORTD2`, `PORTD3` as outputs, `PORTC0`, `PORTD4` as inputs, `PORTC1` as output
 
 ## Dependencies
 
@@ -99,14 +102,23 @@ On the hardware side: an Arduino Nano (ATmega328P, 16 MHz) with its stock serial
 Build and flash with the included `Makefile`:
 
 ```sh
-make            # Compile + link + convert to build/output.hex, then print flash/RAM usage
+make            # Compile + link + convert to build/debug/output.hex, then print flash/RAM usage
 make size       # Print flash/RAM usage (builds first if needed)
-make flash      # Flash build/output.hex
+make flash      # Flash build/debug/output.hex
 make test       # Build the firmware source for your PC and run the unit tests
 make coverage   # Run the tests instrumented; fails unless line and branch coverage is 100%
 make misra      # Run cppcheck with the MISRA addon
 make clean      # Remove the build/ directory
 ```
+
+There are two build configurations, chosen with `CONFIG=`. They differ only in which logger is linked; every file is compiled the same way for both.
+
+| | Logging | Output | Flash | Static RAM |
+|---|---|---|---:|---:|
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 1328 bytes | 4 bytes |
+| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 796 bytes | 2 bytes |
+
+`CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`). The tests, the coverage check and the static analysis always cover both loggers.
 
 The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, so any warning fails the build. `make test` never touches the board: it links the real core and app loop against fake ports and checks what they do, and it compiles each MCU adapter against fake registers to check what it does with them (the exact serial text, the shift register pulse sequence, the ADC timeout, and so on).
 
