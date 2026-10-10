@@ -17,21 +17,63 @@ How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c
 | Tests | 63 host tests in 10 programs (12 for the core, 9 for the app loop, 39 for the seven target adapter sources, 3 for `main.c`) |
 | Coverage | 100% of lines (172) and branches (76) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
 
+## Hardware
+
+What is wired to the chip, and which way each signal goes. The dotted path exists only in the debug build.
+
+```mermaid
+flowchart LR
+    panel["Front panel<br/>16 steps x 4 bits"] --> chain["8 x 74HC165<br/>shift register chain"]
+    pot["Tempo pot"]
+    subgraph mcu["ATmega328P on an Arduino Nano, 16 MHz"]
+        gpio["Port D<br/>PD2 load, PD3 clock, PD4 data"]
+        adc["ADC channel 6"]
+        usart["USART0<br/>PD1 transmit"]
+    end
+    gpio -->|"load and clock pulses"| chain
+    chain -->|"64 bits, one at a time"| gpio
+    pot -->|"0 V to AVcc"| adc
+    usart -.->|"115200 baud"| usb["USB serial chip"]
+    usb -.-> pc["PC terminal"]
+```
+
 ## Structure: ports and adapters
 
 The sequencer logic is a pure core. It never touches hardware: the app gathers inputs through ports, hands them to the core, and applies what the core returns.
 
 ```mermaid
-graph TD
-    main[app/main.c] --> app[app/app.c]
-    app --> core[core/seq]
-    app --> ports[ports/*.h]
-    target[adapters/target] -. implements .-> ports
-    host[adapters/host] -. implements .-> ports
-    tests[tests/] --> app
-    tests --> core
-    tests --> host
+flowchart TD
+    main["app/main.c<br/>init, then loop forever"] --> app["app/app.c<br/>gather, tick, apply"]
+    app -->|"calls"| core["core/seq.c<br/>pure logic, no hardware"]
+    app -->|"calls through"| ports
+    subgraph ports["ports/ (headers only)"]
+        p_platform["platform_port.h"]
+        p_step["step_input_port.h"]
+        p_tempo["tempo_input_port.h"]
+        p_delay["delay_port.h"]
+        p_log["log_port.h"]
+    end
+    subgraph target["adapters/target/ (linked into the firmware)"]
+        t_init["init.c<br/>register_init.c"]
+        t_shift["shift_reg_reader.c"]
+        t_adc["analog_reader.c"]
+        t_delay["delay.c"]
+        t_serial["serial_logger.c<br/>debug build"]
+        t_null["null_logger.c<br/>release build"]
+    end
+    subgraph host["adapters/host/ (linked into the PC tests)"]
+        h_ports["host_ports.c<br/>scripted inputs, recorded outputs"]
+    end
+    t_init -.->|"implements"| p_platform
+    t_shift -.->|"implements"| p_step
+    t_adc -.->|"implements"| p_tempo
+    t_delay -.->|"implements"| p_delay
+    t_serial -.->|"implements"| p_log
+    t_null -.->|"implements"| p_log
+    h_ports -.->|"implements all five"| ports
 ```
+
+Solid arrows are calls; dotted arrows show which file supplies the functions a port header declares. The core sits to one side: it calls nothing and nothing but the app calls it.
 
 | Folder | Role | May touch hardware |
 |---|---|---|
@@ -89,6 +131,21 @@ sequenceDiagram
 
 If `platform_init()` fails, `app_init()` logs it and `main` returns the status; execution then falls into libgcc's `_exit`, which disables interrupts and loops forever. Neither target init function can currently fail.
 
+The same thing as states:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Startup: power on or reset
+    Startup --> Init: startup code calls main
+    Init --> Running: platform_init returned STATUS_OK
+    Init --> Halted: platform_init failed
+    Running --> Running: app_run_once, one tick
+    note right of Halted
+        main returned. libgcc's _exit masks
+        interrupts and loops until the next reset.
+    end note
+```
+
 ## One tick
 
 `app_run_once()` in [`app/app.c`](../app/app.c) runs three steps:
@@ -97,9 +154,50 @@ If `platform_init()` fails, `app_init()` logs it and `main` returns the status; 
 2. **Run the core.** `seq_tick()` decodes the notes and works out the delay.
 3. **Apply outputs.** Log the 16 notes (or one error if the step read failed), log an error if the tempo read failed, then wait `delay_ms`.
 
+The data that moves through those three steps, with the struct fields that carry it:
+
+```mermaid
+flowchart LR
+    subgraph gather["1. Gather inputs"]
+        sr["step_input_read"]
+        tr["tempo_input_read"]
+    end
+    subgraph run["2. Run the core"]
+        in["seq_inputs_t<br/>raw_steps: 8 bytes<br/>b_steps_valid<br/>tempo_raw: 0 to 1023<br/>b_tempo_valid"]
+        tick["seq_tick"]
+        state[("seq_state_t<br/>last_tempo_raw<br/>kept between ticks")]
+        out["seq_outputs_t<br/>notes: 16 values, 0 to 15<br/>b_notes_valid<br/>delay_ms: 0 to 255"]
+    end
+    subgraph apply["3. Apply outputs"]
+        logn["log_step_note x 16<br/>if the notes are valid"]
+        loge["log_error<br/>if they are not"]
+        wait["delay_wait_ms<br/>then the next tick starts"]
+    end
+    sr --> in
+    tr --> in
+    in --> tick
+    tick <--> state
+    tick --> out
+    out --> logn
+    out --> loge
+    out --> wait
+```
+
+The two read statuses also go straight from step 1 to step 3 (not through the core), so a failed read can be logged with its status code.
+
 There is no notion of a "current step" yet. A tick is a sample-and-print sweep, and the tempo pot sets the pause between sweeps.
 
 **Where the time goes.** In the debug build, logging is blocking and is the largest fixed cost. Each line (`Step N Note = M\r\n`) is 17 to 19 characters, so a sweep sends about 280 to 295 characters. At 115200 baud that is roughly 25 ms per tick (it was about 0.3 s at 9600 baud, more than the largest possible tempo delay of 255 ms). The shift register read and the ADC conversion together take well under a millisecond, and in the release build they are all that is left besides the delay.
+
+```mermaid
+xychart-beta
+    title "Time spent logging in one tick (calculated)"
+    x-axis ["Debug, 9600 baud (before)", "Debug, 115200 baud (now)", "Release (no logging)"]
+    y-axis "Milliseconds" 0 --> 320
+    bar [300, 25, 0]
+```
+
+For scale, the tempo delay that follows the log is 0 to 255 ms, set by the pot.
 
 ## The core — `core/seq.c`
 
@@ -113,6 +211,41 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
 - **Note decoding.** The 64 input bits are packed MSB first, 4 bits per step: step 0 is the high nibble of byte 0, step 1 the low nibble, step 2 the high nibble of byte 1, and so on. If the step inputs are flagged invalid, every note is 0 and `b_notes_valid` is false.
 - **Delay.** `delay_ms` is the tempo reading divided by 4, giving 0 to 255 ms over the 10-bit range.
 - **State.** The last valid tempo reading. When a tempo read fails, the previous reading is reused, so the loop keeps its pace. Before any valid reading the delay is 0.
+
+```mermaid
+flowchart TD
+    start(["seq_tick"]) --> nullcheck{"Any pointer null?"}
+    nullcheck -->|"yes"| done(["return, nothing written"])
+    nullcheck -->|"no"| tempo{"b_tempo_valid?"}
+    tempo -->|"yes"| store["last_tempo_raw = tempo_raw"]
+    tempo -->|"no"| keep["keep the previous last_tempo_raw"]
+    store --> steps{"b_steps_valid?"}
+    keep --> steps
+    steps -->|"yes"| decode["notes = the 16 nibbles of raw_steps<br/>b_notes_valid = true"]
+    steps -->|"no"| zero["notes = all 0<br/>b_notes_valid = false"]
+    decode --> delay["delay_ms = last_tempo_raw / 4"]
+    zero --> delay
+    delay --> out(["return"])
+```
+
+How the eight raw bytes become sixteen notes:
+
+```mermaid
+flowchart LR
+    subgraph raw["raw_steps"]
+        b0["byte 0"]
+        b1["byte 1"]
+        bn["bytes 2 to 6"]
+        b7["byte 7"]
+    end
+    b0 -->|"bits 7..4"| s0["step 0"]
+    b0 -->|"bits 3..0"| s1["step 1"]
+    b1 -->|"bits 7..4"| s2["step 2"]
+    b1 -->|"bits 3..0"| s3["step 3"]
+    bn -->|"same pattern"| sn["steps 4 to 13"]
+    b7 -->|"bits 7..4"| s14["step 14"]
+    b7 -->|"bits 3..0"| s15["step 15"]
+```
 
 ## Target adapters — `adapters/target/`
 
@@ -142,6 +275,20 @@ The ADC is enabled with a prescaler of 128, giving a 125 kHz ADC clock from 16 M
 
 Writes `ADMUX` with AVcc as the reference and channel 6, sets `ADSC` to start a single conversion, polls until the hardware clears `ADSC`, then copies out the 10-bit result. The wait is bounded: after 10000 polls (a few milliseconds, against a worst-case conversion of about 200 µs) it returns `ERR_TIMEOUT`.
 
+```mermaid
+flowchart TD
+    start(["tempo_input_read"]) --> check{"p_raw is null?"}
+    check -->|"yes"| bad(["ERR_INVALID_PARAM<br/>nothing written"])
+    check -->|"no"| mux["ADMUX: AVcc reference, channel 6"]
+    mux --> go["Set ADSC to start one conversion"]
+    go --> poll{"ADSC cleared<br/>by the hardware?"}
+    poll -->|"yes"| read["Copy the 10-bit result to *p_raw"]
+    read --> ok(["STATUS_OK"])
+    poll -->|"no"| budget{"Polls left?<br/>10000 to start with"}
+    budget -->|"yes"| poll
+    budget -->|"no"| late(["ERR_TIMEOUT<br/>nothing written"])
+```
+
 ### Step input — `shift_reg_reader.c`
 
 Pulses PD2 low then high to latch all parallel inputs, then for each byte reads PD4 and pulses PD3 eight times. The bit is sampled before the clock pulse, which is correct for the 74HC165: the first bit is already on QH after the load. Bits are shifted in MSB first, which fixes the wiring-to-step mapping:
@@ -153,6 +300,39 @@ Pulses PD2 low then high to latch all parallel inputs, then for each byte reads 
 
 Within each nibble the higher-lettered input is the more significant bit, so input H of the nearest chip is the MSB of step 0. Each chip's Clock Inhibit pin must be tied to GND. The clock and load pulses are a single `sbi`/`cbi` pair, about 125 ns wide at 16 MHz, comfortably above the 74HC165's minimum at 5 V.
 
+The chain, with data moving right to left towards the MCU. Chip 0's bits arrive first and land in byte 0:
+
+```mermaid
+flowchart RL
+    gnd["SER tied low"] --> c7
+    subgraph chain["74HC165 chain: PD2 (load) and PD3 (clock) go to every chip"]
+        c7["Chip 7<br/>steps 14 and 15"]
+        mid["Chips 6 to 1<br/>steps 12 down to 2"]
+        c0["Chip 0<br/>steps 0 and 1"]
+    end
+    c7 -->|"QH to SER"| mid
+    mid -->|"QH to SER"| c0
+    c0 -->|"QH"| pd4["PD4<br/>data in"]
+```
+
+One read, as the pulses the MCU sends and the bits it gets back:
+
+```mermaid
+sequenceDiagram
+    participant M as MCU (shift_reg_reader.c)
+    participant C as 74HC165 chain
+    M->>C: PD2 low (latch all 64 inputs)
+    M->>C: PD2 high (back to shift mode)
+    Note over C: first bit is already on QH
+    loop 8 bytes
+        loop 8 bits, most significant first
+            C-->>M: read PD4
+            M->>C: PD3 high then low (shift to the next bit)
+        end
+        Note over M: store the byte in p_raw_bits
+    end
+```
+
 ### Log — `serial_logger.c` (debug build)
 
 `logger_init()` sets the baud divisor from `F_CPU` for 115200 baud in double-speed mode (`16000000 / (8 × 115200) − 1 = 16.4`, rounded to the nearest divisor, 16), sets double speed and 8N1 explicitly, and enables the transmitter and receiver. Nothing reads from the UART.
@@ -160,6 +340,21 @@ Within each nibble the higher-lettered input is the more significant bit, so inp
 A divisor of 16 gives 117647 baud, 2.1 % fast. That is the usual setting for 115200 on a 16 MHz AVR and what USB serial bridges are routinely run at, but it is not exact. Normal-speed mode cannot do better (its nearest divisor is 8.5 % off), which is why double speed is used. The rates that are exact at 16 MHz are 250000, 500000 and 1000000; changing `BAUD` in `serial_logger.c` is enough to switch, and the divisor follows from it.
 
 The port functions `log_step_note()` and `log_error()` own the message wording. Each checks the log level, then sends the message in pieces: fixed text through `write_text()` and numbers through `write_decimal()`, which produces unpadded decimal digits. Every byte goes through `write_char()`, which busy-waits on `UDRE0`. There is no format buffer, so nothing can be truncated. The level is set to DEBUG at init, so step notes (DEBUG) and errors (ERROR) both print.
+
+```mermaid
+flowchart TD
+    call(["log_step_note or log_error"]) --> level{"Message level at or below<br/>the configured level?"}
+    level -->|"no"| drop(["return, nothing sent"])
+    level -->|"yes"| pieces["Send the message in pieces"]
+    pieces --> text["write_text<br/>fixed wording"]
+    pieces --> dec["write_decimal<br/>number as digits"]
+    text --> ch["write_char"]
+    dec --> ch
+    ch --> ready{"UDRE0 set?<br/>transmit buffer empty"}
+    ready -->|"no, keep polling"| ready
+    ready -->|"yes"| udr["Write the byte to UDR0"]
+    udr -->|"about 85 microseconds per byte"| wire(["PD1 to the USB serial chip"])
+```
 
 ### Log — `null_logger.c` (release build)
 
@@ -189,6 +384,33 @@ The other eight `#include` the one source file they test, with `tests/fake_atmeg
 - `test_delay`: one call to the delay builtin per millisecond, each for `F_CPU / 1000` cycles. The test defines a function with the builtin's name.
 - `test_main`: `main()` (renamed while included) returns the status when init fails and otherwise loops calling `app_run_once`. The stub leaves the endless loop with `longjmp`.
 
+Which program tests which source file. Solid arrows link the real file; dotted arrows `#include` it against the fake registers:
+
+```mermaid
+flowchart LR
+    t_seq["test_seq<br/>12 tests"] --> seq["core/seq.c"]
+    t_app["test_app<br/>9 tests"] --> app["app/app.c"]
+    t_app --> seq
+    t_app --> hostp["adapters/host/host_ports.c"]
+    t_main["test_main<br/>3 tests"] -.-> mainc["app/main.c"]
+    t_ser["test_serial_logger<br/>8 tests"] -.-> ser["serial_logger.c"]
+    t_null["test_null_logger<br/>2 tests"] -.-> nul["null_logger.c"]
+    t_reg["test_register_init<br/>5 tests"] -.-> reg["register_init.c"]
+    t_adc["test_analog_reader<br/>9 tests"] -.-> adc["analog_reader.c"]
+    t_shift["test_shift_reg_reader<br/>8 tests"] -.-> shift["shift_reg_reader.c"]
+    t_init["test_init<br/>4 tests"] -.-> init["init.c"]
+    t_delay["test_delay<br/>3 tests"] -.-> delay["delay.c"]
+```
+
+```mermaid
+pie showData
+    title Host tests by area (63)
+    "Target adapters" : 39
+    "Core" : 12
+    "App loop" : 9
+    "main.c" : 3
+```
+
 ### Coverage
 
 `make coverage` rebuilds the same programs with `--coverage -O0` into `build/coverage/`, runs them, and has `tools/coverage/report.py` add up gcov's counts per source line across all the programs. It fails unless every `.c` file in `core/`, `app/` and `adapters/target/` has every line executed and every branch taken at least once; a firmware file no test compiles counts as a failure. `adapters/host/host_ports.c` is test support: its figures are printed (97% of lines, 75% of branches) but not enforced, and the tests themselves are not measured.
@@ -198,6 +420,24 @@ What this does not show: the fakes are plain variables, so nothing here checks a
 ## Build — `Makefile`
 
 `make` compiles every `.c` under `app/`, `core/` and `adapters/target/` (less the logger the configuration does not use) into `build/obj/`, links `build/<config>/output.elf`, converts to Intel HEX, and prints a size report. `make flash` uploads with avrdude at 57600 baud (the old-bootloader Nano setting), with the signature check and verification on. `make test`, `make coverage` and `make misra` are described above and in the README. The Makefile handles Windows, macOS and Linux; only Windows has been exercised.
+
+```mermaid
+flowchart TD
+    src["app/*.c<br/>core/*.c<br/>adapters/target/*.c"] -->|"avr-gcc -c, one call per file"| obj["build/obj/**/*.o<br/>shared by both configurations"]
+    obj --> pick{"CONFIG"}
+    pick -->|"debug: every object<br/>except null_logger.o"| dlink["Link"]
+    pick -->|"release: every object<br/>except serial_logger.o"| rlink["Link"]
+    ld["atmega328p_regs.ld<br/>register addresses"] --> dlink
+    ld --> rlink
+    crt["Startup object and libgcc<br/>added by the toolchain"] --> dlink
+    crt --> rlink
+    dlink --> delf["build/debug/output.elf"]
+    rlink --> relf["build/release/output.elf"]
+    delf -->|"avr-objcopy"| dhex["build/debug/output.hex"]
+    relf -->|"avr-objcopy"| rhex["build/release/output.hex"]
+    dhex -->|"make flash"| board["Board"]
+    rhex -->|"make flash CONFIG=release"| board
+```
 
 ### Build configurations
 
@@ -211,6 +451,36 @@ What this does not show: the fakes are plain variables, so nothing here checks a
 
 A lower baud rate for release was considered and has no use: the release build never switches the USART on, so it has no baud rate.
 
+### Where the flash goes
+
+Sizes of the linked functions and data, from `avr-nm --size-sort` on each `output.elf`, grouped by source. The debug build:
+
+```mermaid
+pie showData
+    title Debug build flash, 1328 bytes
+    "Serial logger code" : 330
+    "Serial logger message text" : 150
+    "App loop and main" : 276
+    "Core" : 158
+    "Step and tempo input adapters" : 134
+    "Vector table and startup" : 132
+    "libgcc helpers" : 78
+    "Init and delay adapters" : 70
+```
+
+| Part | Debug | Release |
+|---|---:|---:|
+| Logger (code and message text) | 480 | 10 |
+| App loop and `main` | 276 | 276 |
+| Core | 158 | 158 |
+| Step and tempo input adapters | 134 | 134 |
+| Vector table and startup code | 132 | 132 |
+| libgcc helpers | 78 | 16 |
+| Init and delay adapters | 70 | 70 |
+| **Total** | **1328** | **796** |
+
+The serial logger is over a third of the debug image. The release build also sheds two libgcc helpers that only the logger needed: the 16-bit divide used to print decimal numbers, and the routine that copies initialised data (the message text) into RAM at startup. Either build uses under 5 % of the 30720 bytes available below the old bootloader.
+
 ## Static analysis
 
 `make misra` runs cppcheck with its MISRA addon three times, each time over the files that are linked together for that build: the debug firmware (`core/`, `ports/`, `app/`, `adapters/target/` without `null_logger.c`), the release firmware (the same without `serial_logger.c`) and the `test_app` host program (`core/`, `ports/`, `app/app.c`, `adapters/host/`, `tests/test_app.c`). Counts before the refactor are in [misra-baseline.md](misra-baseline.md): 165 findings, 5 of them mandatory and 101 required. There are now none, and no inline suppressions or deviations in the source.
@@ -218,6 +488,25 @@ A lower baud rate for release was considered and has no use: the release build n
 Two things about scope: findings located in `tests/` are not reported, because test code is not held to the coding standard; the test file is in the host run only so cppcheck can see the host fakes being called. And cppcheck implements only part of MISRA C, so zero findings means zero from this tool, not a claim of full compliance. The `io_low` attribute in the register header and the delay builtin are compiler extensions that the tool does not flag.
 
 How findings are handled is set out in CLAUDE.md.
+
+```mermaid
+flowchart LR
+    shared["core/, ports/"]
+    shared --> d["misra-debug"]
+    shared --> r["misra-release"]
+    shared --> h["misra-host"]
+    appall["app/app.c and app/main.c"] --> d
+    appall --> r
+    appc["app/app.c only"] --> h
+    tgt["adapters/target/<br/>without the two loggers"] --> d
+    tgt --> r
+    ser["serial_logger.c"] --> d
+    nul["null_logger.c"] --> r
+    hst["adapters/host/<br/>tests/test_app.c"] --> h
+    d --> zero(["0 findings each"])
+    r --> zero
+    h --> zero
+```
 
 ## Open items
 
