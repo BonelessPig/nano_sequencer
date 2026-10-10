@@ -14,8 +14,9 @@
 #include "bits.h"
 #include "port_status.h"
 
-#define SPI_SS_BIT  BIT_2 // PB2: SS, held high as an output so the MCU stays master
-#define SPI_SCK_BIT BIT_5 // PB5: SCK, the bus clock
+#define SPI_SS_BIT   BIT_2 // PB2: SS, an output so the MCU stays master; idles high
+#define SPI_MOSI_BIT BIT_3 // PB3: MOSI, data out to the parts that listen
+#define SPI_SCK_BIT  BIT_5 // PB5: SCK, the bus clock
 
 // Upper bound on polls of the transfer-complete flag. A transfer takes 128
 // CPU clocks (8 bits at system clock / 16), which is about 15 polls; this
@@ -31,6 +32,7 @@ void spi_init(void)
     // pin cannot cancel it
     PORTB |= SPI_SS_BIT;
     DDRB  |= SPI_SS_BIT;
+    DDRB  |= SPI_MOSI_BIT;
     DDRB  |= SPI_SCK_BIT;
 
     // Set these explicitly rather than relying on reset defaults, in case a

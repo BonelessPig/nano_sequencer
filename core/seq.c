@@ -26,7 +26,7 @@ static uint16_t tempo_bpm(uint16_t tempo_raw)
 
 /**
  * @brief  Begins the step that is due, if the engine has one to play, and
- *         works out its pitch.
+ *         works out its pitch and, for a note, the pitch CV value.
  * @param  p_state  Sequencer state; the engine moves on.
  * @param  p_in     Inputs for this tick.
  * @param  p_out    Outputs, already cleared; filled in if a step begins.
@@ -51,6 +51,10 @@ static void begin_step(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outpu
         {
             p_out->b_rest = !note_map_semitone(&p_in->note_map, played.note,
                                                &p_out->semitone);
+            if (!p_out->b_rest)
+            {
+                p_state->cv = pitch_cal_cv(&p_in->pitch_cal, p_out->semitone);
+            }
         }
     }
 }
@@ -66,6 +70,7 @@ void seq_init(seq_state_t *p_state)
         p_state->step_pulses    = SEQ_PULSES_PER_STEP; // A step is due at once
         engine_plain_init(&p_state->engine);
         gate_init(&p_state->gate);
+        p_state->cv = 0U;
     }
 }
 
@@ -115,5 +120,6 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
 
         p_out->b_gate      = gate_advance(&p_state->gate, gate_pulses);
         p_out->b_clock_out = (p_state->step_pulses < SEQ_CLOCK_OUT_PULSES);
+        p_out->cv          = p_state->cv;
     }
 }

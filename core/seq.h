@@ -18,6 +18,7 @@
 #include "gate.h"
 #include "note_map.h"
 #include "panel.h"
+#include "pitch_cal.h"
 
 // A step is a sixteenth note: four to the quarter note, 24 clock pulses each
 #define SEQ_STEPS_PER_BEAT   (4U)
@@ -42,6 +43,7 @@ typedef struct
                                          // next is due at SEQ_PULSES_PER_STEP
     engine_plain_state_t engine;         // Where the engine has got to in the pattern
     gate_state_t         gate;           // How much of the current note's gate is left
+    uint16_t             cv;             // Pitch CV value of the last note played
 } seq_state_t;
 
 /**
@@ -58,6 +60,7 @@ typedef struct
     address_config_t  address;       // Direction, first and last step, one-shot
     note_map_config_t note_map;      // Scale and root
     gate_config_t     gate;          // Gate length
+    pitch_cal_config_t pitch_cal;    // Pitch CV value of each octave
     bool              b_reset;       // true to send the pattern back to its start
 } seq_inputs_t;
 
@@ -79,12 +82,16 @@ typedef struct
     bool    b_clock_out;    // Level of the clock output after this tick: true
                             // for the first half of every step. Given on
                             // every tick
+    uint16_t cv;            // Pitch CV value after this tick, 0 to
+                            // PITCH_CAL_CV_MAX: that of the last note played,
+                            // held through rests. Given on every tick
 } seq_outputs_t;
 
 /**
  * @brief  Puts the state into its power-on condition: the first step of the
  *         pattern begins on the first tick, and there is no tempo reading
- *         yet, so the tempo is SEQ_BPM_MIN until one arrives.
+ *         yet, so the tempo is SEQ_BPM_MIN until one arrives. The pitch CV
+ *         value is 0 until the first note.
  * @param  p_state  State to initialize. Ignored if null.
  */
 void seq_init(seq_state_t *p_state);
@@ -125,6 +132,11 @@ void seq_init(seq_state_t *p_state);
  *         step whose note is not valid, and a step that is due but does not
  *         begin all leave the gate closed, and each ends a gate still open
  *         from the step before. A reset does not cut a held note short.
+ *
+ *         A step that plays a pitch also sets the pitch CV value, through
+ *         the calibration table in p_in->pitch_cal (see pitch_cal.h), on
+ *         the tick its gate opens. Nothing else changes it: it holds
+ *         through rests, unreadable steps, a finished pattern and a reset.
  *
  *         The clock output follows the clock and not the pattern: it rises
  *         each time a step falls due, whether or not one begins, and falls

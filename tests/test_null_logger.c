@@ -50,6 +50,7 @@ static void test_messages_are_discarded(void)
     log_error(LOG_ERROR_INIT, ERR_GENERAL);
     log_error(LOG_ERROR_STEP_READ, ERR_INVALID_PARAM);
     log_error(LOG_ERROR_TEMPO_READ, ERR_TIMEOUT);
+    log_error(LOG_ERROR_CV_WRITE, ERR_TIMEOUT);
     expect_usart_untouched();
 }
 

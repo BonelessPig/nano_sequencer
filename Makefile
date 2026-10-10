@@ -267,7 +267,7 @@ TEST_APP = $(HOST_DIR)/test_app$(EXE)
 # Tests for the core alone, one program per core module. tests/test_<name>.c
 # is linked with every core source; add new ones to this list.
 CORE_TESTS = test_seq test_clock test_panel test_address test_note_map \
-             test_engine_plain test_gate
+             test_engine_plain test_gate test_pitch_cal
 TEST_CORE := $(patsubst %,$(HOST_DIR)/%$(EXE),$(CORE_TESTS))
 
 # Tests that #include the source file they test (one each for the target
@@ -276,7 +276,7 @@ TEST_CORE := $(patsubst %,$(HOST_DIR)/%$(EXE),$(CORE_TESTS))
 INCLUDING_TESTS = test_serial_logger test_null_logger test_register_init \
                   test_analog_reader test_shift_reg_reader test_init \
                   test_timebase test_spi test_gate_output test_clock_output \
-                  test_main
+                  test_cv_output test_main
 TEST_INCLUDING := $(patsubst %,$(HOST_DIR)/%$(EXE),$(INCLUDING_TESTS))
 
 TEST_PROGRAMS = $(TEST_CORE) $(TEST_APP) $(TEST_INCLUDING)
@@ -372,8 +372,8 @@ misra-host:
 #
 # `make sim` runs both firmware images, exactly as they would be flashed, on an
 # emulated ATmega328P (the avr8js library, under Node) with the board's
-# external parts modelled in tools/sim/: the 74HC165 chain, the tempo pot and
-# a serial capture. The scenarios in tools/sim/scenarios/ assert on what the
+# external parts modelled in tools/sim/: the 74HC165 chain, the MCP4822 DAC,
+# the tempo pot and a serial capture. The scenarios in tools/sim/scenarios/ assert on what the
 # firmware logs, the pulses it sends and how long a step takes, counted in CPU
 # cycles. Nothing here touches the board.
 #

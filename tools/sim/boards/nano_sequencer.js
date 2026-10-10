@@ -2,8 +2,9 @@
 /**
  * The sequencer board as it is wired today: an ATmega328P at 16 MHz with
  * eight 74HC165s on the SPI bus (clock on SCK, data on MISO) and their load
- * line on PB1, the tempo pot on ADC channel 6, the gate output on PD4, the
- * clock output on PD5, and USART0 going to a PC. Scenarios set the panel and
+ * line on PB1, an MCP4822 DAC on the same bus (clock on SCK, data on MOSI)
+ * with its chip select on PB2, the tempo pot on ADC channel 6, the gate
+ * output on PD4, the clock output on PD5, and USART0 going to a PC. Scenarios set the panel and
  * the pot, run the firmware, and read back what it did. Nothing is wired to
  * Timer/Counter2; the firmware uses it for its 1 kHz tick.
  */
@@ -11,6 +12,7 @@ const path = require('node:path');
 const { createAtmega328p } = require('../lib/machine');
 const { attachPinRecorder } = require('../lib/pin_recorder');
 const { attachHc165Chain } = require('../parts/hc165');
+const { attachMcp4822 } = require('../parts/mcp4822');
 
 const CLOCK_HZ = 16000000;
 const STEP_COUNT = 16;
@@ -19,6 +21,7 @@ const TEMPO_ADC_CHANNEL = 6;
 const ADC_REFERENCE_VOLTS = 5;
 const ADC_STEPS = 1024;
 const SHIFT_REG_LOAD_PIN = 1; // On port B
+const DAC_SELECT_PIN = 2;     // On port B
 const GATE_PIN = 4;           // On port D
 const CLOCK_OUT_PIN = 5;      // On port D
 const BUILD_DIR = path.resolve(__dirname, '..', '..', '..', 'build');
@@ -48,6 +51,7 @@ function createBoard(config) {
     }
 
     const chain = attachHc165Chain(machine.cpu, machine.portB, SHIFT_REG_LOAD_PIN, panelBits);
+    const dac = attachMcp4822(machine.cpu, machine.portB, DAC_SELECT_PIN);
     const gate = attachPinRecorder(machine.cpu, machine.portD, GATE_PIN);
     const clockOut = attachPinRecorder(machine.cpu, machine.portD, CLOCK_OUT_PIN);
 
@@ -59,12 +63,18 @@ function createBoard(config) {
         }));
     }
 
-    // The chain is the only thing on the bus: every transfer clocks it eight
-    // times, and the byte it gives back arrives when the transfer ends
+    // Both parts see every transfer. The chain has no chip select: it is
+    // clocked eight times whoever the transfer is for, and what it shifts
+    // out is the only thing on MISO, arriving when the transfer ends. The
+    // DAC takes the byte only while it is selected. spiSent keeps the bytes
+    // sent with the DAC not selected, which are the panel reads
     machine.spi.onByte = (sent) => {
         const received = chain.shiftByte();
 
-        spiSent.push(sent);
+        if (!dac.isSelected()) {
+            spiSent.push(sent);
+        }
+        dac.shiftByte(sent);
         machine.cpu.addClockEvent(
             () => machine.spi.completeTransfer(received), machine.spi.transferCycles);
     };
@@ -90,6 +100,8 @@ function createBoard(config) {
         serial,
         panelReads: chain.reads,
         spiSent,
+        cvWrites: dac.writes,
+        cvIgnoredFrames: dac.ignored,
         gate,
         clockOut,
 
@@ -101,6 +113,21 @@ function createBoard(config) {
         /** Completed clock output pulses, in the same form. */
         clockOutPulsesMs() {
             return pulsesMs(clockOut);
+        },
+
+        /**
+         * The pitch CV as it stood at a cycle: the last frame the DAC took
+         * before it, or null if there was none.
+         */
+        cvWriteBefore(cycle) {
+            let latest = null;
+            for (const write of dac.writes) {
+                if (write.cycle >= cycle) {
+                    break;
+                }
+                latest = write;
+            }
+            return latest;
         },
 
         /** Runs until the clock output has finished this many pulses. */

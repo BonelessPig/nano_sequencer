@@ -15,7 +15,8 @@
 
 #define SS_MASK         (0x04U) // PB2
 #define SCK_MASK        (0x20U) // PB5
-#define MOSI_MISO_MASK  (0x18U) // PB3 and PB4
+#define MOSI_MASK       (0x08U) // PB3
+#define MISO_MASK       (0x10U) // PB4
 #define SPCR_MASTER_1MHZ (0x51U) // SPE, MSTR, SPR0: mode 0, MSB first, clock / 16
 #define UNTOUCHED_BYTE  (0xA5U) // Marks a result the driver must not write
 
@@ -43,11 +44,11 @@ static void test_init_enables_master_mode_0_at_one_megahertz(void)
 
 
 
-static void test_init_makes_ss_and_sck_outputs_and_leaves_the_data_pins(void)
+static void test_init_makes_ss_mosi_and_sck_outputs_and_leaves_miso(void)
 {
     fake_regs_reset();
     spi_init();
-    TEST_ASSERT_EQUAL(SS_MASK | SCK_MASK, g_fake_ddrb);
+    TEST_ASSERT_EQUAL(SS_MASK | MOSI_MASK | SCK_MASK, g_fake_ddrb);
     TEST_ASSERT_EQUAL(SS_MASK, g_fake_portb); // SS high, clock low
 
     // Other pins of the port keep their direction and level
@@ -55,9 +56,9 @@ static void test_init_makes_ss_and_sck_outputs_and_leaves_the_data_pins(void)
     g_fake_ddrb  = 0x02U;
     g_fake_portb = 0x02U;
     spi_init();
-    TEST_ASSERT_EQUAL(0x02U | SS_MASK | SCK_MASK, g_fake_ddrb);
+    TEST_ASSERT_EQUAL(0x02U | SS_MASK | MOSI_MASK | SCK_MASK, g_fake_ddrb);
     TEST_ASSERT_EQUAL(0x02U | SS_MASK, g_fake_portb);
-    TEST_ASSERT_EQUAL(0, g_fake_ddrb & MOSI_MISO_MASK);
+    TEST_ASSERT_EQUAL(0, g_fake_ddrb & MISO_MASK); // The chain drives it
 }
 
 
@@ -168,7 +169,7 @@ static void test_null_result_pointer_is_rejected_and_nothing_is_sent(void)
 int main(void)
 {
     RUN_TEST(test_init_enables_master_mode_0_at_one_megahertz);
-    RUN_TEST(test_init_makes_ss_and_sck_outputs_and_leaves_the_data_pins);
+    RUN_TEST(test_init_makes_ss_mosi_and_sck_outputs_and_leaves_miso);
     RUN_TEST(test_init_sets_ss_high_then_output_then_selects_master);
     RUN_TEST(test_transfer_sends_the_byte_and_returns_what_came_back);
     RUN_TEST(test_transfer_leaves_the_complete_flag_clear);

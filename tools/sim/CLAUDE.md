@@ -5,12 +5,14 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 ## Layout
 
 - `lib/`: the chip, and `pin_recorder.js` for watching an output pin. `parts/`: models of external chips. Neither may know anything about the sequencer, so they can be lifted out for another project.
-- `boards/nano_sequencer.js`: which part is on which pin, plus the panel, pot, the gate and clock recorders and serial capture.
+- `boards/nano_sequencer.js`: which part is on which pin, plus the panel, pot, the DAC's frames, the gate and clock recorders and serial capture.
 - `scenarios/*.test.js`: what each firmware image must do, using Node's built-in test runner. No other dependencies; avr8js is pinned in `package-lock.json`.
 
 ## Writing parts and scenarios
 
 - A part on the SPI bus is the exception to the next rule for its clock and data: avr8js's SPI does not move its pins, so the board hands the part each transfer through `spi.onByte` and the part answers with a byte. Its other lines (load, chip select) are still wires. Assert the SPI mode in a scenario, because the model cannot object to a wrong one.
+- The board gives every transfer to every part on the bus, as the wiring does. A part with a chip select takes the byte only while selected; the 74HC165 chain has none and is clocked by all of them, so its clock count per read includes the DAC frames sent before the next load.
+- A part records what it was told (the MCP4822's frames, with the cycle each took effect) and the board exposes that; a scenario asks what the part held at a given cycle (`cvWriteBefore`) to check an order of events against a pin recorder.
 - A part is driven only through the wires that reach it and models the datasheet's logic, including which inputs are level-sensitive and which are edge-triggered. The first 74HC165 model got that wrong and blamed the firmware.
 - Measure time in CPU cycles from `cpu.cycles`, never wall time, so every run gives the same result.
 - Every run is bounded: use `runUntil` with a limit so a scenario fails instead of hanging.

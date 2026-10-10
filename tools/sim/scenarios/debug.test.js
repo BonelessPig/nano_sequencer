@@ -7,6 +7,8 @@ const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 
 const PANEL = [1, 4, 7, 10, 13, 0, 3, 6, 9, 12, 15, 2, 5, 8, 11, 14];
 const CLOCKS_PER_READ = 64;    // 16 steps of 4 bits
+const CLOCKS_PER_CV_WRITE = 16; // One DAC frame, sent on every tick
+const SCAN_PERIOD_TICKS = 8;
 const SCAN_PERIOD_MS = 8;      // The panel and pot are read every 8 ticks
 // On a tick that also queues a log line the read starts about 0.11 ms later
 const SCAN_JITTER_MAX_MS = 0.2;
@@ -72,8 +74,11 @@ test('reads the panel every 8 ms, with 64 clock pulses', () => {
 
     board.runUntilPanelReads(readCount + 1, RUN_LIMIT_MS);
 
+    // 64 for the read itself; the chain is also clocked by the eight DAC
+    // frames sent before the next load, having no chip select of its own
     for (const read of board.panelReads.slice(0, readCount)) {
-        assert.equal(read.clocks, CLOCKS_PER_READ);
+        assert.equal(read.clocks,
+            CLOCKS_PER_READ + (SCAN_PERIOD_TICKS * CLOCKS_PER_CV_WRITE));
     }
     for (const periodMs of board.panelReadPeriodsMs()) {
         assertNear(periodMs, SCAN_PERIOD_MS, SCAN_JITTER_MAX_MS, 'panel read period');
@@ -136,6 +141,24 @@ test('the gate opens before its step is logged, and not for a rest', () => {
         const leadMs = board.machine.cyclesToMs(line.startCycle - rises[i]);
         assert.ok((leadMs > 0) && (leadMs < LOG_START_JITTER_MAX_MS),
             `${line.text}: gate led the log by ${leadMs} ms`);
+    });
+});
+
+test('the pitch CV matches the pitch logged for each note', () => {
+    const board = debugBoard(READING_150_BPM);
+
+    board.runUntilLines(STEP_COUNT + 1, RUN_LIMIT_MS);
+
+    // A logged pitch is in semitones, and the DAC is at 1 V to the octave.
+    // The pitch is written ahead of the gate, and the gate ahead of the log
+    const rises = board.gate.rises();
+    const noteLines = board.serial.lines.filter((line) => !line.text.endsWith('Rest'));
+    assert.equal(board.cvIgnoredFrames.length, 0);
+    noteLines.forEach((line, i) => {
+        const semitone = Number(line.text.split(' = ')[1]);
+        const write = board.cvWriteBefore(rises[i]);
+
+        assert.equal(write.millivolts, Math.round((semitone * 1000) / 12), line.text);
     });
 });
 

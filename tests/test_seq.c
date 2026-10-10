@@ -26,11 +26,14 @@
 
 #define GATE_HALF_STEP (12U) // Gate length the tests start from, in pulses
 
+#define CV_PER_OCTAVE (1000U) // Spacing of the calibration table the tests start from
+
 /**
  * @brief Inputs with everything valid, all step bits 0, the tempo control at
  *        0 and one tick elapsed. The pattern is all sixteen steps, forward
  *        and looping, in the chromatic scale from the lowest pitch, so a
- *        step's pitch is its note value less one. A gate lasts half a step.
+ *        step's pitch is its note value less one. A gate lasts half a step,
+ *        and the calibration table is evenly spaced, CV_PER_OCTAVE apart.
  */
 static seq_inputs_t make_valid_inputs(void)
 {
@@ -48,6 +51,10 @@ static seq_inputs_t make_valid_inputs(void)
     in.note_map.root      = 0U;
     in.gate.length        = GATE_HALF_STEP;
     in.b_reset            = false;
+    for (uint8_t point = 0U; point < PITCH_CAL_POINT_COUNT; point++)
+    {
+        in.pitch_cal.cv[point] = (uint16_t)(point * CV_PER_OCTAVE);
+    }
     return in;
 }
 
@@ -156,6 +163,7 @@ static void test_init_sets_the_power_on_state(void)
     TEST_ASSERT_EQUAL(0, state.clock.phase);
     TEST_ASSERT_EQUAL(SEQ_PULSES_PER_STEP, state.step_pulses); // A step is due
     TEST_ASSERT_EQUAL(0, state.gate.pulses_left);              // Gate closed
+    TEST_ASSERT_EQUAL(0, state.cv);
 }
 
 
@@ -1055,6 +1063,160 @@ static void test_reset_does_not_cut_a_held_note(void)
 
 
 
+static void test_cv_is_set_by_each_note_on_the_tick_its_gate_opens(void)
+{
+    // Steps 1 to 4 hold note values 1 to 4: pitches 0 to 3 in the chromatic scale
+    static const uint16_t expected_cv[] = { 0U, 83U, 167U, 250U };
+    seq_state_t           state;
+    seq_inputs_t          in = make_counting_inputs();
+    seq_outputs_t         out;
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_150_BPM;
+    (void)ticks_to_next_step(&state, &in, &out); // Step 0, a rest
+
+    for (size_t i = 0U; i < (sizeof(expected_cv) / sizeof(expected_cv[0])); i++)
+    {
+        (void)ticks_to_next_step(&state, &in, &out);
+        TEST_ASSERT(out.b_gate); // The same tick: the pitch is there as the note starts
+        TEST_ASSERT_EQUAL(expected_cv[i], out.cv);
+    }
+
+    // The scale and root come first: note value 5 in D major is 9 semitones up
+    in.note_map.scale = NOTE_MAP_SCALE_MAJOR;
+    in.note_map.root  = 2U;
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(9, out.semitone);
+    TEST_ASSERT_EQUAL(750, out.cv);
+}
+
+
+
+static void test_cv_is_given_on_every_tick_and_holds_after_the_gate_closes(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw    = TEMPO_RAW_150_BPM;
+    in.raw_steps[0] = 0xD0U; // Step 0 plays pitch 12, an octave up; the rest are rests
+
+    // 100 ticks a step: through the gate, past its end and through step 1's rest
+    for (unsigned int tick = 0U; tick < 199U; tick++)
+    {
+        (void)memset(&out, POISON_BYTE, sizeof(out));
+        seq_tick(&state, &in, &out);
+        TEST_ASSERT_EQUAL(CV_PER_OCTAVE, out.cv);
+    }
+    TEST_ASSERT(!out.b_gate);
+}
+
+
+
+static void test_cv_is_zero_until_the_first_note(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs(); // Every step a rest
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_250_BPM;
+    for (unsigned int step = 0U; step < 3U; step++)
+    {
+        (void)ticks_to_next_step(&state, &in, &out);
+        TEST_ASSERT(out.b_rest);
+        TEST_ASSERT_EQUAL(0, out.cv);
+    }
+}
+
+
+
+static void test_cv_holds_through_a_rest_an_unreadable_step_and_a_reset(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw    = TEMPO_RAW_250_BPM;
+    in.raw_steps[0] = 0x70U; // Step 0 plays pitch 6; step 1 is a rest
+    in.raw_steps[1] = 0xD0U; // Step 2 plays pitch 12
+
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(500, out.cv);
+
+    (void)ticks_to_next_step(&state, &in, &out); // The rest
+    TEST_ASSERT(out.b_rest);
+    TEST_ASSERT_EQUAL(500, out.cv);
+
+    in.b_steps_valid = false; // Step 2 cannot be read
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT(!out.b_note_valid);
+    TEST_ASSERT_EQUAL(500, out.cv);
+
+    // A reset sends the pattern back, and the pitch stays until a note plays
+    in.b_steps_valid = true;
+    in.raw_steps[0]  = 0x00U;
+    in.b_reset       = true;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(500, out.cv);
+    (void)ticks_to_next_step(&state, &in, &out); // Step 0 again, now a rest
+    TEST_ASSERT_EQUAL(0, out.step);
+    TEST_ASSERT_EQUAL(500, out.cv);
+}
+
+
+
+static void test_cv_holds_when_a_one_shot_has_finished(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw          = TEMPO_RAW_250_BPM;
+    in.raw_steps[0]       = 0xD0U; // Step 0 plays pitch 12
+    in.address.last_step  = 0U;
+    in.address.b_one_shot = true;
+
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(CV_PER_OCTAVE, out.cv);
+
+    // Steps keep falling due and none begins
+    for (unsigned int tick = 0U; tick < 200U; tick++)
+    {
+        seq_tick(&state, &in, &out);
+        TEST_ASSERT(!out.b_step_started);
+        TEST_ASSERT_EQUAL(CV_PER_OCTAVE, out.cv);
+    }
+}
+
+
+
+static void test_calibration_table_is_read_when_the_step_begins(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw    = TEMPO_RAW_250_BPM;
+    in.raw_steps[0] = 0xDDU; // Steps 0 and 1 both play pitch 12
+
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(CV_PER_OCTAVE, out.cv);
+
+    // A table changed mid-note is not heard until the next note
+    in.pitch_cal.cv[1] = 1017U;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(CV_PER_OCTAVE, out.cv);
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(1017, out.cv);
+}
+
+
+
 static void test_null_pointers_are_ignored(void)
 {
     seq_state_t   state;
@@ -1076,6 +1238,7 @@ static void test_null_pointers_are_ignored(void)
     in.raw_steps[0] = 0x10U; // A pitch that would open the gate
     seq_tick(&state, &in, NULL);
     TEST_ASSERT_EQUAL(0, state.gate.pulses_left);
+    TEST_ASSERT_EQUAL(0, state.cv);
     TEST_ASSERT_EQUAL(0, state.last_tempo_raw); // State untouched
     TEST_ASSERT_EQUAL(0, state.engine.address.position);
     TEST_ASSERT_EQUAL(0, state.clock.phase);
@@ -1121,6 +1284,12 @@ int main(void)
     RUN_TEST(test_clock_out_is_high_for_the_first_half_of_every_step);
     RUN_TEST(test_clock_out_runs_on_when_a_one_shot_has_finished);
     RUN_TEST(test_reset_does_not_cut_a_held_note);
+    RUN_TEST(test_cv_is_set_by_each_note_on_the_tick_its_gate_opens);
+    RUN_TEST(test_cv_is_given_on_every_tick_and_holds_after_the_gate_closes);
+    RUN_TEST(test_cv_is_zero_until_the_first_note);
+    RUN_TEST(test_cv_holds_through_a_rest_an_unreadable_step_and_a_reset);
+    RUN_TEST(test_cv_holds_when_a_one_shot_has_finished);
+    RUN_TEST(test_calibration_table_is_read_when_the_step_begins);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();
 }

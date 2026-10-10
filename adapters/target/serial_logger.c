@@ -247,6 +247,10 @@ void log_error(log_error_id_t what, port_status_t status)
             p_text = "ADC read failed for delay channel, status code = ";
             break;
 
+        case LOG_ERROR_CV_WRITE:
+            p_text = "Pitch CV write failed, status code = ";
+            break;
+
         default:
             // Unknown id: nothing sensible to print
             break;

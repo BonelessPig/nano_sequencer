@@ -21,7 +21,8 @@ typedef enum
 {
     LOG_ERROR_INIT = 0,   // platform_init() failed
     LOG_ERROR_STEP_READ,  // step_input_read() failed
-    LOG_ERROR_TEMPO_READ  // tempo_input_read() failed
+    LOG_ERROR_TEMPO_READ, // tempo_input_read() failed
+    LOG_ERROR_CV_WRITE    // cv_output_write() failed
 } log_error_id_t;
 
 /**

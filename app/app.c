@@ -13,8 +13,10 @@
 #include "address.h"
 #include "note_map.h"
 #include "panel.h"
+#include "pitch_cal.h"
 #include "seq.h"
 #include "clock_output_port.h"
+#include "cv_output_port.h"
 #include "gate_output_port.h"
 #include "log_port.h"
 #include "platform_port.h"
@@ -28,6 +30,10 @@
 
 // The board has no gate length control yet: a note is held for half its step
 #define GATE_LENGTH_PULSES (SEQ_PULSES_PER_STEP / 2U)
+
+// The pitch CV is not calibrated yet: the table is the ideal one, 1 V to the
+// octave from 0 V at the lowest pitch
+#define CV_MILLIVOLTS_PER_OCTAVE (1000U)
 
 static seq_state_t   g_seq_state; // Sequencer state carried between ticks
 static seq_inputs_t  g_inputs;    // Latest snapshot of the inputs
@@ -62,13 +68,17 @@ static void log_step(void)
 
 
 /**
- * @brief  Acts on what the previous tick computed. The gate and the clock
- *         output are set first, on every tick, so that their edges are not
- *         held up by the log. Then, when a step began, logs it (or the
- *         failed step read), and a failed tempo read with it.
+ * @brief  Acts on what the previous tick computed. The pitch CV, the gate
+ *         and the clock output are set first, on every tick, so that their
+ *         edges are not held up by the log; the pitch goes ahead of the gate
+ *         so that it is in place when the note starts. Then, when a step
+ *         began, logs it (or the failed step read), and with it a failed
+ *         tempo read and a failed write of the pitch.
  */
 static void apply_outputs(void)
 {
+    const port_status_t cv_write_status = cv_output_write(g_outputs.cv);
+
     gate_output_write(g_outputs.b_gate);
     clock_output_write(g_outputs.b_clock_out);
 
@@ -79,6 +89,10 @@ static void apply_outputs(void)
         if (STATUS_OK != g_tempo_read_status)
         {
             log_error(LOG_ERROR_TEMPO_READ, g_tempo_read_status);
+        }
+        if (STATUS_OK != cv_write_status)
+        {
+            log_error(LOG_ERROR_CV_WRITE, cv_write_status);
         }
     }
 }
@@ -125,7 +139,8 @@ static void gather_inputs(uint8_t elapsed_ticks)
 /**
  * @brief  Sets the controls the board has no hardware for yet to fixed
  *         values: all sixteen steps, forward, looping, never reset, the
- *         chromatic scale from the lowest pitch, and a gate of half a step.
+ *         chromatic scale from the lowest pitch, a gate of half a step, and
+ *         the ideal pitch calibration table.
  */
 static void set_fixed_controls(void)
 {
@@ -137,6 +152,11 @@ static void set_fixed_controls(void)
     g_inputs.note_map.root      = 0U;
     g_inputs.gate.length        = (uint8_t)GATE_LENGTH_PULSES;
     g_inputs.b_reset            = false;
+
+    for (uint8_t point = 0U; point < PITCH_CAL_POINT_COUNT; point++)
+    {
+        g_inputs.pitch_cal.cv[point] = (uint16_t)(point * CV_MILLIVOLTS_PER_OCTAVE);
+    }
 }
 
 
@@ -167,6 +187,7 @@ static void reset_tick_state(void)
     g_outputs.semitone       = 0U;
     g_outputs.b_gate         = false;
     g_outputs.b_clock_out    = false;
+    g_outputs.cv             = 0U;
 
     g_step_read_status  = STATUS_OK;
     g_tempo_read_status = STATUS_OK;

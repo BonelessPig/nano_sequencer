@@ -7,6 +7,8 @@ const { test } = require('node:test');
 const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 
 const CLOCKS_PER_READ = 64;     // 16 steps of 4 bits
+const CLOCKS_PER_CV_WRITE = 16; // One DAC frame, sent on every tick
+const SCAN_PERIOD_TICKS = 8;
 const SCAN_PERIOD_MS = 8;       // The panel and pot are read every 8 ticks
 const SCAN_JITTER_MAX_MS = 0.01; // Nothing else happens at the tick boundary
 const FASTEST_READING = 1023;
@@ -20,7 +22,9 @@ const TCCR2B = 0xB1;
 const OCR2A = 0xB3;
 const DDRB = 0x24;              // Port B registers, data addresses
 const PORTB = 0x25;
-const SS_PIN = 0x04;            // PB2
+const SS_PIN = 0x04;            // PB2, the DAC's chip select
+const MOSI_PIN = 0x08;          // PB3
+const MISO_PIN = 0x10;          // PB4
 const LOAD_PIN = 0x02;          // PB1, the shift register load line
 const SCK_PIN = 0x20;           // PB5
 const OUTPUT_PINS = 0x30;       // PD4 (gate) and PD5 (clock out)
@@ -35,6 +39,16 @@ const TICK_MS = 1;
 // Outputs are set first thing in a tick, so their edges land on the tick to
 // within the time the idle loop takes to notice it
 const EDGE_JITTER_MAX_MS = 0.02;
+const MILLIVOLTS_PER_OCTAVE = 1000;
+const SEMITONES_PER_OCTAVE = 12;
+// The DAC takes its frame this long before the gate is written, at most
+const CV_LEAD_MAX_MS = 0.01;
+
+// The firmware plays the chromatic scale at 1 V to the octave: a note value
+// is one semitone above the one before, and note value 1 is 0 V
+function noteMillivolts(noteValue) {
+    return Math.round(((noteValue - 1) * MILLIVOLTS_PER_OCTAVE) / SEMITONES_PER_OCTAVE);
+}
 
 function assertNear(actual, expected, tolerance, what) {
     assert.ok(Math.abs(actual - expected) <= tolerance,
@@ -150,9 +164,86 @@ test('runs the SPI bus as master in mode 0, MSB first, at 1 MHz', () => {
     assert.equal(board.machine.spi.spiMode, 0);
     assert.equal(board.machine.spi.dataOrder, 'msbFirst');
     assert.equal(board.machine.spi.spiFrequency, SPI_HZ);
-    // SS, SCK and the load line are outputs, and SS and load idle high
-    assert.equal(data[DDRB] & (SS_PIN | SCK_PIN | LOAD_PIN), SS_PIN | SCK_PIN | LOAD_PIN);
+    // SS, MOSI, SCK and the load line are outputs and MISO is not, and SS
+    // and load idle high
+    assert.equal(data[DDRB] & (SS_PIN | MOSI_PIN | MISO_PIN | SCK_PIN | LOAD_PIN),
+        SS_PIN | MOSI_PIN | SCK_PIN | LOAD_PIN);
     assert.equal(data[PORTB] & (SS_PIN | LOAD_PIN), SS_PIN | LOAD_PIN);
+});
+
+test('sends the DAC one whole frame a tick: channel A, gain 2, output on', () => {
+    const board = playedBoard();
+    const writes = board.cvWrites;
+
+    assert.equal(board.cvIgnoredFrames.length, 0);
+    assert.ok(writes.length > STEP_COUNT * STEP_MS);
+    for (const write of writes) {
+        assert.equal(write.channel, 'A');
+        assert.equal(write.gain, 2);
+        assert.equal(write.active, true);
+    }
+    // One a tick, from the first tick on, each at the same point in its tick
+    assertNear(board.machine.cyclesToMs(writes[0].cycle), TICK_MS, 0.1, 'first write');
+    for (let i = 1; i < writes.length; i++) {
+        const periodMs = board.machine.cyclesToMs(writes[i].cycle - writes[i - 1].cycle);
+        assertNear(periodMs, TICK_MS, EDGE_JITTER_MAX_MS, `write ${i} period`);
+    }
+});
+
+test('the pitch CV is 0 V until the first note', () => {
+    const board = playedBoard();
+
+    assert.equal(board.cvWrites[0].millivolts, 0);
+});
+
+test('the pitch CV is at the voltage of each note before its gate rises', () => {
+    const board = playedBoard();
+    const rises = board.gate.rises();
+    const noteSteps = [];
+
+    for (let step = 0; step < STEP_COUNT; step++) {
+        if (step !== REST_STEP) {
+            noteSteps.push(step);
+        }
+    }
+    noteSteps.push(0); // The pattern wraps
+
+    assert.equal(rises.length, noteSteps.length);
+    rises.forEach((rise, i) => {
+        const step = noteSteps[i];
+        const write = board.cvWriteBefore(rise);
+        const leadMs = board.machine.cyclesToMs(rise - write.cycle);
+
+        assert.equal(write.millivolts, noteMillivolts(PANEL[step]), `step ${step} pitch`);
+        // Written in the same tick as the gate, just ahead of it
+        assert.ok((leadMs > 0) && (leadMs < CV_LEAD_MAX_MS),
+            `step ${step}: pitch led the gate by ${leadMs} ms`);
+    });
+});
+
+test('the pitch CV changes only when a note begins, and holds through a rest', () => {
+    const board = playedBoard();
+    const rises = board.gate.rises();
+    const changes = [];
+
+    board.cvWrites.forEach((write, i) => {
+        if ((i > 0) && (write.millivolts !== board.cvWrites[i - 1].millivolts)) {
+            changes.push(write);
+        }
+    });
+
+    // Step 0 plays note value 1, which is the 0 V the output starts at, so
+    // the first note changes nothing. Every note after it changes the pitch
+    // (step 0 again included, coming down from step 15), and the rest does not
+    assert.equal(changes.length, rises.length - 1);
+    for (const change of changes) {
+        const nextRise = rises.find((rise) => rise > change.cycle);
+        const leadMs = board.machine.cyclesToMs(nextRise - change.cycle);
+
+        assert.ok(leadMs < CV_LEAD_MAX_MS, `pitch changed ${leadMs} ms before a gate`);
+    }
+    // The highest note on the panel: 14 semitones up
+    assert.equal(Math.max(...board.cvWrites.map((write) => write.millivolts)), 1167);
 });
 
 test('reads the chain in eight transfers of zeros', () => {
@@ -170,8 +261,11 @@ test('reads the panel every 8 ms, with 64 clock pulses', () => {
 
     board.runUntilPanelReads(readCount + 1, RUN_LIMIT_MS);
 
+    // The chain has no chip select, so after the 64 clocks of its own read
+    // it is also clocked by the eight DAC frames sent before the next load
     for (const read of board.panelReads.slice(0, readCount)) {
-        assert.equal(read.clocks, CLOCKS_PER_READ);
+        assert.equal(read.clocks,
+            CLOCKS_PER_READ + (SCAN_PERIOD_TICKS * CLOCKS_PER_CV_WRITE));
     }
     for (const periodMs of board.panelReadPeriodsMs()) {
         assert.ok(Math.abs(periodMs - SCAN_PERIOD_MS) <= SCAN_JITTER_MAX_MS,

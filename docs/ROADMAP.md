@@ -1,13 +1,13 @@
 # nano_sequencer roadmap
 
-Written 2026-10-10 from four research passes (existing sequencers, hardware emulation, the output-stage hardware, and Claude Code context cost) plus a working emulation spike, and updated the same day with the owner's decisions (section 2). The emulated board (`make sim`), phase 1 (the timebase), phase 2 (addressing, note mapping and the engine interface), the firmware of phase 3 (the gate and the clock output, as logic pins with no buffer stage yet) and the first part of phase 4 (the SPI driver, with the shift registers moved onto it) are built; everything else here is still a plan.
+Written 2026-10-10 from four research passes (existing sequencers, hardware emulation, the output-stage hardware, and Claude Code context cost) plus a working emulation spike, and updated the same day with the owner's decisions (section 2). The emulated board (`make sim`), phase 1 (the timebase), phase 2 (addressing, note mapping and the engine interface), the firmware of phase 3 (the gate and the clock output, as logic pins with no buffer stage yet) and the firmware of phase 4 (the SPI driver with the shift registers moved onto it, the pitch CV through an MCP4822 DAC, and pitch calibration with the ideal table) are built; everything else here is still a plan.
 
 Each claim that matters is marked **verified** (read from a datasheet or primary manual, or run on this machine), or **unverified** (from memory or a secondary source; check before relying on it). The full list of unverified items is in [section 8](#8-not-verified).
 
 ## 1. Summary
 
 - **Where it goes.** A 16-step CV/gate sequencer with one pitch output, gate, clock in and out, reset, and a set of selectable sequencing engines (plain, Metropolis-style, Klee-style, random) that all reinterpret the same 64 panel switches. Every engine is pure core logic, so it is cheap to add and fully host-testable.
-- **What limits it.** Pins and the single USART, not flash or RAM (after phase 3 the debug image uses 2930 of 30720 bytes of flash and 386 of 2048 bytes of RAM).
+- **What limits it.** Pins and the single USART, not flash or RAM (after phase 4 the debug image uses 3340 of 30720 bytes of flash and 440 of 2048 bytes of RAM).
 - **Emulation.** The real firmware image already runs under an emulator on this machine (section 5). That makes most of the roadmap testable without the board, including parts you have not bought.
 - **A separate emulation project.** The gap is real but shallow: nothing open, local and headless covers AVR plus other MCU families with a board file and waveform assertions. It is a thin layer over existing CPU cores, not a new emulator. Recommendation: build it inside this repo with a clean boundary and extract it when a second project needs it.
 - **Claude context.** Splitting CLAUDE.md into a short root file, per-folder files and skills cuts the always-loaded instructions by an estimated 55 to 60 percent, and new per-module guidance then costs nothing until that module is touched (section 6).
@@ -25,7 +25,7 @@ Settled on 2026-10-10 unless marked open.
 | 5 | Output timing | **Apply outputs at the tick boundary**: each pass applies what the previous pass computed, then gathers and computes. A constant 1 ms latency for near-zero jitter. The tick rule in CLAUDE.md changes with phase 1. |
 | 6 | Rests | **Note 0 is a rest**, leaving 15 pitches. |
 | 7 | Choosing a mode | **A ninth 74HC165** (8 more switches, no MCU pins). The core's raw input grows from 8 to 9 bytes. |
-| 8 | Pitch DAC | **Open.** Candidates: MCP4822 (SPI, internal 2.048 V reference), MCP4725 (I2C, reference is the supply), PWM, R-2R. The point to weigh: every option but the MCP4822 takes its reference from the USB 5 V rail, and a 1 % supply change is about 48 cents at 4 V. Phase 4's SPI move does not depend on this; the DAC adapter does. |
+| 8 | Pitch DAC | **MCP4822** (12-bit, SPI, internal 2.048 V reference), settled on 2026-10-10. The others considered were the MCP4725 (I2C, reference is the supply), PWM and R-2R; every one of them takes its reference from the USB 5 V rail, and a 1 % supply change is about 48 cents at 4 V. A 16-bit part (DAC8562/8563, AD5683R/AD5693R) is the upgrade if slides or fine tuning ever want steps finer than 1.2 cents; it would be a new adapter behind the same port. A home-made DAC as a separate project would be the same. |
 | 9 | Instruction layout for Claude | **Nested `CLAUDE.md` files per folder.** The C coding standard and a line length rule (80 soft, 100 hard) are also in the user-level `~/.claude/CLAUDE.md`. |
 
 Taken while building phase 1, as the simplest thing that met the plan. Each is one constant or a few lines to change.
@@ -61,8 +61,8 @@ Taken while moving the shift registers to SPI. Also provisional, and to reconfir
 |---|---|---|
 | 25 | SPI mode | **Mode 0** (clock idle low, sample on the rising edge), MSB first. It samples on the edge the 74HC165 shifts on, which works because the chip's output changes a little after the edge, and it is the mode the MCP4822 and the 74HC595 also take, so the bus never has to change mode. Mode 2 would sample half a clock away from the shift and be safer for the 165 alone, at the price of switching modes for the other parts. **Not verified on hardware** (section 8). |
 | 26 | SPI clock | **1 MHz** (system clock / 16). A panel read is 64 µs of clocks every 8 ms. 4 MHz is one bit in `spi.c` if the wiring proves clean; slower costs nothing that matters. |
-| 27 | SS (PB2) | **An output held high from the start**, with nothing wired to it, so the SPI cannot drop out of master mode. It becomes the DAC chip select, as the pin table says. |
-| 28 | MOSI (PB3) | **Left as an input** until something listens. The DAC adapter makes it an output. |
+| 27 | SS (PB2) | **An output held high from the start**, so the SPI cannot drop out of master mode. With phase 4 it is the DAC chip select: `spi.c` still sets it up, and `cv_output.c` drives it. |
+| 28 | MOSI (PB3) | **An output, set by `spi.c`**, as of phase 4. It was left an input until something listened; the driver makes it an output, not the DAC adapter, because a bus pin belongs to the driver. |
 | 29 | A failed panel read | **Leaves the caller's buffer untouched**: the adapter reads into its own 8 bytes and copies on success. Most of the 94 bytes the adapter grew by. |
 
 Taken while building phase 3. Provisional like the ones above, and to reconfirm with them; 30 to 32 are the ones that are heard.
@@ -77,6 +77,20 @@ Taken while building phase 3. Provisional like the ones above, and to reconfirm 
 | 35 | A step begun late | **Its gate is counted from when the step was due**, so the note still ends on time, and does not open at all if that time has passed. The clock output stays low while steps are owed. |
 | 36 | Applying the outputs | **Both pins are written on every tick, before the log**: gate, then clock. Active high, low from reset. If the buffer stage inverts, the inversion goes in the two pin adapters. |
 | 37 | Ports | **Two, `gate_output_port` and `clock_output_port`**, one function each, on the pattern of the input ports, in place of the single `gate_port` section 4 names. The pins are set up in `register_init.c`. |
+
+Taken while building phase 4. Provisional like the ones above, and to reconfirm with them. 40 and 42 are the ones to check on the board.
+
+| # | Decision | Outcome |
+|---|---|---|
+| 38 | DAC setup | **Channel A, gain 2, internal reference**: 1 mV a step, 0 to 4.095 V. The 0 to 45 semitones of decision 20 are 0 to 3.75 V at 1 V to the octave, so the buffer needs no gain. Channel B is not used. LDAC is tied low, so the output changes as chip select rises. |
+| 39 | The port | **`cv_output_port`, one function, in nominal millivolts** (0 to 4095), on the pattern of decision 37, in place of the `cv_port` section 4 named. Millivolts and not a DAC code, so that another DAC is only another adapter. |
+| 40 | Lowest pitch | **0 V.** Note value 1 with a root of 0 is 0 V and each semitone is 83.3 mV above the last. Where that sits musically is the oscillator's tuning knob. A DAC cannot quite reach 0 V (its output stops a few millivolts short), so the lowest note may read slightly sharp; a small offset in the table would cure it, at the price of the same off the top. To look at with a meter. |
+| 41 | Calibration table | **Five entries, one per octave, with straight lines between**, rounded to the nearest step. The ideal table (0, 1000, 2000, 3000, 4000) is fixed in `app.c` until phase 5 measures and stores a real one. The table may fall as well as rise, so an inverting buffer is only a different table. |
+| 42 | When the DAC is written | **On every tick, changed or not**, ahead of the gate. The apply step then takes the same time every tick, so the gate and clock edges do not move when a note starts, and a failed write is retried within a millisecond. The cost is 20 µs of bus activity a millisecond beside an analogue output. If that can be heard, write only on a change (a few lines in `cv_output.c`) and accept gate edges about 22 µs later on note ticks than on others. |
+| 43 | Pitch and gate | **In the same tick, pitch first.** The DAC takes the pitch 1.6 µs before the gate pin rises, which is less than its settling time, so the gate leads the settled pitch by a few microseconds. Holding the gate back a tick in the core is the fix if it is ever wanted. |
+| 44 | Rests | **The pitch holds.** Only a note changes it: not a rest, an unreadable step, a reset or the end of a one-shot pattern, so a sound still dying away keeps its pitch. 0 V until the first note. |
+| 45 | A failed write | **Logged once per step, after the note**, like a failed read. The note still plays, at the old pitch; the next tick writes again. |
+| 46 | The chain during a DAC write | **Left to shift.** The 74HC165s have no chip select and are clocked by every DAC frame. They are loaded afresh before each read, so it does no harm. |
 
 ## 3. What the survey found
 
@@ -119,7 +133,7 @@ The ports-and-adapters rules stay as they are. Three additions:
   | `prng` | One LFSR shared by every random feature |
   | `errlog` | Crash record format |
 
-- **Ports are named for what the core needs**, not for the bus: `timebase_port`, `gate_output_port` and `clock_output_port` (built; decision 37), `cv_port`, `clock_in_port`, `led_port`, `nv_port`, `watchdog_port`. No `spi_port`.
+- **Ports are named for what the core needs**, not for the bus: `timebase_port`, `gate_output_port` and `clock_output_port` (built; decision 37), `cv_output_port` (built; decision 39), `clock_in_port`, `led_port`, `nv_port`, `watchdog_port`. No `spi_port`.
 - **`adapters/target/` gets two levels**: peripheral drivers (SPI, Timer2, EEPROM) with headers private to that folder, and device adapters above them that implement ports (the DAC adapter implements `cv_port`).
 
 ### The tick
@@ -177,12 +191,12 @@ One lesson came with it. The first shift register model latched on the falling e
 
 ### The harness (`tools/sim/`, `make sim`)
 
-In place as of 2026-10-10: `lib/machine.js` (the chip), `lib/pin_recorder.js`, `parts/hc165.js`, `boards/nano_sequencer.js` (wiring, panel, pot, gate and clock recorders, serial capture) and nineteen scenarios across the two images. ARCHITECTURE.md describes it.
+In place as of 2026-10-10: `lib/machine.js` (the chip), `lib/pin_recorder.js`, `parts/hc165.js`, `parts/mcp4822.js`, `boards/nano_sequencer.js` (wiring, panel, pot, the DAC's frames, gate and clock recorders, serial capture) and twenty-four scenarios across the two images. ARCHITECTURE.md describes it.
 
 Still to add, each when a phase needs it:
 
 - **Timers and interrupts in `lib/machine.js`**: Timer/Counter2 added in phase 1, the SPI with the shift register move. Timer1 when phase 6 needs it.
-- **More parts**: clock source and button (phase 6), MCP4822 or whichever DAC is chosen (phase 4), 74HC595 (phase 8). SPI parts hook the byte transfer, not the pins, as the 74HC165 model now does; with a second part on the bus the board will have to route each transfer by chip select.
+- **More parts**: clock source and button (phase 6), 74HC595 (phase 8). The MCP4822 was added in phase 4. SPI parts hook the byte transfer, not the pins: the board hands every transfer to every part, and a part with a chip select takes it only while selected.
 - **A pin recorder**: added in phase 3, as a list of edges and of completed pulses per pin; the scenarios do their own arithmetic on them. Helpers such as `count_rises(pin, t0, t1)` can be added when a scenario wants one. The 74HC165 model still counts its own pulses.
 - **VCD dump on failure**, viewable in GTKWave or PulseView.
 - **A board file as plain data**, once there is a second board.
@@ -246,7 +260,7 @@ Each phase is one or more small commits, leaves both builds, the tests, coverage
 | 1. Timebase (**done**, not yet run on the board) | Timer2 tick, `timebase_port`, core `clock`, tempo in BPM with a floor, non-blocking loop and log. Removes `delay_port`. Closes open items 1 and 3 | Timer2, first ISR | None | Host: exact pulse counts over N ticks. Sim: step period matches BPM in the debug build; the release build has no output to time a step by until phase 3, so its scenarios check the 1 kHz tick instead |
 | 2. Addressing and notes (**done**, not yet run on the board) | `address` (direction, first and last step, one-shot, reset), `note_map` (scales, root, rest). Engine interface, with the plain engine as its first user. Also `panel`, the switch layout every engine shares | None | None | Host: every module on its own and under `seq`. Sim through the log: pitches and rests only, because the board has no controls for the rest (decision 21) |
 | 3. Gate and clock out (firmware **done**, not yet run on the board; the buffer stage is still to build) | Core `gate` (length in 1/24 step, ties), `gate_output_port`, `clock_output_port` | GPIO PD4, PD5 | Buffer IC, resistors, jacks | Sim: pulse widths and counts. Board: logic analyser or LED |
-| 4. SPI and pitch CV | SPI driver and the 74HC165 chain on SPI (**done** ahead of phase 3; not yet run on the board, which needs rewiring first); DAC adapter once the DAC is chosen (decision 8); `pitch_cal` with the ideal table. First point it plays an oscillator | SPI | The DAC, op-amp buffer, 1 kΩ on MISO | Sim: exact DAC frames, DAC written before gate rises. Board: tuning by ear and meter |
+| 4. SPI and pitch CV (firmware **done**, not yet run on the board; the DAC is still to buy and wire, and the buffer to build) | SPI driver and the 74HC165 chain on SPI (ahead of phase 3; the board needs rewiring first); `cv_output_port` and its MCP4822 adapter; `pitch_cal` with the ideal table. First point it plays an oscillator | SPI | MCP4822, op-amp buffer, 1 kΩ on MISO | Sim: exact DAC frames, DAC written before gate rises. Board: tuning by ear and meter |
 | 5. Calibration and storage | Calibration mode, non-blocking EEPROM adapter, record with version and checksum, reset-cause read | EEPROM | Multimeter | Host: record format. Sim: EEPROM contents. Board: measured octaves |
 | 6. Clock, reset and run in | One external edge per step, reset, `transport`, `debounce` | Timer1 capture flag and INT0 flag, polled | Two transistor input stages, button, jacks | Sim: scripted clock source. Board |
 | 7. Engines | 8x2 row modes (per-step time, then pulse count and gate mode), Klee (register, sums, buses, merge, invert, load), `prng` with Turing lock and gate probability, Cartesian and Euclidean | More ADC channels | Ninth 74HC165, pots | Host, mostly. Sim for gate timing |
@@ -263,7 +277,7 @@ Notes on ordering:
 
 ### Proposed pin assignment (from phase 4)
 
-In use today: PB1, PB2, PB4 and PB5 as below, PD4 and PD5, PD1 in the debug build, and ADC6. The rest is still a proposal.
+In use today: PB1 to PB5 as below (the 74HC595 not yet), PD4 and PD5, PD1 in the debug build, and ADC6. The rest is still a proposal.
 
 | Pin | Use | Pin | Use |
 |---|---|---|---|
@@ -286,7 +300,9 @@ Check these before the phase that depends on them.
 - **Register bit positions** inside the EEPROM and watchdog control registers, and the OCR1A address. Addresses, prescaler codes and vector numbers were read from the datasheet; bit positions were not. (Phases 5, 9) The SPI ones in use (SPE, MSTR, SPR0, SPIF, and the three addresses) are now **verified** against the toolchain's `iom328p.h` and by the emulator running transfers at 1 MHz from them. The Timer2 ones used in phase 1 are now **verified** against the toolchain's own `iom328p.h` and by the emulator producing a 1 kHz tick from them. That header ships with the toolchain and is a quick check for the rest.
 - **`__vector_7` as the Timer2 compare A symbol**: now **verified**. It links, the vector table entry jumps to the handler, and the handler runs on the emulator.
 - **Edge flags latching with their interrupts disabled** (for polled clock and reset inputs). (Phase 6)
-- **SPI mode for the 74HC165 alongside the DAC**, and one pin serving as both 165 load and 595 latch. Bench-check. (Phases 4, 8) The firmware now uses mode 0 for the 165 (decision 25); the first board run after rewiring is that bench check. Read a panel with a single switch on and confirm it lands on the right step and bit.
+- **SPI mode for the 74HC165 alongside the DAC**, and one pin serving as both 165 load and 595 latch. Bench-check. (Phases 4, 8) The firmware now uses mode 0 for both the 165 and the DAC (decision 25); the first board run after rewiring is that bench check. Read a panel with a single switch on and confirm it lands on the right step and bit.
+- **The MCP4822 details the DAC adapter is built on**: the frame layout (bit 15 channel, bit 13 gain with 0 meaning 2x, bit 12 output enable with 1 meaning on, then 12 data bits), the PDIP-8 pinout in ARCHITECTURE.md, that a frame of other than 16 clocks is ignored, the 4.5 µs settling time, and what the output does between power-on and the first write. All from memory of DS20002249B, with a web search that found only secondary pages and two of them disagreeing over bit 12. Read the datasheet before wiring; a meter on the output settles the gain and enable bits at once. (Phase 4)
+- **The pitch CV on the board**: nothing has been measured. See ARCHITECTURE.md open item 10 for the order to check things in. (Phase 4)
 - **The gate and clock outputs on the board.** Their timing is measured on the emulated board only, and as logic levels: check one period and one width on D4 and D5 with a logic analyser. The output stage (buffer, series resistors, levels at the jack) is not designed in detail or built. (Phase 3)
 - **Fuse values, the Nano's brown-out level, and how Optiboot passes on the reset cause.** Check against the Arduino board definitions before burning anything. (Phase 9)
 - **avr8js accuracy for timers and interrupts.** Phase 1 runs on its Timer2 model and gives an 8.000 ms scan period and a 100 ms step at 150 BPM. Still to do: compare one of those against the board.

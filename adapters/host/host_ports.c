@@ -11,6 +11,7 @@
 #include "host_ports.h"
 #include <stddef.h>
 #include "clock_output_port.h"
+#include "cv_output_port.h"
 #include "gate_output_port.h"
 #include "platform_port.h"
 #include "step_input_port.h"
@@ -41,6 +42,11 @@ static uint16_t      g_event_count_at_gate_rise = 0U;
 
 static bool          g_b_clock_output_high = false;
 static uint16_t      g_clock_output_rise_count = 0U;
+
+static port_status_t g_cv_status = STATUS_OK;
+static uint16_t      g_cv_millivolts = 0U;
+static uint16_t      g_cv_write_count = 0U;
+static uint16_t      g_cv_millivolts_at_gate_rise = 0U;
 
 static host_event_t  g_events[HOST_MAX_EVENTS];
 static uint16_t      g_event_count = 0U;
@@ -84,6 +90,11 @@ void host_reset(void)
     g_b_clock_output_high      = false;
     g_clock_output_rise_count  = 0U;
 
+    g_cv_status                  = STATUS_OK;
+    g_cv_millivolts              = 0U;
+    g_cv_write_count             = 0U;
+    g_cv_millivolts_at_gate_rise = 0U;
+
     for (uint8_t i = 0U; i < HOST_RAW_STEP_BYTES; i++)
     {
         g_raw_steps[i] = 0U;
@@ -124,6 +135,13 @@ void host_set_tempo(uint16_t raw, port_status_t status)
 void host_set_elapsed_ticks(uint8_t ticks)
 {
     g_elapsed_ticks = ticks;
+}
+
+
+
+void host_set_cv_status(port_status_t status)
+{
+    g_cv_status = status;
 }
 
 
@@ -211,6 +229,27 @@ uint16_t host_event_count_at_gate_rise(void)
 
 
 
+uint16_t host_cv_millivolts(void)
+{
+    return g_cv_millivolts;
+}
+
+
+
+uint16_t host_cv_write_count(void)
+{
+    return g_cv_write_count;
+}
+
+
+
+uint16_t host_cv_millivolts_at_gate_rise(void)
+{
+    return g_cv_millivolts_at_gate_rise;
+}
+
+
+
 bool host_clock_output_level(void)
 {
     return g_b_clock_output_high;
@@ -291,13 +330,38 @@ uint8_t timebase_elapsed_ticks(void)
 
 
 
+port_status_t cv_output_write(uint16_t millivolts)
+{
+    port_status_t status = g_cv_status;
+
+    g_cv_write_count++;
+
+    // Same parameter contract as the real adapter (see cv_output_port.h)
+    if (millivolts > CV_OUTPUT_MILLIVOLTS_MAX)
+    {
+        status = ERR_INVALID_PARAM;
+    }
+    else if (STATUS_OK == status)
+    {
+        g_cv_millivolts = millivolts;
+    }
+    else
+    {
+        // Scripted failure: the voltage stays as it was
+    }
+    return status;
+}
+
+
+
 void gate_output_write(bool b_high)
 {
     g_gate_write_count++;
     if (b_high && !g_b_gate_high)
     {
         g_gate_rise_count++;
-        g_event_count_at_gate_rise = g_event_count;
+        g_event_count_at_gate_rise   = g_event_count;
+        g_cv_millivolts_at_gate_rise = g_cv_millivolts;
     }
     g_b_gate_high = b_high;
 }

@@ -152,6 +152,12 @@ static void test_error_text_matches_the_printf_format(void)
         log_error(LOG_ERROR_TEMPO_READ, statuses[i]);
         (void)snprintf(expected, sizeof(expected), "ADC read failed for delay channel, status code = %d\r\n", (int)statuses[i]);
         expect_uart(expected);
+
+        fake_uart_clear();
+        log_error(LOG_ERROR_CV_WRITE, statuses[i]);
+        (void)snprintf(expected, sizeof(expected),
+                       "Pitch CV write failed, status code = %d\r\n", (int)statuses[i]);
+        expect_uart(expected);
     }
 }
 

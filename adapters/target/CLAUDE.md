@@ -13,8 +13,10 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 
 ## Drivers and devices
 
-- Two levels. A **driver** runs one MCU peripheral and implements no port (`spi.c`); its header is private to this folder. A **device adapter** implements a port for one external part, using a driver (`shift_reg_reader.c` implements `step_input_port.h` on the SPI driver).
-- A driver owns its peripheral's registers and pins: only `spi.c` includes `atmega328p_spi_regs.h` or touches SCK and SS. A device adapter owns the part's own lines (the 74HC165 load line, a chip select).
+- Two levels. A **driver** runs one MCU peripheral and implements no port (`spi.c`); its header is private to this folder. A **device adapter** implements a port for one external part, using a driver (`shift_reg_reader.c` implements `step_input_port.h` on the SPI driver, and `cv_output.c` implements `cv_output_port.h` on it for the MCP4822).
+- A driver owns its peripheral's registers and pins: only `spi.c` includes `atmega328p_spi_regs.h` or sets the direction of SCK, MOSI and SS. A device adapter owns the part's own lines (the 74HC165 load line, a chip select). SS is both: `spi.c` makes it a high output, which master mode needs, and `cv_output.c` then drives it as the DAC's chip select.
+- A chip select is released on every path out of a write, failures included. A part that ignores a short frame (the MCP4822) is then left as it was.
+- A part with no chip select (the 74HC165 chain) is clocked by every transfer on the bus. That is harmless only because it is loaded afresh before each read; keep it so.
 - A driver call that waits is bounded by a poll budget and returns `ERR_TIMEOUT`, like the ADC read.
 - The SPI is master, mode 0, MSB first, 1 MHz. Every part on the bus must work in that mode, or the mode becomes a parameter of the transfer. SS (PB2) stays an output: as a low input it cancels master mode.
 - A pin that idles high is set high before it is made an output.
@@ -43,8 +45,8 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 
 ## Pins
 
-- In use: PB1 (74HC165 load), PB5 (SCK, the chain's clock), PB4 (MISO, the chain's data, through 1 kΩ), PB2 (SS, held high, nothing wired), PD4 (gate output), PD5 (clock output), ADC channel 6 (tempo pot). Timer/Counter2 is the 1 kHz tick and drives no pin.
-- PB3 (MOSI) is left an input until a part listens on the bus.
+- In use: PB1 (74HC165 load), PB5 (SCK, the clock of the chain and the DAC), PB4 (MISO, the chain's data, through 1 kΩ), PB3 (MOSI, the DAC's data), PB2 (SS, the DAC's chip select, idle high), PD4 (gate output), PD5 (clock output), ADC channel 6 (tempo pot). Timer/Counter2 is the 1 kHz tick and drives no pin.
+- The MCP4822 is used on channel A at a gain of 2 from its internal reference (1 mV a step), with LDAC tied low. Its frame layout and pinout have not been checked against the datasheet (`docs/ROADMAP.md` section 8).
 - PD2, PD3, PD6 and PD7 are free. PC0 and PC1 are given a direction but are unused and free.
 - An output pin's direction and idle level are set in `register_init.c`, level first. The adapter that writes it (`gate_output.c`, `clock_output.c`) only changes its level, one pin per statement so that it compiles to a single `sbi` or `cbi` and cannot disturb the rest of the port. Check that with `avr-objdump -d` for a new one.
 - The gate and clock outputs are active high. If a buffer stage inverts them, invert in those two files and nowhere else.

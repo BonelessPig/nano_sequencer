@@ -295,6 +295,127 @@ static void test_gate_opens_one_tick_after_its_step_begins_and_before_the_log(vo
 
 
 
+static void test_pitch_cv_is_in_place_before_the_gate_opens(void)
+{
+    start_app(); // Step 0 plays pitch 14, step 1 pitch 13
+
+    // The first tick works out step 0; the pitch written is still the 0 V
+    // the app starts from
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(1, host_cv_write_count());
+    TEST_ASSERT_EQUAL(0, host_cv_millivolts());
+
+    // The second tick applies it: 14 semitones at 1 V to the octave, and
+    // already there when the gate went high
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
+    TEST_ASSERT_EQUAL(1, host_gate_rise_count());
+    TEST_ASSERT_EQUAL(1167, host_cv_millivolts_at_gate_rise());
+
+    // It holds after the gate closes, until step 1 begins on tick 100
+    run_ticks(TICKS_PER_STEP - 2U);
+    TEST_ASSERT(!host_gate_level());
+    TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(1083, host_cv_millivolts());
+    TEST_ASSERT_EQUAL(1083, host_cv_millivolts_at_gate_rise());
+}
+
+
+
+static void test_pitch_cv_is_written_on_every_tick_only(void)
+{
+    start_app();
+    run_ticks(25U);
+    TEST_ASSERT_EQUAL(25, host_cv_write_count());
+
+    // A pass with no tick leaves it alone
+    host_set_elapsed_ticks(0U);
+    app_run_once();
+    TEST_ASSERT_EQUAL(25, host_cv_write_count());
+}
+
+
+
+static void test_pitch_cv_follows_the_ideal_table_and_holds_through_a_rest(void)
+{
+    // Step 1 an octave up, step 2 the highest chromatic pitch, step 3 a rest
+    static const uint8_t notes[HOST_RAW_STEP_BYTES] =
+    {
+        0x1DU, 0xF0U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U
+    };
+
+    start_app();
+    host_set_steps(notes, STATUS_OK);
+
+    run_ticks(2U);
+    TEST_ASSERT_EQUAL(0, host_cv_millivolts()); // Note value 1: the lowest pitch
+    run_ticks(TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(1000, host_cv_millivolts());
+    run_ticks(TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
+    run_ticks(TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(4, host_event_count()); // The rest has begun
+    TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
+}
+
+
+
+static void test_init_puts_the_pitch_cv_back_to_zero(void)
+{
+    start_app();
+    run_ticks(10U);
+    TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
+
+    (void)app_init();
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(0, host_cv_millivolts());
+}
+
+
+
+static void test_cv_write_failure_is_logged_once_per_step_after_the_note(void)
+{
+    start_app();
+    host_set_cv_status(ERR_TIMEOUT);
+
+    // Every tick's write fails; it is reported with the step, not per tick
+    run_ticks(2U);
+    TEST_ASSERT_EQUAL(2, host_event_count());
+    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
+    expect_event(1U, HOST_EVENT_ERROR, (uint16_t)LOG_ERROR_CV_WRITE, (uint16_t)ERR_TIMEOUT);
+    TEST_ASSERT_EQUAL(0, host_cv_millivolts());
+    TEST_ASSERT(host_gate_level()); // The note still plays, at the old pitch
+
+    run_ticks(TICKS_PER_STEP - 2U);
+    TEST_ASSERT_EQUAL(2, host_event_count());
+
+    // Once the writes work again, the next tick puts the pitch right
+    host_set_cv_status(STATUS_OK);
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(3, host_event_count());
+    expect_event(2U, HOST_EVENT_STEP_NOTE, 1U, 13U);
+    TEST_ASSERT_EQUAL(1083, host_cv_millivolts());
+}
+
+
+
+static void test_every_failure_at_once_is_logged_in_order(void)
+{
+    start_app();
+    host_set_steps(NULL, ERR_GENERAL);
+    host_set_tempo(0U, ERR_TIMEOUT);
+    host_set_cv_status(ERR_BUSY);
+    run_ticks(2U);
+
+    TEST_ASSERT_EQUAL(3, host_event_count());
+    expect_event(0U, HOST_EVENT_ERROR, (uint16_t)LOG_ERROR_STEP_READ, (uint16_t)ERR_GENERAL);
+    expect_event(1U, HOST_EVENT_ERROR, (uint16_t)LOG_ERROR_TEMPO_READ, (uint16_t)ERR_TIMEOUT);
+    expect_event(2U, HOST_EVENT_ERROR, (uint16_t)LOG_ERROR_CV_WRITE, (uint16_t)ERR_BUSY);
+}
+
+
+
 static void test_gate_and_clock_output_are_written_on_every_tick_only(void)
 {
     start_app();
@@ -525,6 +646,12 @@ int main(void)
     RUN_TEST(test_tick_reads_the_whole_chain);
     RUN_TEST(test_elapsed_ticks_reach_the_core);
     RUN_TEST(test_gate_opens_one_tick_after_its_step_begins_and_before_the_log);
+    RUN_TEST(test_pitch_cv_is_in_place_before_the_gate_opens);
+    RUN_TEST(test_pitch_cv_is_written_on_every_tick_only);
+    RUN_TEST(test_pitch_cv_follows_the_ideal_table_and_holds_through_a_rest);
+    RUN_TEST(test_init_puts_the_pitch_cv_back_to_zero);
+    RUN_TEST(test_cv_write_failure_is_logged_once_per_step_after_the_note);
+    RUN_TEST(test_every_failure_at_once_is_logged_in_order);
     RUN_TEST(test_gate_and_clock_output_are_written_on_every_tick_only);
     RUN_TEST(test_gate_is_held_for_half_a_step);
     RUN_TEST(test_a_rest_has_a_clock_pulse_and_no_gate);

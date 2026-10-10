@@ -4,15 +4,16 @@
  * @file   spi.h
  * @brief  SPI driver for the target: the MCU as bus master. Private to
  *         adapters/target/; the device adapters that sit on the bus (the
- *         shift register reader) are its only callers, and it implements no
- *         port of its own.
+ *         shift register reader and the pitch CV output) are its only
+ *         callers, and it implements no port of its own.
  * @author BonelessPig
  *
  * The bus runs in SPI mode 0 (clock idle low, data sampled on the rising
  * edge), most significant bit first, at 1 MHz (system clock / 16). The pins
- * are PB5 (SCK) and PB4 (MISO); PB3 (MOSI) is not driven yet, because nothing
- * on the bus listens. PB2 (SS) is held high as an output: as an input, a low
- * level on it would drop the MCU out of master mode.
+ * are PB5 (SCK), PB4 (MISO) and PB3 (MOSI). PB2 (SS) is made an output and
+ * left high: as an input, a low level on it would drop the MCU out of master
+ * mode. As an output it is free to be a chip select, and the pitch CV output
+ * uses it as the DAC's.
  *
  * @copyright Copyright (c) 2026
  *
