@@ -10,6 +10,7 @@
  * @copyright Copyright (c) 2026
  *
  */
+#include <stdbool.h>
 #include <stdint.h>
 #include "log_port.h"
 #include "port_status.h"
@@ -39,9 +40,10 @@ typedef struct
 } host_event_t;
 
 /**
- * @brief Clears the event record and the call counts, and restores the
- *        default script: every port succeeds, all step bits are 0, the tempo
- *        reading is 0 and no time passes.
+ * @brief Clears the event record and the call counts, puts the gate and the
+ *        clock output low, and restores the default script: every port
+ *        succeeds, all step bits are 0, the tempo reading is 0 and no time
+ *        passes.
  */
 void host_reset(void);
 
@@ -107,5 +109,37 @@ uint16_t host_tempo_read_count(void);
  * @brief Number of times log_poll() has been called since host_reset().
  */
 uint16_t host_log_poll_count(void);
+
+/**
+ * @brief The level gate_output_write() was last given (false if never called).
+ */
+bool host_gate_level(void);
+
+/**
+ * @brief Number of times gate_output_write() has been called since host_reset().
+ */
+uint16_t host_gate_write_count(void);
+
+/**
+ * @brief Number of times the gate has gone from low to high since host_reset().
+ */
+uint16_t host_gate_rise_count(void);
+
+/**
+ * @brief What host_event_count() was when the gate last went high (0 if it
+ *        never has), which shows whether the gate or the log came first.
+ */
+uint16_t host_event_count_at_gate_rise(void);
+
+/**
+ * @brief The level clock_output_write() was last given (false if never called).
+ */
+bool host_clock_output_level(void);
+
+/**
+ * @brief Number of times the clock output has gone from low to high since
+ *        host_reset().
+ */
+uint16_t host_clock_output_rise_count(void);
 
 #endif /* HOST_PORTS_H */

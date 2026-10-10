@@ -1,11 +1,10 @@
 'use strict';
 // The release firmware image on the emulated board. It has no log, so these
-// scenarios watch the pins and the timer instead. Until there is a gate
-// output, nothing outside the chip shows when a step begins in this build;
-// what can be seen is that its tick runs at the same 1 kHz as the debug one.
+// scenarios watch the pins and the timer instead: the gate and the clock
+// output show when each step begins and how long its note is held.
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { createBoard } = require('../boards/nano_sequencer');
+const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 
 const CLOCKS_PER_READ = 64;     // 16 steps of 4 bits
 const SCAN_PERIOD_MS = 8;       // The panel and pot are read every 8 ticks
@@ -24,9 +23,32 @@ const PORTB = 0x25;
 const SS_PIN = 0x04;            // PB2
 const LOAD_PIN = 0x02;          // PB1, the shift register load line
 const SCK_PIN = 0x20;           // PB5
-const OLD_CHAIN_PINS = 0x1C;    // PD2, PD3, PD4: where the chain used to be
+const OUTPUT_PINS = 0x30;       // PD4 (gate) and PD5 (clock out)
 const SPI_HZ = 1000000;
 const RUN_LIMIT_MS = 5000;
+const PANEL = [1, 4, 7, 10, 13, 0, 3, 6, 9, 12, 15, 2, 5, 8, 11, 14];
+const REST_STEP = 5;            // The one step of PANEL with no note
+const READING_150_BPM = 480;    // Exactly 100 ms a step
+const STEP_MS = 100;
+const HALF_STEP_MS = 50;        // The gate length and the clock's high time
+const TICK_MS = 1;
+// Outputs are set first thing in a tick, so their edges land on the tick to
+// within the time the idle loop takes to notice it
+const EDGE_JITTER_MAX_MS = 0.02;
+
+function assertNear(actual, expected, tolerance, what) {
+    assert.ok(Math.abs(actual - expected) <= tolerance,
+        `${what}: ${actual} ms, expected ${expected} within ${tolerance}`);
+}
+
+// One pass of PANEL at 150 BPM and a little of the next
+function playedBoard() {
+    const board = createBoard('release');
+    board.setNotes(PANEL);
+    board.setTempoReading(READING_150_BPM);
+    board.runUntilClockOutPulses(STEP_COUNT + 1, RUN_LIMIT_MS);
+    return board;
+}
 
 function releaseBoard() {
     const board = createBoard('release');
@@ -43,6 +65,66 @@ test('never switches the USART on or drives its pins', () => {
     assert.equal(board.machine.usart.rxEnable, false);
     assert.equal(board.serial.bytes, 0);
     assert.equal(board.machine.cpu.data[DDRD] & UART_PINS, 0);
+});
+
+test('drives only the gate and clock pins of port D', () => {
+    const board = releaseBoard();
+
+    board.runUntilPanelReads(2, RUN_LIMIT_MS);
+
+    assert.equal(board.machine.cpu.data[DDRD], OUTPUT_PINS);
+});
+
+test('the clock output pulses once a step, high for half of it', () => {
+    const board = playedBoard();
+    const pulses = board.clockOutPulsesMs();
+
+    assert.equal(pulses.length, STEP_COUNT + 1);
+    // The first tick begins step 0 and counts towards step 1
+    assertNear(pulses[0].widthMs, HALF_STEP_MS - TICK_MS, EDGE_JITTER_MAX_MS, 'first width');
+    assertNear(pulses[1].riseMs - pulses[0].riseMs, STEP_MS - TICK_MS,
+        EDGE_JITTER_MAX_MS, 'first period');
+    for (let i = 1; i < STEP_COUNT; i++) {
+        assertNear(pulses[i].widthMs, HALF_STEP_MS, EDGE_JITTER_MAX_MS, `width ${i}`);
+        assertNear(pulses[i + 1].riseMs - pulses[i].riseMs, STEP_MS,
+            EDGE_JITTER_MAX_MS, `period ${i}`);
+    }
+    // No drift: sixteen steps take sixteen step lengths
+    assertNear(pulses[STEP_COUNT].riseMs - pulses[0].riseMs,
+        (STEP_COUNT * STEP_MS) - TICK_MS, EDGE_JITTER_MAX_MS, 'whole pattern');
+});
+
+test('the gate opens for half of every step with a note, and not for a rest', () => {
+    const board = playedBoard();
+    const clocks = board.clockOutPulsesMs();
+    const gates = board.gatePulsesMs();
+    const noteSteps = [];
+
+    for (let step = 0; step < STEP_COUNT; step++) {
+        if (step !== REST_STEP) {
+            noteSteps.push(step);
+        }
+    }
+    noteSteps.push(STEP_COUNT); // Step 0 again, as the pattern wraps
+
+    assert.equal(gates.length, noteSteps.length);
+    gates.forEach((gate, i) => {
+        const step = noteSteps[i];
+        const widthMs = (step === 0) ? HALF_STEP_MS - TICK_MS : HALF_STEP_MS;
+
+        // Each gate rises with its step's clock pulse, a couple of
+        // instructions ahead of it
+        assertNear(gate.riseMs, clocks[step].riseMs, 0.001, `gate ${step} rise`);
+        assert.ok(gate.riseMs < clocks[step].riseMs, `gate ${step} leads the clock`);
+        assertNear(gate.widthMs, widthMs, EDGE_JITTER_MAX_MS, `gate ${step} width`);
+    });
+});
+
+test('the first gate opens on the second tick', () => {
+    const board = playedBoard();
+
+    // Worked out on the first tick, 1 ms after reset, and applied on the next
+    assertNear(board.gatePulsesMs()[0].riseMs, 2 * TICK_MS, 0.1, 'first gate');
 });
 
 test('sets Timer/Counter2 for a 1 kHz interrupt and enables interrupts', () => {
@@ -73,14 +155,13 @@ test('runs the SPI bus as master in mode 0, MSB first, at 1 MHz', () => {
     assert.equal(data[PORTB] & (SS_PIN | LOAD_PIN), SS_PIN | LOAD_PIN);
 });
 
-test('reads the chain in eight transfers and leaves its old pins alone', () => {
+test('reads the chain in eight transfers of zeros', () => {
     const board = releaseBoard();
 
     board.runUntilPanelReads(3, RUN_LIMIT_MS);
 
     // Two complete reads: eight bytes each, all zeros sent
     assert.deepEqual(board.spiSent.slice(0, 16), new Array(16).fill(0));
-    assert.equal(board.machine.cpu.data[DDRD] & OLD_CHAIN_PINS, 0);
 });
 
 test('reads the panel every 8 ms, with 64 clock pulses', () => {

@@ -15,12 +15,16 @@
 #include "address.h"
 #include "clock.h"
 #include "engine_plain.h"
+#include "gate.h"
 #include "note_map.h"
 #include "panel.h"
 
 // A step is a sixteenth note: four to the quarter note, 24 clock pulses each
 #define SEQ_STEPS_PER_BEAT   (4U)
 #define SEQ_PULSES_PER_STEP  (CLOCK_PPQN / SEQ_STEPS_PER_BEAT)
+
+// The clock output is high for the first half of every step
+#define SEQ_CLOCK_OUT_PULSES (SEQ_PULSES_PER_STEP / 2U)
 
 // Tempo: the control's 10-bit range maps linearly onto 30 to 285 beats per
 // minute, so there is a floor at the slow end and no way to stop the clock.
@@ -37,6 +41,7 @@ typedef struct
     uint16_t             step_pulses;    // Pulses since the last step was due; the
                                          // next is due at SEQ_PULSES_PER_STEP
     engine_plain_state_t engine;         // Where the engine has got to in the pattern
+    gate_state_t         gate;           // How much of the current note's gate is left
 } seq_state_t;
 
 /**
@@ -52,6 +57,7 @@ typedef struct
     uint8_t           elapsed_ticks; // Timebase ticks (milliseconds) since the previous tick
     address_config_t  address;       // Direction, first and last step, one-shot
     note_map_config_t note_map;      // Scale and root
+    gate_config_t     gate;          // Gate length
     bool              b_reset;       // true to send the pattern back to its start
 } seq_inputs_t;
 
@@ -68,6 +74,11 @@ typedef struct
     bool    b_rest;         // true if the step is valid and plays nothing
     uint8_t semitone;       // Pitch of the step if it is valid and not a rest:
                             // semitones above the lowest pitch, 0 to 45
+    bool    b_gate;         // Level of the gate after this tick: true while a
+                            // note is held. Given on every tick
+    bool    b_clock_out;    // Level of the clock output after this tick: true
+                            // for the first half of every step. Given on
+                            // every tick
 } seq_outputs_t;
 
 /**
@@ -108,6 +119,17 @@ void seq_init(seq_state_t *p_state);
  *         read does not shift the pattern in time. At most one step begins
  *         per tick: after a stall of more than a step, the steps owed begin
  *         on successive ticks.
+ *
+ *         A step that plays a pitch opens the gate for p_in->gate.length
+ *         clock pulses, read when the step begins (see gate.h). A rest, a
+ *         step whose note is not valid, and a step that is due but does not
+ *         begin all leave the gate closed, and each ends a gate still open
+ *         from the step before. A reset does not cut a held note short.
+ *
+ *         The clock output follows the clock and not the pattern: it rises
+ *         each time a step falls due, whether or not one begins, and falls
+ *         SEQ_CLOCK_OUT_PULSES later. While steps are owed after a stall it
+ *         stays low.
  *
  *         The tempo is SEQ_BPM_MIN plus the tempo reading divided by
  *         SEQ_TEMPO_RAW_PER_BPM (30 to 285 BPM over the valid range). If the

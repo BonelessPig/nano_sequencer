@@ -26,7 +26,8 @@ static void test_output_pins_are_set_from_all_inputs(void)
 
     TEST_ASSERT_EQUAL(0x02, g_fake_ddrb); // PB1 (shift register load)
     TEST_ASSERT_EQUAL(0x02, g_fake_ddrc); // PC1
-    TEST_ASSERT_EQUAL(0x00, g_fake_ddrd); // Nothing: PD0 and PD1 are the UART's, PD2 to PD7 are free
+    // PD4 (gate) and PD5 (clock out). PD0 and PD1 are the UART's; the rest are free
+    TEST_ASSERT_EQUAL(0x30, g_fake_ddrd);
 }
 
 
@@ -41,7 +42,13 @@ static void test_input_pins_are_cleared_and_other_bits_kept(void)
 
     TEST_ASSERT_EQUAL(0xFF, g_fake_ddrb);
     TEST_ASSERT_EQUAL(0xFE, g_fake_ddrc); // PC0 made an input
-    TEST_ASSERT_EQUAL(0xFF, g_fake_ddrd); // Port D is not touched
+    TEST_ASSERT_EQUAL(0xFF, g_fake_ddrd); // No port D pin is made an input
+
+    // In particular the UART's pins keep whatever direction they had
+    fake_regs_reset();
+    g_fake_ddrd = 0x02U;
+    (void)register_init();
+    TEST_ASSERT_EQUAL(0x32, g_fake_ddrd);
 }
 
 
@@ -73,7 +80,21 @@ static void test_load_line_idles_high_and_other_levels_are_left_alone(void)
     (void)register_init();
     TEST_ASSERT_EQUAL(0x5A, g_fake_portb);
     TEST_ASSERT_EQUAL(0xA5, g_fake_portc);
-    TEST_ASSERT_EQUAL(0x3C, g_fake_portd);
+    TEST_ASSERT_EQUAL(0x0C, g_fake_portd); // Only the gate and clock pins change
+}
+
+
+
+static void test_gate_and_clock_outputs_start_low_and_were_low_before_they_were_outputs(void)
+{
+    // Levels a bootloader might have left high must not reach the jacks
+    fake_regs_reset();
+    g_fake_portd = 0xFFU;
+    (void)register_init();
+
+    TEST_ASSERT_EQUAL(0xCF, g_fake_portd);
+    TEST_ASSERT(g_fake_b_ddrd_accessed);
+    TEST_ASSERT_EQUAL(0xCF, g_fake_portd_at_first_ddrd);
 }
 
 
@@ -99,5 +120,6 @@ int main(void)
     RUN_TEST(test_adc_is_enabled_with_prescaler_128);
     RUN_TEST(test_load_line_idles_high_and_other_levels_are_left_alone);
     RUN_TEST(test_load_line_is_high_before_it_becomes_an_output);
+    RUN_TEST(test_gate_and_clock_outputs_start_low_and_were_low_before_they_were_outputs);
     return TEST_RESULT();
 }

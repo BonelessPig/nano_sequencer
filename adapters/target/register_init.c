@@ -27,6 +27,12 @@ port_status_t register_init(void)
     PORTB |= BIT_1;
     DDRB  |= BIT_1;
 
+    // Gate (PD4) and clock (PD5) outputs: low first, so that neither is
+    // driven high on its way to being an output. gate_output.c and
+    // clock_output.c set their levels from then on
+    PORTD &= (uint8_t)~(BIT_4 | BIT_5);
+    DDRD  |= (BIT_4 | BIT_5);
+
     // ADC Initialization
     ADCSRA = (uint8_t)((1U << ADEN) |   // Enable ADC
                        (1U << ADPS2) |  // Set ADC prescaler to 128 for 125kHz ADC clock with 16MHz system clock

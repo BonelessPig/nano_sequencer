@@ -26,8 +26,9 @@ port_status_t app_init(void);
  *         since the last pass, it runs one tick of the sequencer: applies the
  *         outputs the previous tick computed, gathers the inputs from the
  *         ports, then runs the core. Every output is therefore one tick late,
- *         by the same amount each time. On every pass it also gives the log
- *         the chance to send a byte.
+ *         by the same amount each time: the gate and the clock output change
+ *         at the start of the tick after the one that worked them out. On
+ *         every pass it also gives the log the chance to send a byte.
  */
 void app_run_once(void);
 

@@ -19,6 +19,8 @@ const TICK_MS = 1;
 // A step's log line starts within this long of its tick boundary: the time
 // to queue the line, plus a panel and pot read if that tick has one
 const LOG_START_JITTER_MAX_MS = 0.5;
+// The gate and the clock output are set first in a tick, ahead of the log
+const OUTPUT_JITTER_MAX_MS = 0.02;
 const RUN_LIMIT_MS = 10000;
 
 function debugBoard(tempoReading) {
@@ -117,6 +119,42 @@ test('a step lasts 500 ms with the tempo pot at zero', () => {
     const periods = board.lineStartPeriodsMs();
     assertNear(periods[1], STEP_MS_30_BPM, LOG_START_JITTER_MAX_MS, 'second step');
     assertNear(periods[2], STEP_MS_30_BPM, LOG_START_JITTER_MAX_MS, 'third step');
+});
+
+test('the gate opens before its step is logged, and not for a rest', () => {
+    const board = debugBoard(READING_150_BPM);
+
+    board.runUntilLines(STEP_COUNT + 1, RUN_LIMIT_MS);
+
+    // Every line but the rest's has a gate, which rose in the same tick as
+    // the line's first byte went out, and ahead of it
+    const rises = board.gate.rises();
+    const noteLines = board.serial.lines.filter((line) => !line.text.endsWith('Rest'));
+    assert.equal(noteLines.length, STEP_COUNT);
+    assert.equal(rises.length, noteLines.length);
+    noteLines.forEach((line, i) => {
+        const leadMs = board.machine.cyclesToMs(line.startCycle - rises[i]);
+        assert.ok((leadMs > 0) && (leadMs < LOG_START_JITTER_MAX_MS),
+            `${line.text}: gate led the log by ${leadMs} ms`);
+    });
+});
+
+test('the gate keeps time while the log is being sent', () => {
+    const board = debugBoard(READING_150_BPM);
+
+    board.runUntilClockOutPulses(STEP_COUNT + 1, RUN_LIMIT_MS);
+
+    // The outputs are set before anything else in a tick, so the log costs
+    // them nothing: the same figures as the release build
+    const pulses = board.clockOutPulsesMs();
+    for (let i = 1; i < STEP_COUNT; i++) {
+        assertNear(pulses[i].widthMs, STEP_MS_150_BPM / 2, OUTPUT_JITTER_MAX_MS, `width ${i}`);
+        assertNear(pulses[i + 1].riseMs - pulses[i].riseMs, STEP_MS_150_BPM,
+            OUTPUT_JITTER_MAX_MS, `period ${i}`);
+    }
+    for (const gate of board.gatePulsesMs().slice(1)) {
+        assertNear(gate.widthMs, STEP_MS_150_BPM / 2, OUTPUT_JITTER_MAX_MS, 'gate width');
+    }
 });
 
 test('the first step is logged within 3 ms of reset', () => {

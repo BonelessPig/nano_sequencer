@@ -1,13 +1,13 @@
 # nano_sequencer roadmap
 
-Written 2026-10-10 from four research passes (existing sequencers, hardware emulation, the output-stage hardware, and Claude Code context cost) plus a working emulation spike, and updated the same day with the owner's decisions (section 2). The emulated board (`make sim`), phase 1 (the timebase), phase 2 (addressing, note mapping and the engine interface) and the first part of phase 4 (the SPI driver, with the shift registers moved onto it) are built; everything else here is still a plan.
+Written 2026-10-10 from four research passes (existing sequencers, hardware emulation, the output-stage hardware, and Claude Code context cost) plus a working emulation spike, and updated the same day with the owner's decisions (section 2). The emulated board (`make sim`), phase 1 (the timebase), phase 2 (addressing, note mapping and the engine interface), the firmware of phase 3 (the gate and the clock output, as logic pins with no buffer stage yet) and the first part of phase 4 (the SPI driver, with the shift registers moved onto it) are built; everything else here is still a plan.
 
 Each claim that matters is marked **verified** (read from a datasheet or primary manual, or run on this machine), or **unverified** (from memory or a secondary source; check before relying on it). The full list of unverified items is in [section 8](#8-not-verified).
 
 ## 1. Summary
 
 - **Where it goes.** A 16-step CV/gate sequencer with one pitch output, gate, clock in and out, reset, and a set of selectable sequencing engines (plain, Metropolis-style, Klee-style, random) that all reinterpret the same 64 panel switches. Every engine is pure core logic, so it is cheap to add and fully host-testable.
-- **What limits it.** Pins and the single USART, not flash or RAM (after phase 2 and the SPI move the debug image uses 2696 of 30720 bytes of flash and 382 of 2048 bytes of RAM).
+- **What limits it.** Pins and the single USART, not flash or RAM (after phase 3 the debug image uses 2930 of 30720 bytes of flash and 386 of 2048 bytes of RAM).
 - **Emulation.** The real firmware image already runs under an emulator on this machine (section 5). That makes most of the roadmap testable without the board, including parts you have not bought.
 - **A separate emulation project.** The gap is real but shallow: nothing open, local and headless covers AVR plus other MCU families with a board file and waveform assertions. It is a thin layer over existing CPU cores, not a new emulator. Recommendation: build it inside this repo with a clean boundary and extract it when a second project needs it.
 - **Claude context.** Splitting CLAUDE.md into a short root file, per-folder files and skills cuts the always-loaded instructions by an estimated 55 to 60 percent, and new per-module guidance then costs nothing until that module is touched (section 6).
@@ -65,6 +65,19 @@ Taken while moving the shift registers to SPI. Also provisional, and to reconfir
 | 28 | MOSI (PB3) | **Left as an input** until something listens. The DAC adapter makes it an output. |
 | 29 | A failed panel read | **Leaves the caller's buffer untouched**: the adapter reads into its own 8 bytes and copies on success. Most of the 94 bytes the adapter grew by. |
 
+Taken while building phase 3. Provisional like the ones above, and to reconfirm with them; 30 to 32 are the ones that are heard.
+
+| # | Decision | Outcome |
+|---|---|---|
+| 30 | Gate length | **A number of clock pulses from the start of the step**, so it scales with the tempo. One setting for the whole pattern, read when a step begins. With no control for it, **fixed at 12 (half a step)** in `app.c`. |
+| 31 | Ties | **A length of a whole step (24) or more ties consecutive notes** into one gate; a rest ends it. It falls out of the arithmetic, with no tie flag. A tie or a length for one step alone comes with the engines of phase 7 (the M185-style gate modes), through `engine_step_t`. |
+| 32 | Clock output | **One pulse per step, high for the first half** (12 pulses), rising as the step begins. It follows the clock, not the pattern: it runs through rests and after a one-shot has finished. A step being a sixteenth note, that is 4 pulses per quarter note. |
+| 33 | A step that cannot be read | **No gate.** The step still takes its turn and its clock pulse. |
+| 34 | Reset and a held note | **A reset does not cut the gate short**; the note in progress plays out. To revisit with `transport` in phase 6. |
+| 35 | A step begun late | **Its gate is counted from when the step was due**, so the note still ends on time, and does not open at all if that time has passed. The clock output stays low while steps are owed. |
+| 36 | Applying the outputs | **Both pins are written on every tick, before the log**: gate, then clock. Active high, low from reset. If the buffer stage inverts, the inversion goes in the two pin adapters. |
+| 37 | Ports | **Two, `gate_output_port` and `clock_output_port`**, one function each, on the pattern of the input ports, in place of the single `gate_port` section 4 names. The pins are set up in `register_init.c`. |
+
 ## 3. What the survey found
 
 Full feature matrix and sources are in the research notes summarised here. Bindubba is a Nonlinearcircuits 4x4 sequencer addressed by two independent clocks, not a touch-keyboard panel.
@@ -106,7 +119,7 @@ The ports-and-adapters rules stay as they are. Three additions:
   | `prng` | One LFSR shared by every random feature |
   | `errlog` | Crash record format |
 
-- **Ports are named for what the core needs**, not for the bus: `timebase_port`, `gate_port`, `cv_port`, `clock_in_port`, `led_port`, `nv_port`, `watchdog_port`. No `spi_port`.
+- **Ports are named for what the core needs**, not for the bus: `timebase_port`, `gate_output_port` and `clock_output_port` (built; decision 37), `cv_port`, `clock_in_port`, `led_port`, `nv_port`, `watchdog_port`. No `spi_port`.
 - **`adapters/target/` gets two levels**: peripheral drivers (SPI, Timer2, EEPROM) with headers private to that folder, and device adapters above them that implement ports (the DAC adapter implements `cv_port`).
 
 ### The tick
@@ -164,13 +177,13 @@ One lesson came with it. The first shift register model latched on the falling e
 
 ### The harness (`tools/sim/`, `make sim`)
 
-In place as of 2026-10-10: `lib/machine.js` (the chip), `parts/hc165.js`, `boards/nano_sequencer.js` (wiring, panel, pot, serial capture) and thirteen scenarios across the two images. ARCHITECTURE.md describes it.
+In place as of 2026-10-10: `lib/machine.js` (the chip), `lib/pin_recorder.js`, `parts/hc165.js`, `boards/nano_sequencer.js` (wiring, panel, pot, gate and clock recorders, serial capture) and nineteen scenarios across the two images. ARCHITECTURE.md describes it.
 
 Still to add, each when a phase needs it:
 
 - **Timers and interrupts in `lib/machine.js`**: Timer/Counter2 added in phase 1, the SPI with the shift register move. Timer1 when phase 6 needs it.
 - **More parts**: clock source and button (phase 6), MCP4822 or whichever DAC is chosen (phase 4), 74HC595 (phase 8). SPI parts hook the byte transfer, not the pins, as the 74HC165 model now does; with a second part on the bus the board will have to route each transfer by chip select.
-- **A pin recorder with assertions** such as `count_rises(pin, t0, t1)` and `period(pin)`, once there is a gate to measure (phase 3). The 74HC165 model counts its own pulses for now.
+- **A pin recorder**: added in phase 3, as a list of edges and of completed pulses per pin; the scenarios do their own arithmetic on them. Helpers such as `count_rises(pin, t0, t1)` can be added when a scenario wants one. The 74HC165 model still counts its own pulses.
 - **VCD dump on failure**, viewable in GTKWave or PulseView.
 - **A board file as plain data**, once there is a second board.
 
@@ -232,7 +245,7 @@ Each phase is one or more small commits, leaves both builds, the tests, coverage
 | 0. Groundwork | `make sim` with the first three parts (**done**); the CLAUDE.md split (**done**); a quiet `make check` (**done**); Optiboot on the board (any time before phase 9, easiest before phase 4) | None | ISP programmer | Sim scenarios pass; the board still uploads and runs |
 | 1. Timebase (**done**, not yet run on the board) | Timer2 tick, `timebase_port`, core `clock`, tempo in BPM with a floor, non-blocking loop and log. Removes `delay_port`. Closes open items 1 and 3 | Timer2, first ISR | None | Host: exact pulse counts over N ticks. Sim: step period matches BPM in the debug build; the release build has no output to time a step by until phase 3, so its scenarios check the 1 kHz tick instead |
 | 2. Addressing and notes (**done**, not yet run on the board) | `address` (direction, first and last step, one-shot, reset), `note_map` (scales, root, rest). Engine interface, with the plain engine as its first user. Also `panel`, the switch layout every engine shares | None | None | Host: every module on its own and under `seq`. Sim through the log: pitches and rests only, because the board has no controls for the rest (decision 21) |
-| 3. Gate and clock out | Core `gate` (length in 1/24 step, ties), `gate_port`, clock out | GPIO PD4, PD5 | Buffer IC, resistors, jacks | Sim: pulse widths and counts. Board: logic analyser or LED |
+| 3. Gate and clock out (firmware **done**, not yet run on the board; the buffer stage is still to build) | Core `gate` (length in 1/24 step, ties), `gate_output_port`, `clock_output_port` | GPIO PD4, PD5 | Buffer IC, resistors, jacks | Sim: pulse widths and counts. Board: logic analyser or LED |
 | 4. SPI and pitch CV | SPI driver and the 74HC165 chain on SPI (**done** ahead of phase 3; not yet run on the board, which needs rewiring first); DAC adapter once the DAC is chosen (decision 8); `pitch_cal` with the ideal table. First point it plays an oscillator | SPI | The DAC, op-amp buffer, 1 kΩ on MISO | Sim: exact DAC frames, DAC written before gate rises. Board: tuning by ear and meter |
 | 5. Calibration and storage | Calibration mode, non-blocking EEPROM adapter, record with version and checksum, reset-cause read | EEPROM | Multimeter | Host: record format. Sim: EEPROM contents. Board: measured octaves |
 | 6. Clock, reset and run in | One external edge per step, reset, `transport`, `debounce` | Timer1 capture flag and INT0 flag, polled | Two transistor input stages, button, jacks | Sim: scripted clock source. Board |
@@ -250,7 +263,7 @@ Notes on ordering:
 
 ### Proposed pin assignment (from phase 4)
 
-In use today: PB1, PB2, PB4 and PB5 as below, PD1 in the debug build, and ADC6. The rest is still a proposal.
+In use today: PB1, PB2, PB4 and PB5 as below, PD4 and PD5, PD1 in the debug build, and ADC6. The rest is still a proposal.
 
 | Pin | Use | Pin | Use |
 |---|---|---|---|
@@ -274,6 +287,7 @@ Check these before the phase that depends on them.
 - **`__vector_7` as the Timer2 compare A symbol**: now **verified**. It links, the vector table entry jumps to the handler, and the handler runs on the emulator.
 - **Edge flags latching with their interrupts disabled** (for polled clock and reset inputs). (Phase 6)
 - **SPI mode for the 74HC165 alongside the DAC**, and one pin serving as both 165 load and 595 latch. Bench-check. (Phases 4, 8) The firmware now uses mode 0 for the 165 (decision 25); the first board run after rewiring is that bench check. Read a panel with a single switch on and confirm it lands on the right step and bit.
+- **The gate and clock outputs on the board.** Their timing is measured on the emulated board only, and as logic levels: check one period and one width on D4 and D5 with a logic analyser. The output stage (buffer, series resistors, levels at the jack) is not designed in detail or built. (Phase 3)
 - **Fuse values, the Nano's brown-out level, and how Optiboot passes on the reset cause.** Check against the Arduino board definitions before burning anything. (Phase 9)
 - **avr8js accuracy for timers and interrupts.** Phase 1 runs on its Timer2 model and gives an 8.000 ms scan period and a 100 ms step at 150 BPM. Still to do: compare one of those against the board.
 - **MIDI electrical values**, and that the opto must be disconnected to upload. (Phase 10)

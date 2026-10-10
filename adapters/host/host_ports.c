@@ -10,6 +10,8 @@
  */
 #include "host_ports.h"
 #include <stddef.h>
+#include "clock_output_port.h"
+#include "gate_output_port.h"
 #include "platform_port.h"
 #include "step_input_port.h"
 #include "tempo_input_port.h"
@@ -31,6 +33,14 @@ static uint16_t      g_tempo_read_count = 0U;
 
 static uint8_t       g_elapsed_ticks = 0U;
 static uint16_t      g_log_poll_count = 0U;
+
+static bool          g_b_gate_high = false;
+static uint16_t      g_gate_write_count = 0U;
+static uint16_t      g_gate_rise_count = 0U;
+static uint16_t      g_event_count_at_gate_rise = 0U;
+
+static bool          g_b_clock_output_high = false;
+static uint16_t      g_clock_output_rise_count = 0U;
 
 static host_event_t  g_events[HOST_MAX_EVENTS];
 static uint16_t      g_event_count = 0U;
@@ -66,6 +76,13 @@ void host_reset(void)
     g_elapsed_ticks        = 0U;
     g_log_poll_count       = 0U;
     g_event_count          = 0U;
+
+    g_b_gate_high              = false;
+    g_gate_write_count         = 0U;
+    g_gate_rise_count          = 0U;
+    g_event_count_at_gate_rise = 0U;
+    g_b_clock_output_high      = false;
+    g_clock_output_rise_count  = 0U;
 
     for (uint8_t i = 0U; i < HOST_RAW_STEP_BYTES; i++)
     {
@@ -166,6 +183,48 @@ uint16_t host_log_poll_count(void)
 
 
 
+bool host_gate_level(void)
+{
+    return g_b_gate_high;
+}
+
+
+
+uint16_t host_gate_write_count(void)
+{
+    return g_gate_write_count;
+}
+
+
+
+uint16_t host_gate_rise_count(void)
+{
+    return g_gate_rise_count;
+}
+
+
+
+uint16_t host_event_count_at_gate_rise(void)
+{
+    return g_event_count_at_gate_rise;
+}
+
+
+
+bool host_clock_output_level(void)
+{
+    return g_b_clock_output_high;
+}
+
+
+
+uint16_t host_clock_output_rise_count(void)
+{
+    return g_clock_output_rise_count;
+}
+
+
+
 port_status_t platform_init(void)
 {
     g_platform_init_count++;
@@ -228,6 +287,30 @@ port_status_t tempo_input_read(uint16_t *p_raw)
 uint8_t timebase_elapsed_ticks(void)
 {
     return g_elapsed_ticks;
+}
+
+
+
+void gate_output_write(bool b_high)
+{
+    g_gate_write_count++;
+    if (b_high && !g_b_gate_high)
+    {
+        g_gate_rise_count++;
+        g_event_count_at_gate_rise = g_event_count;
+    }
+    g_b_gate_high = b_high;
+}
+
+
+
+void clock_output_write(bool b_high)
+{
+    if (b_high && !g_b_clock_output_high)
+    {
+        g_clock_output_rise_count++;
+    }
+    g_b_clock_output_high = b_high;
 }
 
 

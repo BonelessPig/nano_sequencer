@@ -2,13 +2,14 @@
 /**
  * The sequencer board as it is wired today: an ATmega328P at 16 MHz with
  * eight 74HC165s on the SPI bus (clock on SCK, data on MISO) and their load
- * line on PB1, the tempo pot on ADC channel 6, and USART0 going to a PC.
- * Scenarios set the panel and the pot, run the firmware, and read back what
- * it did. Nothing is wired to Timer/Counter2; the firmware uses it for its
- * 1 kHz tick.
+ * line on PB1, the tempo pot on ADC channel 6, the gate output on PD4, the
+ * clock output on PD5, and USART0 going to a PC. Scenarios set the panel and
+ * the pot, run the firmware, and read back what it did. Nothing is wired to
+ * Timer/Counter2; the firmware uses it for its 1 kHz tick.
  */
 const path = require('node:path');
 const { createAtmega328p } = require('../lib/machine');
+const { attachPinRecorder } = require('../lib/pin_recorder');
 const { attachHc165Chain } = require('../parts/hc165');
 
 const CLOCK_HZ = 16000000;
@@ -18,6 +19,8 @@ const TEMPO_ADC_CHANNEL = 6;
 const ADC_REFERENCE_VOLTS = 5;
 const ADC_STEPS = 1024;
 const SHIFT_REG_LOAD_PIN = 1; // On port B
+const GATE_PIN = 4;           // On port D
+const CLOCK_OUT_PIN = 5;      // On port D
 const BUILD_DIR = path.resolve(__dirname, '..', '..', '..', 'build');
 
 /**
@@ -45,6 +48,16 @@ function createBoard(config) {
     }
 
     const chain = attachHc165Chain(machine.cpu, machine.portB, SHIFT_REG_LOAD_PIN, panelBits);
+    const gate = attachPinRecorder(machine.cpu, machine.portD, GATE_PIN);
+    const clockOut = attachPinRecorder(machine.cpu, machine.portD, CLOCK_OUT_PIN);
+
+    // A recorder's completed pulses, in milliseconds of chip time
+    function pulsesMs(recorder) {
+        return recorder.pulses().map((pulse) => ({
+            riseMs: machine.cyclesToMs(pulse.rise),
+            widthMs: machine.cyclesToMs(pulse.width),
+        }));
+    }
 
     // The chain is the only thing on the bus: every transfer clocks it eight
     // times, and the byte it gives back arrives when the transfer ends
@@ -77,6 +90,23 @@ function createBoard(config) {
         serial,
         panelReads: chain.reads,
         spiSent,
+        gate,
+        clockOut,
+
+        /** Completed gate pulses: when each rose and how long it was high. */
+        gatePulsesMs() {
+            return pulsesMs(gate);
+        },
+
+        /** Completed clock output pulses, in the same form. */
+        clockOutPulsesMs() {
+            return pulsesMs(clockOut);
+        },
+
+        /** Runs until the clock output has finished this many pulses. */
+        runUntilClockOutPulses(count, limitMs) {
+            machine.runUntil(() => clockOut.pulses().length >= count, limitMs);
+        },
 
         /** Sets all 16 step switches; each note is 0 to 15. */
         setNotes(newNotes) {

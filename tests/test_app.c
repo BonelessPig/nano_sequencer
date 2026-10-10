@@ -266,6 +266,117 @@ static void test_elapsed_ticks_reach_the_core(void)
 
 
 
+static void test_gate_opens_one_tick_after_its_step_begins_and_before_the_log(void)
+{
+    start_app();
+
+    // The first tick works out that step 0 begins; the gate is written, low
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(1, host_gate_write_count());
+    TEST_ASSERT(!host_gate_level());
+    TEST_ASSERT(!host_clock_output_level());
+
+    // The second tick applies it: gate and clock output high, then the log
+    run_ticks(1U);
+    TEST_ASSERT(host_gate_level());
+    TEST_ASSERT(host_clock_output_level());
+    TEST_ASSERT_EQUAL(1, host_gate_rise_count());
+    TEST_ASSERT_EQUAL(1, host_event_count());
+    TEST_ASSERT_EQUAL(0, host_event_count_at_gate_rise());
+
+    // The same again for step 1, which begins on tick 100
+    run_ticks(TICKS_PER_STEP - 2U);
+    TEST_ASSERT_EQUAL(1, host_gate_rise_count());
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(2, host_gate_rise_count());
+    TEST_ASSERT_EQUAL(2, host_event_count());
+    TEST_ASSERT_EQUAL(1, host_event_count_at_gate_rise());
+}
+
+
+
+static void test_gate_and_clock_output_are_written_on_every_tick_only(void)
+{
+    start_app();
+    run_ticks(25U);
+    TEST_ASSERT_EQUAL(25, host_gate_write_count());
+
+    // A pass with no tick leaves them alone
+    host_set_elapsed_ticks(0U);
+    app_run_once();
+    TEST_ASSERT_EQUAL(25, host_gate_write_count());
+}
+
+
+
+static void test_gate_is_held_for_half_a_step(void)
+{
+    start_app();
+
+    // Step 0 begins on tick 1, a tick short: its gate is worked out as open
+    // on ticks 1 to 49 and applied on ticks 2 to 50
+    run_ticks(50U);
+    TEST_ASSERT(host_gate_level());
+    TEST_ASSERT(host_clock_output_level());
+    run_ticks(1U);
+    TEST_ASSERT(!host_gate_level());
+    TEST_ASSERT(!host_clock_output_level());
+
+    // Step 1 begins on tick 100: high from tick 101 to tick 150
+    run_ticks(49U);
+    TEST_ASSERT(!host_gate_level());
+    run_ticks(1U);
+    TEST_ASSERT(host_gate_level());
+    run_ticks(49U);
+    TEST_ASSERT(host_gate_level());
+    run_ticks(1U);
+    TEST_ASSERT(!host_gate_level());
+    TEST_ASSERT_EQUAL(2, host_gate_rise_count());
+    TEST_ASSERT_EQUAL(2, host_clock_output_rise_count());
+}
+
+
+
+static void test_a_rest_has_a_clock_pulse_and_no_gate(void)
+{
+    start_app(); // Step 15 of the descending notes is the only rest
+    run_ticks((PANEL_STEP_COUNT * TICKS_PER_STEP) + 2U);
+
+    // Steps 0 to 14 and step 0 again have a gate; all seventeen have a clock
+    TEST_ASSERT_EQUAL(16, host_gate_rise_count());
+    TEST_ASSERT_EQUAL(17, host_clock_output_rise_count());
+    TEST_ASSERT(host_gate_level()); // Step 0, the second time round
+}
+
+
+
+static void test_a_step_that_cannot_be_read_has_no_gate(void)
+{
+    start_app();
+    host_set_steps(NULL, ERR_TIMEOUT);
+    run_ticks(TICKS_PER_STEP);
+
+    TEST_ASSERT_EQUAL(0, host_gate_rise_count());
+    TEST_ASSERT_EQUAL(1, host_clock_output_rise_count());
+}
+
+
+
+static void test_init_puts_the_gate_and_clock_output_low_again(void)
+{
+    start_app();
+    run_ticks(10U);
+    TEST_ASSERT(host_gate_level());
+
+    // Re-initialized mid-note: the first tick after it writes both low
+    (void)app_init();
+    run_ticks(1U);
+    TEST_ASSERT(!host_gate_level());
+    TEST_ASSERT(!host_clock_output_level());
+}
+
+
+
 static void test_rest_is_logged_as_a_rest(void)
 {
     static const uint8_t rest_then_notes[HOST_RAW_STEP_BYTES] =
@@ -413,6 +524,12 @@ int main(void)
     RUN_TEST(test_scan_timing_counts_elapsed_ticks_not_passes);
     RUN_TEST(test_tick_reads_the_whole_chain);
     RUN_TEST(test_elapsed_ticks_reach_the_core);
+    RUN_TEST(test_gate_opens_one_tick_after_its_step_begins_and_before_the_log);
+    RUN_TEST(test_gate_and_clock_output_are_written_on_every_tick_only);
+    RUN_TEST(test_gate_is_held_for_half_a_step);
+    RUN_TEST(test_a_rest_has_a_clock_pulse_and_no_gate);
+    RUN_TEST(test_a_step_that_cannot_be_read_has_no_gate);
+    RUN_TEST(test_init_puts_the_gate_and_clock_output_low_again);
     RUN_TEST(test_rest_is_logged_as_a_rest);
     RUN_TEST(test_app_plays_all_sixteen_steps_forward_and_chromatic);
     RUN_TEST(test_step_read_failure_logs_error_instead_of_the_note);

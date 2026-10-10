@@ -94,6 +94,10 @@ static uint8_t g_fake_pind  = 0U;
 static uint8_t g_fake_portb_at_first_ddrb = 0U;
 static bool    g_fake_b_ddrb_accessed     = false;
 
+// The same for port D
+static uint8_t g_fake_portd_at_first_ddrd = 0U;
+static bool    g_fake_b_ddrd_accessed     = false;
+
 // ---- 74HC165 chain model ----
 #define FAKE_SHIFT_CHAIN_BYTES (8U)    // Chips in the modelled chain
 #define FAKE_SHIFT_CHAIN_BITS  (FAKE_SHIFT_CHAIN_BYTES * 8U)
@@ -184,6 +188,19 @@ static inline uint8_t *fake_ddrb(void)
         g_fake_b_ddrb_accessed     = true;
     }
     return &g_fake_ddrb;
+}
+
+/**
+ * @brief DDRD, noting what PORTD held the first time it is touched.
+ */
+static inline uint8_t *fake_ddrd(void)
+{
+    if (!g_fake_b_ddrd_accessed)
+    {
+        g_fake_portd_at_first_ddrd = g_fake_portd;
+        g_fake_b_ddrd_accessed     = true;
+    }
+    return &g_fake_ddrd;
 }
 
 /**
@@ -383,6 +400,8 @@ static inline void fake_regs_reset(void)
     g_fake_pind  = 0U;
     g_fake_portb_at_first_ddrb = 0U;
     g_fake_b_ddrb_accessed     = false;
+    g_fake_portd_at_first_ddrd = 0U;
+    g_fake_b_ddrd_accessed     = false;
 
     for (size_t i = 0U; i < FAKE_SHIFT_CHAIN_BYTES; i++)
     {
@@ -434,7 +453,7 @@ static inline void fake_regs_reset(void)
 
 #define DDRB  (*fake_ddrb())
 #define DDRC  g_fake_ddrc
-#define DDRD  g_fake_ddrd
+#define DDRD  (*fake_ddrd())
 #define PORTB (*fake_portb())
 #define PORTC g_fake_portc
 #define PORTD g_fake_portd

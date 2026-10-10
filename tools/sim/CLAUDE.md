@@ -4,8 +4,8 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 
 ## Layout
 
-- `lib/`: the chip. `parts/`: models of external chips. Neither may know anything about the sequencer, so they can be lifted out for another project.
-- `boards/nano_sequencer.js`: which part is on which pin, plus the panel, pot and serial capture.
+- `lib/`: the chip, and `pin_recorder.js` for watching an output pin. `parts/`: models of external chips. Neither may know anything about the sequencer, so they can be lifted out for another project.
+- `boards/nano_sequencer.js`: which part is on which pin, plus the panel, pot, the gate and clock recorders and serial capture.
 - `scenarios/*.test.js`: what each firmware image must do, using Node's built-in test runner. No other dependencies; avr8js is pinned in `package-lock.json`.
 
 ## Writing parts and scenarios
@@ -15,10 +15,12 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 - Measure time in CPU cycles from `cpu.cycles`, never wall time, so every run gives the same result.
 - Every run is bounded: use `runUntil` with a limit so a scenario fails instead of hanging.
 - Time a step from the first byte of its log line (`startCycle`), not the last: the line is sent a byte per loop pass, so its end moves with its length.
-- The release image has no log. Until there is a gate output, its scenarios can only show the tick rate (the panel scan period and the timer registers), not when a step begins.
+- The release image has no log. Time its steps from the clock output, which pulses on every step, and its notes from the gate. The same measurements work on the debug image, where they are far steadier than the log (0.003 ms against 0.25 ms).
+- An output with nothing modelled on it gets a pin recorder on the board, not a listener in the scenario. It records the level at the instant the port register is written.
+- The first step after reset is a tick short, and so are its gate and clock pulse. Leave pulse 0 out of a width or period loop and assert it on its own.
 - A peripheral the firmware starts using (a timer, SPI) has to be instantiated in `lib/machine.js` first; avr8js does nothing for registers nobody models.
 - When a pin or part changes in `adapters/target/`, change the board and its scenarios in the same piece of work.
 
 ## Limits
 
-The chip and parts are models. Nothing analog is modelled, parts have no setup or hold limits, and only the GPIO, ADC, USART, Timer/Counter2 (with its compare match interrupt) and SPI models have been exercised so far. SPI clock edges are not modelled at all. A scenario passing is not proof on hardware; say so when reporting.
+The chip and parts are models. Nothing analog is modelled, parts have no setup or hold limits, and only the GPIO, ADC, USART, Timer/Counter2 (with its compare match interrupt) and SPI models have been exercised so far. SPI clock edges are not modelled at all, and an output pin is a logic level with no voltage, rise time or load. A scenario passing is not proof on hardware; say so when reporting.

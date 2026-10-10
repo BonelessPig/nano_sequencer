@@ -43,9 +43,11 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 
 ## Pins
 
-- In use: PB1 (74HC165 load), PB5 (SCK, the chain's clock), PB4 (MISO, the chain's data, through 1 kΩ), PB2 (SS, held high, nothing wired), ADC channel 6 (tempo pot). Timer/Counter2 is the 1 kHz tick and drives no pin.
+- In use: PB1 (74HC165 load), PB5 (SCK, the chain's clock), PB4 (MISO, the chain's data, through 1 kΩ), PB2 (SS, held high, nothing wired), PD4 (gate output), PD5 (clock output), ADC channel 6 (tempo pot). Timer/Counter2 is the 1 kHz tick and drives no pin.
 - PB3 (MOSI) is left an input until a part listens on the bus.
-- PD2 to PD7 are free. PC0 and PC1 are given a direction but are unused and free.
+- PD2, PD3, PD6 and PD7 are free. PC0 and PC1 are given a direction but are unused and free.
+- An output pin's direction and idle level are set in `register_init.c`, level first. The adapter that writes it (`gate_output.c`, `clock_output.c`) only changes its level, one pin per statement so that it compiles to a single `sbi` or `cbi` and cannot disturb the rest of the port. Check that with `avr-objdump -d` for a new one.
+- The gate and clock outputs are active high. If a buffer stage inverts them, invert in those two files and nowhere else.
 - PB3 to PB5 are also the ISP programmer's pins; the 1 kΩ on MISO is what lets a programmer override the chain.
 
 ## Testing and analysis

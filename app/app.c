@@ -14,6 +14,8 @@
 #include "note_map.h"
 #include "panel.h"
 #include "seq.h"
+#include "clock_output_port.h"
+#include "gate_output_port.h"
 #include "log_port.h"
 #include "platform_port.h"
 #include "step_input_port.h"
@@ -23,6 +25,9 @@
 // The panel and the tempo control are read once every this many ticks
 // (125 times a second), not on every tick
 #define INPUT_SCAN_PERIOD_TICKS (8U)
+
+// The board has no gate length control yet: a note is held for half its step
+#define GATE_LENGTH_PULSES (SEQ_PULSES_PER_STEP / 2U)
 
 static seq_state_t   g_seq_state; // Sequencer state carried between ticks
 static seq_inputs_t  g_inputs;    // Latest snapshot of the inputs
@@ -57,11 +62,16 @@ static void log_step(void)
 
 
 /**
- * @brief  Acts on what the previous tick computed: when a step began, logs it
- *         (or the failed step read), and a failed tempo read with it.
+ * @brief  Acts on what the previous tick computed. The gate and the clock
+ *         output are set first, on every tick, so that their edges are not
+ *         held up by the log. Then, when a step began, logs it (or the
+ *         failed step read), and a failed tempo read with it.
  */
 static void apply_outputs(void)
 {
+    gate_output_write(g_outputs.b_gate);
+    clock_output_write(g_outputs.b_clock_out);
+
     if (g_outputs.b_step_started)
     {
         log_step();
@@ -114,8 +124,8 @@ static void gather_inputs(uint8_t elapsed_ticks)
 
 /**
  * @brief  Sets the controls the board has no hardware for yet to fixed
- *         values: all sixteen steps, forward, looping, never reset, and the
- *         chromatic scale from the lowest pitch.
+ *         values: all sixteen steps, forward, looping, never reset, the
+ *         chromatic scale from the lowest pitch, and a gate of half a step.
  */
 static void set_fixed_controls(void)
 {
@@ -125,6 +135,7 @@ static void set_fixed_controls(void)
     g_inputs.address.b_one_shot = false;
     g_inputs.note_map.scale     = NOTE_MAP_SCALE_CHROMATIC;
     g_inputs.note_map.root      = 0U;
+    g_inputs.gate.length        = (uint8_t)GATE_LENGTH_PULSES;
     g_inputs.b_reset            = false;
 }
 
@@ -154,6 +165,8 @@ static void reset_tick_state(void)
     g_outputs.b_note_valid   = false;
     g_outputs.b_rest         = false;
     g_outputs.semitone       = 0U;
+    g_outputs.b_gate         = false;
+    g_outputs.b_clock_out    = false;
 
     g_step_read_status  = STATUS_OK;
     g_tempo_read_status = STATUS_OK;

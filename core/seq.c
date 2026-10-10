@@ -65,6 +65,7 @@ void seq_init(seq_state_t *p_state)
         p_state->last_tempo_raw = 0U;
         p_state->step_pulses    = SEQ_PULSES_PER_STEP; // A step is due at once
         engine_plain_init(&p_state->engine);
+        gate_init(&p_state->gate);
     }
 }
 
@@ -74,7 +75,8 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
 {
     if ((NULL != p_state) && (NULL != p_in) && (NULL != p_out))
     {
-        uint8_t pulses;
+        uint8_t  pulses;
+        uint16_t gate_pulses;
 
         // An invalid tempo reading leaves the last valid one in place
         if (p_in->b_tempo_valid)
@@ -90,6 +92,7 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
         pulses = clock_advance(&p_state->clock, tempo_bpm(p_state->last_tempo_raw),
                                p_in->elapsed_ticks);
         p_state->step_pulses = (uint16_t)(p_state->step_pulses + pulses);
+        gate_pulses          = pulses;
 
         p_out->b_step_started = false;
         p_out->step           = 0U;
@@ -101,6 +104,16 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
         {
             p_state->step_pulses = (uint16_t)(p_state->step_pulses - SEQ_PULSES_PER_STEP);
             begin_step(p_state, p_in, p_out);
+
+            // The boundary ends the last step's gate, and only a pitch opens
+            // another. Its length counts from the boundary, so only the
+            // pulses already into the new step come off it
+            gate_begin(&p_state->gate, &p_in->gate,
+                       p_out->b_note_valid && !p_out->b_rest);
+            gate_pulses = p_state->step_pulses;
         }
+
+        p_out->b_gate      = gate_advance(&p_state->gate, gate_pulses);
+        p_out->b_clock_out = (p_state->step_pulses < SEQ_CLOCK_OUT_PULSES);
     }
 }
