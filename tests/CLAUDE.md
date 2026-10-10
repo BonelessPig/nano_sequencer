@@ -4,16 +4,17 @@ Host test programs, built and run on the PC by `make test`. Test code is outside
 
 ## Which kind of test
 
-- **Core:** `test_seq.c` links `core/*.c` alone. No ports, no adapters.
+- **Core:** one program per core module (`test_seq.c`, `test_clock.c`), each linked with `core/*.c` alone. No ports, no adapters. A new one goes in `CORE_TESTS` in the Makefile.
 - **App loop:** `test_app.c` links the real `app/app.c` and core against the fakes in `adapters/host/`.
 - **Target adapters and `main.c`:** one program per source file, which `#include`s the `.c` file it tests.
 
 ## Host-testing a target adapter
 
-- Have the test include `fake_atmega328p_regs.h` first. It uses the same include guards as both real register headers, so the adapter's own `#include` of them does nothing. Then `#include` the adapter's `.c` file.
+- Have the test include `fake_atmega328p_regs.h` first. It uses the same include guards as all three real register headers, so the adapter's own `#include` of them does nothing. Then `#include` the adapter's `.c` file.
 - `test_serial_logger.c` is the pattern.
 - A new one needs its registers added to the fake header (and to its `fake_regs_reset()`), a `test_<name>.c`, and its name in `INCLUDING_TESTS` in the Makefile.
 - Functions the file calls but does not define are stubs in the test.
+- An interrupt handler is tested by calling it: the fake header gives it an ordinary function name (`fake_timer2_compa_isr`).
 - Where the hardware responds (the ADC clearing its start bit, the shift register chain presenting bits), the fake models it, so the test only passes if the code drives it in the right order.
 
 ## Coverage

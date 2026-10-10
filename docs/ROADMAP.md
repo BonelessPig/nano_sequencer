@@ -1,13 +1,13 @@
 # nano_sequencer roadmap
 
-Written 2026-10-10 from four research passes (existing sequencers, hardware emulation, the output-stage hardware, and Claude Code context cost) plus a working emulation spike, and updated the same day with the owner's decisions (section 2). The emulated board (`make sim`) is built; everything else here is still a plan.
+Written 2026-10-10 from four research passes (existing sequencers, hardware emulation, the output-stage hardware, and Claude Code context cost) plus a working emulation spike, and updated the same day with the owner's decisions (section 2). The emulated board (`make sim`) and phase 1 (the timebase) are built; everything else here is still a plan.
 
 Each claim that matters is marked **verified** (read from a datasheet or primary manual, or run on this machine), or **unverified** (from memory or a secondary source; check before relying on it). The full list of unverified items is in [section 8](#8-not-verified).
 
 ## 1. Summary
 
 - **Where it goes.** A 16-step CV/gate sequencer with one pitch output, gate, clock in and out, reset, and a set of selectable sequencing engines (plain, Metropolis-style, Klee-style, random) that all reinterpret the same 64 panel switches. Every engine is pure core logic, so it is cheap to add and fully host-testable.
-- **What limits it.** Pins and the single USART, not flash or RAM (the debug image uses 1294 of 30720 bytes and 5 of 2048 bytes of RAM).
+- **What limits it.** Pins and the single USART, not flash or RAM (after phase 1 the debug image uses 1794 of 30720 bytes of flash and 315 of 2048 bytes of RAM).
 - **Emulation.** The real firmware image already runs under an emulator on this machine (section 5). That makes most of the roadmap testable without the board, including parts you have not bought.
 - **A separate emulation project.** The gap is real but shallow: nothing open, local and headless covers AVR plus other MCU families with a board file and waveform assertions. It is a thin layer over existing CPU cores, not a new emulator. Recommendation: build it inside this repo with a clean boundary and extract it when a second project needs it.
 - **Claude context.** Splitting CLAUDE.md into a short root file, per-folder files and skills cuts the always-loaded instructions by an estimated 55 to 60 percent, and new per-module guidance then costs nothing until that module is touched (section 6).
@@ -27,6 +27,16 @@ Settled on 2026-10-10 unless marked open.
 | 7 | Choosing a mode | **A ninth 74HC165** (8 more switches, no MCU pins). The core's raw input grows from 8 to 9 bytes. |
 | 8 | Pitch DAC | **Open.** Candidates: MCP4822 (SPI, internal 2.048 V reference), MCP4725 (I2C, reference is the supply), PWM, R-2R. The point to weigh: every option but the MCP4822 takes its reference from the USB 5 V rail, and a 1 % supply change is about 48 cents at 4 V. Phase 4's SPI move does not depend on this; the DAC adapter does. |
 | 9 | Instruction layout for Claude | **Nested `CLAUDE.md` files per folder.** The C coding standard and a line length rule (80 soft, 100 hard) are also in the user-level `~/.claude/CLAUDE.md`. |
+
+Taken while building phase 1, as the simplest thing that met the plan. Each is one constant or a few lines to change.
+
+| # | Decision | Outcome |
+|---|---|---|
+| 10 | Tempo range | **30 to 285 BPM, linear**: 30 plus the pot reading divided by 4. A step is a sixteenth note (24 pulses). |
+| 11 | Input scan rate | **Every 8 ticks (125 Hz)**, panel and pot together, scheduled by the app. |
+| 12 | Log when the queue is full | **Drop the whole message.** The queue is 128 bytes, enough for the two longest messages. Failed reads are logged once per step, not once per scan. |
+| 13 | Steps owed after a stall | **Begin one per tick until caught up**, none skipped. |
+| 14 | Start-up | **The first tick begins step 0**, so that step is one tick short. To revisit with `transport` in phase 6. |
 
 ## 3. What the survey found
 
@@ -80,6 +90,8 @@ The ports-and-adapters rules stay as they are. Three additions:
 - Internal resolution is 96 pulses per quarter note (24 per step). An integer accumulator converts ticks to pulses with no drift: each tick adds `bpm * 8`, and every 5000 emits one pulse. It fits `uint16_t`. Never round the pulse period to whole ticks; at 300 BPM that is a 4 % tempo error.
 - Outputs are applied at the tick boundary: each pass first applies what the previous pass computed, then gathers inputs and runs the core. Every output is one tick late, by the same amount every time.
 - The loop never blocks. `delay_port` goes away. The serial log becomes non-blocking (one byte per pass when the transmitter is ready), or debug and release will keep timing differently.
+
+All of the above is built as of phase 1; ARCHITECTURE.md describes it as it stands.
 - Switches and pots are scanned at 100 to 200 Hz, not every tick.
 
 Register values for the tick (Timer2, CTC, /64, compare 249 gives exactly 1000 Hz) and the vector symbol are in section 8 with their verification status.
@@ -91,7 +103,7 @@ Register values for the tick (Timer2, CTC, /64, compare 249 gives exactly 1000 H
 - The ISR attribute comes from a macro in the register header (the `REG_IO_LOW` pattern), so a host test can include the adapter and call the ISR directly. Coverage stays at 100 %.
 - A third build configuration (`CONFIG=midi`) is another link-time choice, not a macro.
 
-Expect new cppcheck findings on the first ISR (the vector symbol name is a reserved identifier, and the attribute is an extension). That was predicted, not run; handle whatever the real output shows under the existing policy.
+The first ISR brought one cppcheck finding, and not either of the two predicted (the reserved vector name and the attribute went unflagged): rule 8.7, advisory. It is a false positive: the handler is referenced from the vector table in the startup object, which the tool does not see, so it looks unused outside its file. It is suppressed inline with the reason. Expect the same for each further ISR.
 
 ## 5. Emulation
 
@@ -129,7 +141,7 @@ In place as of 2026-10-10: `lib/machine.js` (the chip), `parts/hc165.js`, `board
 
 Still to add, each when a phase needs it:
 
-- **Timers and interrupts in `lib/machine.js`** (phase 1). avr8js provides them; they are not instantiated yet.
+- **Timers and interrupts in `lib/machine.js`**: Timer/Counter2 added in phase 1. Timer1 when phase 6 needs it.
 - **More parts**: clock source and button (phase 6), MCP4822 or whichever DAC is chosen (phase 4), 74HC595 (phase 8). SPI parts hook the byte transfer, not the pins.
 - **A pin recorder with assertions** such as `count_rises(pin, t0, t1)` and `period(pin)`, once there is a gate to measure (phase 3). The 74HC165 model counts its own pulses for now.
 - **VCD dump on failure**, viewable in GTKWave or PulseView.
@@ -170,9 +182,8 @@ Nested `CLAUDE.md` files load only when a file in their folder is read or edited
 
 Still to do, as later phases add them:
 
-- ISR and `volatile` rules, and the driver and device layers, in `adapters/target/CLAUDE.md` (phase 1 and phase 4).
+- The driver and device layers in `adapters/target/CLAUDE.md` (phase 4). The ISR and `volatile` rules went in with phase 1.
 - Module and engine conventions in `core/CLAUDE.md` (phase 2).
-- The tick-boundary output rule in the root and `app/CLAUDE.md` (phase 1).
 - Skills for the multi-step recipes (`add-register`, `host-test-adapter`, `new-engine`), if the folder files grow too long.
 
 ### Other measures
@@ -192,7 +203,7 @@ Each phase is one or more small commits, leaves both builds, the tests, coverage
 | Phase | Adds | New MCU peripherals | New parts | Verified by |
 |---|---|---|---|---|
 | 0. Groundwork | `make sim` with the first three parts (**done**); the CLAUDE.md split (**done**); a quiet `make check` (**done**); Optiboot on the board (any time before phase 9, easiest before phase 4) | None | ISP programmer | Sim scenarios pass; the board still uploads and runs |
-| 1. Timebase | Timer2 tick, `timebase_port`, core `clock`, tempo in BPM with a floor, non-blocking loop and log. Removes `delay_port`. Closes open items 1 and 3 | Timer2, first ISR | None | Host: exact pulse counts over N ticks. Sim: step period matches BPM in both builds |
+| 1. Timebase (**done**, not yet run on the board) | Timer2 tick, `timebase_port`, core `clock`, tempo in BPM with a floor, non-blocking loop and log. Removes `delay_port`. Closes open items 1 and 3 | Timer2, first ISR | None | Host: exact pulse counts over N ticks. Sim: step period matches BPM in the debug build; the release build has no output to time a step by until phase 3, so its scenarios check the 1 kHz tick instead |
 | 2. Addressing and notes | `address` (direction, first and last step, one-shot, reset), `note_map` (scales, root, rest). Engine interface, with the plain engine as its first user | None | None | Host. Sim through the log |
 | 3. Gate and clock out | Core `gate` (length in 1/24 step, ties), `gate_port`, clock out | GPIO PD4, PD5 | Buffer IC, resistors, jacks | Sim: pulse widths and counts. Board: logic analyser or LED |
 | 4. SPI and pitch CV | SPI driver; 74HC165 chain on SPI (can go first, on its own); DAC adapter once the DAC is chosen (decision 8); `pitch_cal` with the ideal table. First point it plays an oscillator | SPI | The DAC, op-amp buffer, 1 kΩ on MISO | Sim: exact DAC frames, DAC written before gate rises. Board: tuning by ear and meter |
@@ -230,12 +241,12 @@ Where the 328P runs out, in order: one USART (log or MIDI, not both), no on-chip
 
 Check these before the phase that depends on them.
 
-- **Register bit positions** inside the timer, SPI, EEPROM and watchdog control registers, and the OCR1A address. Addresses, prescaler codes and vector numbers were read from the datasheet; bit positions were not. (Phases 1, 4, 5, 9)
-- **`__vector_7` as the Timer2 compare A symbol.** The startup object does provide weak `__vector_1` to `__vector_25` (checked with `avr-nm`), and the datasheet numbers that vector 8 counting from 1, so 7 follows, but it has not been linked and run. (Phase 1)
+- **Register bit positions** inside the SPI, EEPROM and watchdog control registers, and the OCR1A address. Addresses, prescaler codes and vector numbers were read from the datasheet; bit positions were not. (Phases 4, 5, 9) The Timer2 ones used in phase 1 are now **verified** against the toolchain's own `iom328p.h` and by the emulator producing a 1 kHz tick from them. That header ships with the toolchain and is a quick check for the rest.
+- **`__vector_7` as the Timer2 compare A symbol**: now **verified**. It links, the vector table entry jumps to the handler, and the handler runs on the emulator.
 - **Edge flags latching with their interrupts disabled** (for polled clock and reset inputs). (Phase 6)
 - **SPI mode for the 74HC165 alongside the DAC**, and one pin serving as both 165 load and 595 latch. Bench-check. (Phases 4, 8)
 - **Fuse values, the Nano's brown-out level, and how Optiboot passes on the reset cause.** Check against the Arduino board definitions before burning anything. (Phase 9)
-- **avr8js accuracy for timers and interrupts.** Tonight's run used only GPIO, ADC and USART. Phase 1 is the first test of its timer model; compare one figure against the board.
+- **avr8js accuracy for timers and interrupts.** Phase 1 runs on its Timer2 model and gives an 8.000 ms scan period and a 100 ms step at 150 BPM. Still to do: compare one of those against the board.
 - **MIDI electrical values**, and that the opto must be disconnected to upload. (Phase 10)
 - **Survey items read only from retailer or secondary pages**: Moog 960, ARP 1601, Buchla 245/246/248, Serge, René, Turing Machine details. The Klee, Bindubba, 0-CTRL, M185 and A-154 descriptions are from their manuals.
 - **simavr on Windows.** Not tried.

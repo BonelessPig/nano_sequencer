@@ -9,7 +9,7 @@ This is bare-metal C firmware for a microcontroller step sequencer. These rules 
 - `adapters/target/` implements the ports for the MCU, and `adapters/host/` implements them for PC builds and tests.
 - `app/` (main and the scheduler loop) is the only place that wires adapters to the core.
 - Ports are bound at link time. Don't add function-pointer indirection without a clear reason.
-- Each tick runs in three steps: gather inputs, then the core step function, then apply outputs.
+- The main loop never blocks. A tick is one millisecond, counted by the timebase. Each tick runs in three steps: apply the outputs the previous tick computed, gather inputs, then the core step function. Every output is one tick late, by the same amount each time.
 - ISRs do the minimum (counters, flags, ring buffers) and never call into the core.
 - New features go into the core first, with tests. Hardware support goes into an adapter.
 

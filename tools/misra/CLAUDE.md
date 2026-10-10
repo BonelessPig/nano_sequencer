@@ -35,4 +35,6 @@ MISRA C is a secondary, automated check. BARR-C plus the rules in `README.md` is
 
 - A macro used by only one build configuration is a rule 2.5 finding in the other run. Put it in a header only that configuration's files include.
 - A compiler builtin needs a visible prototype or it is a rule 17.3 finding.
-- The current result is zero findings and no deviations. That is zero from this tool, not a claim of full compliance.
+- An interrupt handler is reported under rule 8.7 (advisory), and that is a false positive: the vector table in the startup object refers to it, which is why it needs external linkage, but cppcheck sees only the C source. It is suppressed inline in `adapters/target/timebase.c`, in the deviation format, with the reason. Do the same for each new handler.
+- Two file-static objects with the same name in different files of one run are a rule 5.9 (advisory) finding. The host run sees `app/app.c` and `adapters/host/host_ports.c` together, so their statics need different names.
+- The current result is zero findings, with one inline suppression (the rule 8.7 false positive, above) and no true deviations. That is zero from this tool, not a claim of full compliance.

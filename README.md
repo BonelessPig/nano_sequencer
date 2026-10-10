@@ -4,11 +4,11 @@ A bare-metal firmware project for the ATmega328P (Arduino Nano), written from sc
 
 ## Status
 
-Work in progress. The firmware initializes the ADC, USART, and I/O direction registers, then steps through a 16-step pattern: each tick it reads the 16 step note values from a daisy-chained 74HC165 shift register bank and a tempo pot, plays the next step (for now that means logging the step and its note over serial, in the debug build only), and waits a tempo-dependent delay. The output stage that would make a step audible (gates, triggers, or CV out) is not yet implemented.
+Work in progress. The firmware initializes the ADC, USART, I/O direction registers and a 1 kHz timer tick, then steps through a 16-step pattern at a tempo of 30 to 285 BPM set by a pot. The main loop never blocks: once a millisecond it runs one tick of the sequencer, which reads the 16 step note values from a daisy-chained 74HC165 shift register bank and the tempo pot (every 8 ms) and, when the next step is due, plays it (for now that means logging the step and its note over serial, in the debug build only). The output stage that would make a step audible (gates, triggers, or CV out) is not yet implemented.
 
 ## Why bare-metal?
 
-No Arduino `Wiring`/HAL layer and no avr-libc headers or functions in the source — registers are declared here and given their ATmega328P datasheet addresses at link time, and only one `avr-gcc` built-in (`__builtin_avr_delay_cycles`) is used where the compiler must be involved. The fixed-width types come from the compiler's own `<stdint.h>` (the build uses `-ffreestanding`), not from avr-libc. This keeps the binary small and the behavior fully explicit at the register level.
+No Arduino `Wiring`/HAL layer and no avr-libc headers or functions in the source — registers are declared here and given their ATmega328P datasheet addresses at link time, and the compiler is involved in only two places: the `io_low` attribute on the low I/O registers and the `signal` attribute on the one interrupt handler. The fixed-width types come from the compiler's own `<stdint.h>` (the build uses `-ffreestanding`), not from avr-libc. This keeps the binary small and the behavior fully explicit at the register level.
 
 ## Project layout
 
@@ -16,32 +16,34 @@ The code follows a ports-and-adapters layout: the sequencer logic is a pure core
 
 ```
 core/                         # Pure sequencer logic; also compiles on a PC
-└── seq.c / seq.h                     # seq_tick(): raw inputs in, current step + note + delay out
+├── seq.c / seq.h                     # seq_tick(): raw inputs and elapsed ticks in, step + note out
+└── clock.c / clock.h                 # clock_advance(): elapsed ticks to pulses at a tempo, with no drift
 ports/                        # What the app needs from the outside world (headers only)
 ├── port_status.h                     # Shared status/error codes
 ├── platform_port.h                   # One-time platform bring-up
 ├── step_input_port.h                 # Raw step-note bits
 ├── tempo_input_port.h                # Raw tempo control position
-├── delay_port.h                      # Blocking wait
-└── log_port.h                        # Diagnostic output
+├── timebase_port.h                   # Elapsed time in 1 ms ticks
+└── log_port.h                        # Diagnostic output (queued; never blocks the loop)
 adapters/
 ├── target/                   # The ports implemented for the ATmega328P
 │   ├── init.c                        # Platform bring-up (logger + registers)
 │   ├── register_init.c / .h          # I/O direction + ADC setup
 │   ├── analog_reader.c               # Tempo input: ADC channel read
 │   ├── shift_reg_reader.c            # Step input: 74HC165 shift register chain read
-│   ├── delay.c                       # Delay: calibrated busy-wait
+│   ├── timebase.c / .h               # Timebase: Timer/Counter2 at 1 kHz, the only interrupt
 │   ├── logger.h                      # Logger bring-up and log levels, shared by the two loggers
-│   ├── serial_logger.c               # Log, debug build: USART setup + text logging with log levels
+│   ├── serial_logger.c               # Log, debug build: USART setup + queued text logging with log levels
 │   ├── null_logger.c                 # Log, release build: discards every message
 │   ├── bits.h                        # BIT_0..BIT_5 mask constants
 │   ├── atmega328p_regs.h             # Register declarations and bit positions
 │   ├── atmega328p_usart_regs.h       # The same for USART0, used only by the serial logger
+│   ├── atmega328p_timer2_regs.h      # The same for Timer/Counter2, and its interrupt vector
 │   └── atmega328p_regs.ld            # Register addresses, applied by the linker
 └── host/                     # The ports faked for PC tests
     └── host_ports.c / .h             # Scripted inputs, recorded outputs
 app/
-├── app.c / app.h                     # Wires ports to the core: gather inputs, tick, apply outputs
+├── app.c / app.h                     # Wires ports to the core: apply outputs, gather inputs, tick
 └── main.c                            # Init, then the forever loop
 tests/                        # Host tests (make test), including fake MCU registers
 tools/misra/                  # cppcheck MISRA addon config and helper scripts
@@ -59,7 +61,8 @@ tools/sim/                    # Emulated board (make sim)
 - MCU: ATmega328P (as used on the Arduino Nano)
 - Clock: 16 MHz
 - USART: 115200 baud, 8N1, transmit only in practice (debug build; unused in the release build)
-- Analog inputs: ADC channel 6 (delay/tempo control)
+- Timer/Counter2: compare match interrupt at 1 kHz, the sequencer's tick (drives no pin)
+- Analog inputs: ADC channel 6 (tempo control, 30 to 285 BPM)
 - Step notes: 16 steps × 4 bits, read from a chain of 8 daisy-chained 74HC165 shift registers via `PORTD2` (SH/LD), `PORTD3` (CLK), and `PORTD4` (SER data-in) — each 74HC165's Clock Inhibit/CE pin must be tied to GND in hardware
 - Digital I/O configured in `register_init.c`: `PORTB5`, `PORTD2`, `PORTD3` as outputs, `PORTC0`, `PORTD4` as inputs, `PORTC1` as output
 
@@ -124,16 +127,16 @@ There are two build configurations, chosen with `CONFIG=`. They differ only in w
 
 | | Logging | Output | Flash | Static RAM |
 |---|---|---|---:|---:|
-| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 1294 bytes | 5 bytes |
-| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 762 bytes | 3 bytes |
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 1794 bytes | 315 bytes |
+| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 1106 bytes | 31 bytes |
 
 `CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`). The tests, the coverage check and the static analysis always cover both loggers.
 
-The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, so any warning fails the build. `make test` never touches the board: it links the real core and app loop against fake ports and checks what they do, and it compiles each MCU adapter against fake registers to check what it does with them (the exact serial text, the shift register pulse sequence, the ADC timeout, and so on).
+The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, so any warning fails the build. `make test` never touches the board: it links the real core and app loop against fake ports and checks what they do, and it compiles each MCU adapter against fake registers to check what it does with them (the exact serial text, the shift register pulse sequence, the ADC timeout, the timer settings, and so on). Time is scripted in these tests, so they check on which millisecond tick each thing happens.
 
 `make coverage` runs the same tests built with gcc's coverage instrumentation and prints a table per source file. Every file in `core/`, `app/` and `adapters/target/` must have all of its lines run and all of its branches taken, or the command fails. That is measured on the PC build: it shows the logic is exercised, not that register addresses or pulse timing are right on the chip.
 
-`make sim` builds both configurations and runs the two `output.hex` files, unmodified, on an emulated ATmega328P with the 74HC165 chain, the tempo pot and a serial capture modelled around it. The scenarios check the log text against the switches set on the emulated panel, the number of load and clock pulses per step, and the length of a step, all counted in CPU cycles. It checks the real machine code, which the host tests cannot, but against models of the chip and the parts: the board is still the final check.
+`make sim` builds both configurations and runs the two `output.hex` files, unmodified, on an emulated ATmega328P with the 74HC165 chain, the tempo pot and a serial capture modelled around it. The scenarios check the log text against the switches set on the emulated panel, the load and clock pulses of each panel read and how often it is read, the timer settings, and the length of a step at a given tempo, all counted in CPU cycles. It checks the real machine code, which the host tests cannot, but against models of the chip and the parts: the board is still the final check.
 
 `make check` runs both builds, the tests, coverage, the MISRA analysis and the emulated board in one go. A stage that passes prints one line (with the flash and RAM figures, the coverage total or the scenario count); a stage that fails prints its full output. Every stage runs even if an earlier one failed, and the command fails if any did. It needs all the tools in the table above.
 
