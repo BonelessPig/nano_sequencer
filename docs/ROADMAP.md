@@ -149,28 +149,31 @@ Verified against the current Claude Code documentation:
 - A subagent has its own context and returns only a summary, so it keeps noisy output out of the main session. It also starts cold and spends its own tokens. Tonight's four research agents used about 554,000 tokens between them; that is the expensive path and is worth it for research, not for routine work.
 - Block-level HTML comments in CLAUDE.md are stripped before loading, so maintainer notes there are free.
 
-### Proposed split
+### The split
 
-Nested `CLAUDE.md` files load only when a file in their folder is read or edited, provided Claude is started from the repo root.
+Done on 2026-10-10. The root `CLAUDE.md` went from about 2,500 words (5.1k tokens by `/context`) to about 880 words. Check the new figure with `/context` in a fresh session.
 
-| Where | Content | Loaded |
-|---|---|---|
-| Root `CLAUDE.md`, about 70 to 90 lines | Architecture rules in short form, commands, working style, MISRA handling, build and Makefile notes, pointers to the rest | Always |
-| `core/CLAUDE.md` | Purity rules, module and engine conventions | On touch |
-| `ports/CLAUDE.md` | Port naming, header documentation format, `port_status_t` numbering | On touch |
-| `adapters/target/CLAUDE.md` | Registers in two files, `REG_IO_LOW`, no `memset`, ISR and `volatile` rules, UART pin cautions, driver and device layers | On touch |
-| `adapters/host/CLAUDE.md`, `tests/CLAUDE.md` | Fake register header pattern, `INCLUDING_TESTS`, stubs | On touch |
-| `app/CLAUDE.md` | The tick order, what may be wired where | On touch |
-| `tools/sim/CLAUDE.md` | Part model conventions, what stays out of `lib/` and `parts/` | On touch |
-| Skills | `misra-triage`, `add-register`, `host-test-adapter`, `prove-refactor-unchanged`, `new-engine` | On use |
-| Removed from the root file | Size figures, test counts and the open items list. ARCHITECTURE.md already owns them, and two copies drift | Never |
+Nested `CLAUDE.md` files load only when a file in their folder is read or edited, provided Claude is started from the repo root. The root file lists them and says to read a folder's file before adding to that folder.
 
-Two things to settle when doing the split:
+| Where | Content |
+|---|---|
+| Root `CLAUDE.md` | Architecture rules, the one-line coding standard, the list of folder files, the checks that define done, the always-on MISRA rules, working style, project facts |
+| `core/CLAUDE.md` | What keeps the core pure |
+| `ports/CLAUDE.md` | Port naming, header documentation, `port_status_t` numbering |
+| `adapters/target/CLAUDE.md` | Registers in two files, `REG_IO_LOW`, builtins, the two loggers, UART and pin cautions |
+| `adapters/host/CLAUDE.md` | The PC fakes |
+| `app/CLAUDE.md` | The tick order and `main.c` |
+| `tests/CLAUDE.md` | Which kind of test, the fake register header recipe, coverage |
+| `tools/misra/CLAUDE.md` | How the analysis runs and how findings are handled |
+| `tools/sim/CLAUDE.md` | Part and scenario conventions |
+| Removed | Size figures, test counts, the description of what the firmware does today and the open items list. ARCHITECTURE.md owns them |
 
-- **The coding standard is already moved**: the project file has one line pointing at the "Coding standard" section of README.md, which holds the full list for anyone forking the repo. The owner's `~/.claude/CLAUDE.md` carries the same list, so it still loads every session there.
-- **A nested file is only read after the first file in its folder is touched.** Guidance needed before that (for example "new features go into the core first") stays in the root.
+Still to do, as later phases add them:
 
-Measured on 2026-10-10 with `/context`: the root file is 5.1k tokens. The target after the split is about 1.5k to 2k always loaded.
+- ISR and `volatile` rules, and the driver and device layers, in `adapters/target/CLAUDE.md` (phase 1 and phase 4).
+- Module and engine conventions in `core/CLAUDE.md` (phase 2).
+- The tick-boundary output rule in the root and `app/CLAUDE.md` (phase 1).
+- Skills for the multi-step recipes (`add-register`, `host-test-adapter`, `new-engine`), if the folder files grow too long.
 
 ### Other measures
 
@@ -188,7 +191,7 @@ Each phase is one or more small commits, leaves both builds, the tests, coverage
 
 | Phase | Adds | New MCU peripherals | New parts | Verified by |
 |---|---|---|---|---|
-| 0. Groundwork | `make sim` with the first three parts (**done**); a quiet `make check`; the CLAUDE.md split; Optiboot on the board | None | ISP programmer | Sim scenarios pass; the board still uploads and runs |
+| 0. Groundwork | `make sim` with the first three parts (**done**); the CLAUDE.md split (**done**); a quiet `make check`; Optiboot on the board | None | ISP programmer | Sim scenarios pass; the board still uploads and runs |
 | 1. Timebase | Timer2 tick, `timebase_port`, core `clock`, tempo in BPM with a floor, non-blocking loop and log. Removes `delay_port`. Closes open items 1 and 3 | Timer2, first ISR | None | Host: exact pulse counts over N ticks. Sim: step period matches BPM in both builds |
 | 2. Addressing and notes | `address` (direction, first and last step, one-shot, reset), `note_map` (scales, root, rest). Engine interface, with the plain engine as its first user | None | None | Host. Sim through the log |
 | 3. Gate and clock out | Core `gate` (length in 1/24 step, ties), `gate_port`, clock out | GPIO PD4, PD5 | Buffer IC, resistors, jacks | Sim: pulse widths and counts. Board: logic analyser or LED |

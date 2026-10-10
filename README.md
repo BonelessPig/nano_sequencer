@@ -12,7 +12,7 @@ No Arduino `Wiring`/HAL layer and no avr-libc headers or functions in the source
 
 ## Project layout
 
-The code follows a ports-and-adapters layout: the sequencer logic is a pure core with no hardware access, and everything that touches the MCU sits behind small port headers. The rules are in [CLAUDE.md](CLAUDE.md) and the details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The code follows a ports-and-adapters layout: the sequencer logic is a pure core with no hardware access, and everything that touches the MCU sits behind small port headers. The rules are in [CLAUDE.md](CLAUDE.md), with each folder's own rules in a `CLAUDE.md` beside its source, and the details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```
 core/                         # Pure sequencer logic; also compiles on a PC
@@ -153,7 +153,7 @@ If you fork this or send changes, write to the same standard. The firmware sourc
 
 Line length: aim for 80 characters and never exceed 100. Some existing lines are over; new and changed lines should not be.
 
-The checks that back this up are the warning flags the firmware is built with, `make test`, `make coverage`, `make misra` and `make sim`, described above. MISRA C is a secondary, automated check through cppcheck, which implements only part of it; how findings and deviations are handled is set out in [CLAUDE.md](CLAUDE.md). Test code in `tests/` and the emulation tooling in `tools/sim/` are outside the standard.
+The checks that back this up are the warning flags the firmware is built with, `make test`, `make coverage`, `make misra` and `make sim`, described above. MISRA C is a secondary, automated check through cppcheck, which implements only part of it; how findings and deviations are handled is set out in [tools/misra/CLAUDE.md](tools/misra/CLAUDE.md). Test code in `tests/` and the emulation tooling in `tools/sim/` are outside the standard.
 
 ## License
 

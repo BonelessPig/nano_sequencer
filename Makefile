@@ -315,8 +315,8 @@ coverage:
 	$(MAKE) test COVERAGE=1
 	$(PYTHON) tools/coverage/report.py $(GCOV) $(BUILD_DIR)/coverage
 
-# Static analysis: cppcheck plus its MISRA addon (see CLAUDE.md for how findings
-# are handled). tools/misra/misra.json points the addon at the rule headlines
+# Static analysis: cppcheck plus its MISRA addon (see tools/misra/CLAUDE.md for how
+# findings are handled). tools/misra/misra.json points the addon at the rule headlines
 # file, which is not in the repo; if it is missing, run
 # tools/misra/fetch_misra_headlines.sh first. Exits non-zero if anything is found.
 #

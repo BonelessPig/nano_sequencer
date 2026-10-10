@@ -1,6 +1,6 @@
 # nano_sequencer — architecture and inner workings
 
-How the firmware is structured, what happens from reset to the main loop, how each part works, and what is still open. The standing rules for the codebase are in [CLAUDE.md](../CLAUDE.md); this document describes what is there.
+How the firmware is structured, what happens from reset to the main loop, how each part works, and what is still open. The standing rules for the codebase are in [CLAUDE.md](../CLAUDE.md) and the `CLAUDE.md` in each source folder; this document describes what is there.
 
 How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite, the 115200 baud setting, the release build and the step advance have not yet. Timing figures are calculated, not measured.
 
@@ -528,7 +528,7 @@ The serial logger is over a third of the debug image. The release build also she
 
 Two things about scope: findings located in `tests/` are not reported, because test code is not held to the coding standard; the test file is in the host run only so cppcheck can see the host fakes being called. And cppcheck implements only part of MISRA C, so zero findings means zero from this tool, not a claim of full compliance. The `io_low` attribute in the register header and the delay builtin are compiler extensions that the tool does not flag.
 
-How findings are handled is set out in CLAUDE.md.
+How findings are handled is set out in [tools/misra/CLAUDE.md](../tools/misra/CLAUDE.md).
 
 ```mermaid
 flowchart LR
@@ -564,6 +564,10 @@ PB5, PC0 and PC1 are given a direction in `register_init.c` but never read or wr
 ### 3. The debug build plays slightly slower than the release build
 
 The step period is the tempo delay plus the time the rest of the tick takes: about 2 ms in the debug build (mostly the one log line) and under 1 ms in the release build. At slow tempos the difference is under 1 %; at fast ones it is most of the period. It goes away once the step period comes from a timer instead of a blocking delay.
+
+### 4. No crash log
+
+Nothing records a reset or an error across power cycles, and the release build has no logging at all. A persistent error log in EEPROM is wanted and there is ample space, but it waits until there is a watchdog and an output stage, so that it can record real resets.
 
 ## What the output stage will need
 
