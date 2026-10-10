@@ -2,7 +2,7 @@
 
 How the firmware is structured, what happens from reset to the main loop, how each part works, and what is still open. The standing rules for the codebase are in [CLAUDE.md](../CLAUDE.md); this document describes what is there.
 
-How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the hardware-free parts are compiled and tested on a PC with `make test`. The refactored firmware has been flashed and run on the board; the later logger rewrite has not yet. Timing figures are calculated, not measured.
+How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite has not yet. Timing figures are calculated, not measured.
 
 ## At a glance
 
@@ -14,7 +14,8 @@ How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c
 | Interrupts | None. Everything is polled and blocking |
 | Inputs | 16 steps × 4 bits from eight 74HC165s; one pot on ADC channel 6 for tempo |
 | Outputs | Serial log only (9600 baud). No gate, trigger or CV output yet |
-| Tests | 27 host tests (12 for the core, 9 for the app loop, 6 for the serial logger) |
+| Tests | 61 host tests in 9 programs (12 for the core, 9 for the app loop, 37 for the six target adapters, 3 for `main.c`) |
+| Coverage | 100% of lines (167) and branches (76) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
 
 ## Structure: ports and adapters
 
@@ -163,18 +164,32 @@ The port functions `log_step_note()` and `log_error()` own the message wording. 
 
 ## Host side — `adapters/host/` and `tests/`
 
-`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every output-port call in order. `make test` builds and runs three programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`:
+`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every output-port call in order. `make test` builds and runs nine programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
+
+Two link the code they test:
 
 - `test_seq`: the core alone. Decoding of every step and nibble, the delay maths, last-valid-tempo reuse, independence of the two valid flags, and null-pointer handling.
 - `test_app`: the real `app.c` and core linked against the fakes. Checks that a tick logs 16 notes in order and then delays once, that a failed read logs the right error in the right place, and that init failure is logged and returned.
 
-- `test_serial_logger`: the target logger's source compiled on the PC with `tests/fake_atmega328p_regs.h` standing in for the register map. Checks the USART setup values, the level filter, and that every message is byte-for-byte what the earlier `printf`-style format strings produced.
+The other seven `#include` the one source file they test, with `tests/fake_atmega328p_regs.h` standing in for the register map (it claims the real header's include guard) and any function that file calls but does not define supplied as a stub by the test:
 
-The other target adapters (shift register, ADC, delay, pin setup) are not covered by host tests; they need the board.
+- `test_serial_logger`: the USART setup values, the level filter, the wait for a full transmit buffer, and that every message is byte-for-byte what the earlier `printf`-style format strings produced.
+- `test_register_init`: which direction bits are set and cleared, that the others and the output levels are left alone, and the ADC enable and prescaler value.
+- `test_analog_reader`: channel and reference selection, the result, a slow conversion, the timeout at exactly the poll budget, and parameter checks. The fake ADC clears its start bit after a set number of polls.
+- `test_shift_reg_reader`: every bit of the chain lands in the right place, one load pulse and eight clocks per byte, the lines left idle, other port D pins untouched, and parameter checks. The fake models the 74HC165 chain from the load and clock lines, so a read only returns the right bytes if the pulses come in the right order.
+- `test_init`: serial bring-up before registers, at DEBUG level, and each failure returned.
+- `test_delay`: one call to the delay builtin per millisecond, each for `F_CPU / 1000` cycles. The test defines a function with the builtin's name.
+- `test_main`: `main()` (renamed while included) returns the status when init fails and otherwise loops calling `app_run_once`. The stub leaves the endless loop with `longjmp`.
+
+### Coverage
+
+`make coverage` rebuilds the same programs with `--coverage -O0` into `build/coverage/`, runs them, and has `tools/coverage/report.py` add up gcov's counts per source line across all the programs. It fails unless every `.c` file in `core/`, `app/` and `adapters/target/` has every line executed and every branch taken at least once; a firmware file no test compiles counts as a failure. `adapters/host/host_ports.c` is test support: its figures are printed (97% of lines, 75% of branches) but not enforced, and the tests themselves are not measured.
+
+What this does not show: the fakes are plain variables, so nothing here checks a register's address, the `sbi`/`cbi` instructions the pulses rely on, real timing, or what the hardware does in response. Those still need the board.
 
 ## Build — `Makefile`
 
-`make` compiles every `.c` under `app/`, `core/` and `adapters/target/` into `build/obj/`, links `build/output.elf`, converts to Intel HEX, and prints a size report. `make flash` uploads with avrdude at 57600 baud (the old-bootloader Nano setting), with the signature check and verification on. `make test` and `make misra` are described above and in the README. The Makefile handles Windows, macOS and Linux; only Windows has been exercised.
+`make` compiles every `.c` under `app/`, `core/` and `adapters/target/` into `build/obj/`, links `build/output.elf`, converts to Intel HEX, and prints a size report. `make flash` uploads with avrdude at 57600 baud (the old-bootloader Nano setting), with the signature check and verification on. `make test`, `make coverage` and `make misra` are described above and in the README. The Makefile handles Windows, macOS and Linux; only Windows has been exercised.
 
 ## Static analysis
 

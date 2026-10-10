@@ -7,7 +7,8 @@
 #   make              Build build/output.hex and print the size report
 #   make size         Print the size report (builds first if needed)
 #   make flash        Build if needed, then upload to the board over serial
-#   make test         Build the core for this PC and run its unit tests
+#   make test         Build the code for this PC and run its unit tests
+#   make coverage     Run the tests instrumented and report line/branch coverage
 #   make misra        Run cppcheck with the MISRA addon over the source
 #   make clean        Delete the build/ directory
 #   make flash PORT=COM5   Override any variable below from the command line
@@ -50,7 +51,9 @@ ifeq ($(OS),Windows_NT)
     HOST_CC ?= gcc
     EXE     = .exe
     run     = $(subst /,\,$1)
+    PYTHON ?= python
 else
+    PYTHON ?= python3
     mkdir_p = mkdir -p "$1"
     rm_rf   = rm -rf "$1"
     HOST_CC ?= cc
@@ -96,6 +99,10 @@ AVRDUDE = avrdude
 # cppcheck is only needed for `make misra`, not for building or flashing. Its
 # MISRA addon is a Python script, so python must be on PATH as well.
 CPPCHECK = cppcheck
+
+# `make coverage` needs gcov, which comes with the PC's gcc, and python to
+# turn its output into a table. (PYTHON is set per platform, above.)
+GCOV = gcov
 
 # ---- Files ------------------------------------------------------------------
 
@@ -174,7 +181,7 @@ REGS_LD = adapters/target/atmega328p_regs.ld
 # A leading @ on a command stops make from echoing it.
 
 # These names are commands, not files, so always run them when asked.
-.PHONY: all size flash clean misra test
+.PHONY: all size flash clean misra test coverage
 
 # Default target (what plain `make` runs): build the .hex, then report size.
 all: $(TARGET).hex size
@@ -219,23 +226,46 @@ HOST_SRCS := $(wildcard adapters/host/*.c)
 # Any header change rebuilds the tests; simpler than tracking each one
 HOST_HDRS := $(wildcard core/*.h ports/*.h app/*.h adapters/host/*.h tests/*.h)
 
+# `make coverage` runs this same section again with COVERAGE=1, which builds
+# the programs with gcc's coverage instrumentation into their own folder.
+#   --coverage   Count how often each line and branch runs
+#   -O0          No optimization, so the counts match the source line for line
+ifdef COVERAGE
+    HOST_DIR     = $(BUILD_DIR)/coverage
+    HOST_CFLAGS += --coverage -O0
+endif
+
 TEST_SEQ = $(HOST_DIR)/test_seq$(EXE)
 TEST_APP = $(HOST_DIR)/test_app$(EXE)
 
-TEST_LOGGER = $(HOST_DIR)/test_serial_logger$(EXE)
+# Tests that #include the source file they test (one each for the target
+# adapters and main.c) rather than linking it. tests/test_<name>.c builds into
+# the program test_<name>; add new ones to this list.
+INCLUDING_TESTS = test_serial_logger test_register_init test_analog_reader \
+                  test_shift_reg_reader test_init test_delay test_main
+TEST_INCLUDING := $(patsubst %,$(HOST_DIR)/%$(EXE),$(INCLUDING_TESTS))
 
-test: $(TEST_SEQ) $(TEST_APP) $(TEST_LOGGER)
-	$(call run,$(TEST_SEQ))
-	$(call run,$(TEST_APP))
-	$(call run,$(TEST_LOGGER))
+TEST_PROGRAMS = $(TEST_SEQ) $(TEST_APP) $(TEST_INCLUDING)
 
-# Tests for the target serial logger. The test includes the adapter's .c file
-# directly, with the MCU register header swapped for tests/fake_atmega328p_regs.h,
-# so it can check the exact bytes the logger would send. It needs the adapter's
-# folder on the include path and the same F_CPU the firmware is built with.
-$(TEST_LOGGER): tests/test_serial_logger.c adapters/target/serial_logger.c $(HOST_HDRS) $(wildcard adapters/target/*.h)
+# One recipe line that runs one test program; the blank line is what separates
+# the lines when $(foreach) below strings several of these together.
+define run_test
+	$(call run,$1)
+
+endef
+
+test: $(TEST_PROGRAMS)
+	$(foreach program,$(TEST_PROGRAMS),$(call run_test,$(program)))
+
+# Tests for the target adapters and main.c. Each test includes the .c file it
+# tests directly, with the MCU register header swapped for
+# tests/fake_atmega328p_regs.h, so it can drive the fake registers and see what
+# the code does with them. Functions the tested file calls but does not define
+# are stubs in the test. These need the adapters' folder on the include path
+# and the same F_CPU the firmware is built with.
+$(TEST_INCLUDING): $(HOST_DIR)/%$(EXE): tests/%.c app/main.c $(HOST_HDRS) $(wildcard adapters/target/*.c adapters/target/*.h)
 	@$(call mkdir_p,$(HOST_DIR))
-	$(HOST_CC) $(HOST_CFLAGS) -Iadapters/target -DF_CPU=$(F_CPU) -o $@ tests/test_serial_logger.c
+	$(HOST_CC) $(HOST_CFLAGS) -Iadapters/target -DF_CPU=$(F_CPU) -o $@ $<
 
 # Unit tests for the core alone: no ports, no adapters.
 $(TEST_SEQ): tests/test_seq.c $(CORE_SRCS) $(HOST_HDRS)
@@ -248,6 +278,16 @@ $(TEST_SEQ): tests/test_seq.c $(CORE_SRCS) $(HOST_HDRS)
 $(TEST_APP): tests/test_app.c app/app.c $(CORE_SRCS) $(HOST_SRCS) $(HOST_HDRS)
 	@$(call mkdir_p,$(HOST_DIR))
 	$(HOST_CC) $(HOST_CFLAGS) -o $@ tests/test_app.c app/app.c $(CORE_SRCS) $(HOST_SRCS)
+
+# Coverage: rebuild the tests instrumented, run them, and report which lines
+# and branches of the source they exercised. Starts from an empty folder each
+# time so counts from an earlier run cannot leak in. The report fails unless
+# every firmware source file is at 100% of lines and branches; see the top of
+# tools/coverage/report.py for exactly what is counted.
+coverage:
+	@$(call rm_rf,$(BUILD_DIR)/coverage)
+	$(MAKE) test COVERAGE=1
+	$(PYTHON) tools/coverage/report.py $(GCOV) $(BUILD_DIR)/coverage
 
 # Static analysis: cppcheck plus its MISRA addon (see CLAUDE.md for how findings
 # are handled). tools/misra/misra.json points the addon at the rule headlines

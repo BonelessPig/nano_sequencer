@@ -32,7 +32,7 @@ Follow BARR-C:2018 (the Barr Group Embedded C Coding Standard) for style and nam
 ## Build and checks
 
 - The target build must compile with `-Wall -Wextra -Wconversion -Wshadow -Werror` (or the toolchain equivalent).
-- Host tests must pass before a change is considered done.
+- Host tests must pass before a change is considered done, and `make coverage` must pass (100% of lines and branches in `core/`, `app/` and `adapters/target/`).
 - Run cppcheck with the MISRA addon over `core/`, `ports/`, `adapters/` and `app/` before calling a change done. Use `make -k misra`, which runs it once per set of adapters (cppcheck treats its inputs as one program, and the target and host adapters define the same port functions):
 
   ```
@@ -87,7 +87,8 @@ MISRA C is a secondary, automated check. BARR-C plus the rules above is the stan
 ## Commands
 
 - `make`: build `build/output.hex` and print sizes. Any warning fails the build.
-- `make test`: build and run the three host test programs (`test_seq`, `test_app`, `test_serial_logger`) with the PC's gcc.
+- `make test`: build and run the nine host test programs with the PC's gcc: `test_seq`, `test_app`, and one per target adapter source plus `test_main`.
+- `make coverage`: rebuild the tests with gcov instrumentation, run them, and print line and branch coverage per file. Exits 0 only if every `.c` in `core/`, `app/` and `adapters/target/` is at 100% of both. `adapters/host/` is reported but not enforced.
 - `make -k misra`: both analysis runs; exits 0 only with zero findings. Pipe through `python tools/misra/summarize.py` for counts by folder, category and rule.
 - `make flash`: upload with avrdude. Defaults to `COM3`; override with `PORT=`.
 - The Makefile's recipes run under `cmd.exe` on Windows. From Git Bash, call it as `cmd //c "make ..."`.
@@ -101,7 +102,8 @@ MISRA C is a secondary, automated check. BARR-C plus the rules above is the stan
 - **cppcheck treats its inputs as one program.** That is why there are two runs, each matching a real link. The host run includes `tests/test_app.c` and leaves out `app/main.c`.
 - **cppcheck does not define `__cppcheck__` when `-D` is on its command line**, so that macro cannot be used to show it different code.
 - **Proving a refactor changed nothing:** build before and after and `cmp` the two `build/output.hex` files. If they differ, diff the `avr-objdump -d` instruction streams with addresses stripped to see exactly which function moved. Save the reference image before editing.
-- **Host-testing a target adapter:** have the test include a fake register header that uses the same include guard as the real one, then `#include` the adapter's `.c` file. `tests/test_serial_logger.c` and `tests/fake_atmega328p_regs.h` are the pattern. The shift register, ADC and delay adapters have no host tests yet.
+- **Host-testing a target adapter:** have the test include a fake register header that uses the same include guard as the real one, then `#include` the adapter's `.c` file. `tests/test_serial_logger.c` and `tests/fake_atmega328p_regs.h` are the pattern. Every target adapter and `main.c` is tested this way. A new one needs its registers added to the fake header (and to its `fake_regs_reset()`), a `tests/test_<name>.c`, and its name in `INCLUDING_TESTS` in the Makefile. Functions the file calls but does not define are stubs in the test.
+- **Coverage is part of done.** `make coverage` must stay at 100% line and branch for firmware source. New firmware code comes with the tests that cover it; a firmware `.c` file with no test fails the check. If a branch truly cannot be reached from a test, tell me rather than excluding it.
 - **Git Bash heredocs mangle backslashes** in inline Python and sed scripts here. Write helper scripts to a file with the Write tool and run them, or use the Edit tool.
 - **`*.sh` files must stay LF** (`.gitattributes` enforces it); the repo otherwise checks out as CRLF on Windows.
 

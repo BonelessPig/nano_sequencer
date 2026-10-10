@@ -155,6 +155,37 @@ static void test_level_filters_messages(void)
 
 
 
+static void test_off_is_never_an_enabled_message_level(void)
+{
+    // No message is sent at level OFF today; this pins the rule for when one might be
+    (void)serial_init(LOGLVL_TRACE);
+    TEST_ASSERT(!is_level_enabled(LOGLVL_OFF));
+
+    (void)serial_init(LOGLVL_OFF);
+    TEST_ASSERT(!is_level_enabled(LOGLVL_OFF));
+}
+
+
+
+static void test_write_waits_while_the_transmit_buffer_is_full(void)
+{
+    (void)serial_init(LOGLVL_DEBUG);
+    fake_uart_clear();
+    g_fake_uart_busy_polls = 25U;
+    write_char('A');
+
+    TEST_ASSERT_EQUAL(0, g_fake_uart_busy_polls); // It polled until the flag came up
+    expect_uart("A");                             // And sent the byte once, afterwards
+
+    // A whole message whose first byte has to wait still arrives intact
+    fake_uart_clear();
+    g_fake_uart_busy_polls = 3U;
+    log_step_note(15U, 9U);
+    expect_uart("Step 15 Note = 9\r\n");
+}
+
+
+
 int main(void)
 {
     RUN_TEST(test_init_programs_the_usart);
@@ -163,5 +194,7 @@ int main(void)
     RUN_TEST(test_error_text_matches_the_printf_format);
     RUN_TEST(test_unknown_error_id_sends_nothing);
     RUN_TEST(test_level_filters_messages);
+    RUN_TEST(test_off_is_never_an_enabled_message_level);
+    RUN_TEST(test_write_waits_while_the_transmit_buffer_is_full);
     return TEST_RESULT();
 }

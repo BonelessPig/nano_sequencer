@@ -40,8 +40,9 @@ adapters/
 app/
 ├── app.c / app.h                     # Wires ports to the core: gather inputs, tick, apply outputs
 └── main.c                            # Init, then the forever loop
-tests/                        # Host tests (make test)
+tests/                        # Host tests (make test), including fake MCU registers
 tools/misra/                  # cppcheck MISRA addon config and helper scripts
+tools/coverage/               # Coverage report script (make coverage)
 ```
 
 ## Hardware target
@@ -80,13 +81,14 @@ Installing them:
 
 Developed on Windows with avr-gcc 12.1.0, GNU Make 4.2.1, and avrdude 7.0. The `Makefile` detects the platform and is written to work on macOS and Linux as well, but it has not yet been run on either.
 
-For development, two optional checks need extra tools on `PATH`:
+For development, three optional checks need extra tools on `PATH`:
 
 | Tool | Used for | Needed to |
 |---|---|---|
-| A C compiler for your PC (`gcc` on Windows, `cc` elsewhere) | Building the hardware-free code and its tests | `make test` |
+| A C compiler for your PC (`gcc` on Windows, `cc` elsewhere) | Building the code and its tests for the PC | `make test`, `make coverage` |
+| `gcov` (comes with gcc) | Counting which lines and branches the tests run | `make coverage` |
 | `cppcheck` | Static analysis with its MISRA addon | `make misra` |
-| `python` | Running cppcheck's MISRA addon | `make misra` |
+| `python` | Running cppcheck's MISRA addon and the coverage report | `make misra`, `make coverage` |
 
 On Windows with Chocolatey, `choco install mingw cppcheck` covers the first two. `make misra` also needs the MISRA rule headlines file, which is copyrighted and not in this repo; fetch it once with `tools/misra/fetch_misra_headlines.sh`. Developed with MinGW gcc 16.1.0 and Cppcheck 2.19.0.
 
@@ -100,12 +102,15 @@ Build and flash with the included `Makefile`:
 make            # Compile + link + convert to build/output.hex, then print flash/RAM usage
 make size       # Print flash/RAM usage (builds first if needed)
 make flash      # Flash build/output.hex
-make test       # Build the core and app loop for your PC and run the unit tests
+make test       # Build the firmware source for your PC and run the unit tests
+make coverage   # Run the tests instrumented; fails unless line and branch coverage is 100%
 make misra      # Run cppcheck with the MISRA addon
 make clean      # Remove the build/ directory
 ```
 
-The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, so any warning fails the build. `make test` never touches the board: it links the real core and app loop against fake ports and checks what they do, and it runs the serial logger against fake USART registers to check the exact text it sends.
+The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, so any warning fails the build. `make test` never touches the board: it links the real core and app loop against fake ports and checks what they do, and it compiles each MCU adapter against fake registers to check what it does with them (the exact serial text, the shift register pulse sequence, the ADC timeout, and so on).
+
+`make coverage` runs the same tests built with gcc's coverage instrumentation and prints a table per source file. Every file in `core/`, `app/` and `adapters/target/` must have all of its lines run and all of its branches taken, or the command fails. That is measured on the PC build: it shows the logic is exercised, not that register addresses or pulse timing are right on the chip.
 
 `make flash` picks the serial port per platform: `COM3` on Windows, the first `/dev/cu.usbserial*`, `/dev/cu.wchusbserial*` or `/dev/cu.usbmodem*` device on macOS, and the first `/dev/ttyUSB*` or `/dev/ttyACM*` device on Linux. Override it if your Nano enumerates differently, e.g. `make flash PORT=COM4` or `make flash PORT=/dev/ttyUSB1`. On Linux your user needs access to the port (usually membership of the `dialout` group).
 
