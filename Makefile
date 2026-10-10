@@ -12,6 +12,7 @@
 #   make coverage     Run the tests instrumented and report line/branch coverage
 #   make misra        Run cppcheck with the MISRA addon over the source
 #   make sim          Run both firmware images on an emulated board
+#   make check        Run all of the above checks; one line each unless one fails
 #   make clean       Delete the build/ directory
 #   make flash PORT=COM5   Override any variable below from the command line
 #
@@ -384,6 +385,18 @@ sim: $(SIM_MODULES)
 
 $(SIM_MODULES): $(SIM_DIR)/package-lock.json
 	$(NPM) --prefix $(SIM_DIR) ci
+
+# ---- Everything at once -----------------------------------------------------
+#
+# `make check` runs every check that a change must pass: both firmware builds,
+# the host tests, coverage, the MISRA analysis and the emulated board. It
+# prints one line per stage, and the full output only of a stage that fails.
+# All stages run even if an earlier one fails; it exits non-zero if any did.
+# tools/check/run.py has the list of stages. Run a stage's own target (for
+# example `make coverage`) to see its full output when it passes.
+.PHONY: check
+check:
+	@$(PYTHON) tools/check/run.py $(MAKE)
 
 # Upload the .hex to the board through the bootloader. The first line stops with
 # a clear message if no port was given and none could be auto-detected.

@@ -46,6 +46,7 @@ app/
 tests/                        # Host tests (make test), including fake MCU registers
 tools/misra/                  # cppcheck MISRA addon config and helper scripts
 tools/coverage/               # Coverage report script (make coverage)
+tools/check/                  # Runs every check and summarizes (make check)
 tools/sim/                    # Emulated board (make sim)
 ├── lib/machine.js                    # The ATmega328P: avr8js CPU and peripherals
 ├── parts/hc165.js                    # 74HC165 chain model
@@ -115,6 +116,7 @@ make test       # Build the firmware source for your PC and run the unit tests
 make coverage   # Run the tests instrumented; fails unless line and branch coverage is 100%
 make misra      # Run cppcheck with the MISRA addon
 make sim        # Run both firmware images on an emulated board and check what they do
+make check      # Both builds and all four checks above; one line each unless one fails
 make clean      # Remove the build/ directory
 ```
 
@@ -132,6 +134,8 @@ The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Wer
 `make coverage` runs the same tests built with gcc's coverage instrumentation and prints a table per source file. Every file in `core/`, `app/` and `adapters/target/` must have all of its lines run and all of its branches taken, or the command fails. That is measured on the PC build: it shows the logic is exercised, not that register addresses or pulse timing are right on the chip.
 
 `make sim` builds both configurations and runs the two `output.hex` files, unmodified, on an emulated ATmega328P with the 74HC165 chain, the tempo pot and a serial capture modelled around it. The scenarios check the log text against the switches set on the emulated panel, the number of load and clock pulses per step, and the length of a step, all counted in CPU cycles. It checks the real machine code, which the host tests cannot, but against models of the chip and the parts: the board is still the final check.
+
+`make check` runs both builds, the tests, coverage, the MISRA analysis and the emulated board in one go. A stage that passes prints one line (with the flash and RAM figures, the coverage total or the scenario count); a stage that fails prints its full output. Every stage runs even if an earlier one failed, and the command fails if any did. It needs all the tools in the table above.
 
 `make flash` picks the serial port per platform: `COM3` on Windows, the first `/dev/cu.usbserial*`, `/dev/cu.wchusbserial*` or `/dev/cu.usbmodem*` device on macOS, and the first `/dev/ttyUSB*` or `/dev/ttyACM*` device on Linux. Override it if your Nano enumerates differently, e.g. `make flash PORT=COM4` or `make flash PORT=/dev/ttyUSB1`. On Linux your user needs access to the port (usually membership of the `dialout` group).
 

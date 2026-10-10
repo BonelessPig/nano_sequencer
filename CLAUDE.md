@@ -32,7 +32,7 @@ Read a folder's `CLAUDE.md` before adding a file to it or changing one in it.
 
 ## Done means
 
-Before calling a change done, all of these pass. The Makefile's recipes run under `cmd.exe` on Windows; from Git Bash, call it as `cmd //c "make ..."`.
+Before calling a change done, all of these pass. `make check` runs them all and prints one line per stage, with the full output only of a stage that fails; use it for the final run, and a stage's own target when you need its output. The Makefile's recipes run under `cmd.exe` on Windows; from Git Bash, call it as `cmd //c "make ..."`.
 
 - `make` and `make CONFIG=release`: both firmware images build. Any warning fails the build (`-Wall -Wextra -Wconversion -Wshadow -Werror`).
 - `make test`: the host test programs pass.
