@@ -22,7 +22,7 @@ int main(void)
 
     if (STATUS_OK == status)
     {
-        // Main loop: each pass reads the inputs, runs the sequencer core, then logs and delays
+        // Main loop: each pass runs a sequencer tick if one is due and never waits
         for (;;)
         {
             app_run_once();

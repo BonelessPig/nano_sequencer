@@ -12,7 +12,8 @@
  * with "undefined reference".
  *
  * The USART0 registers are in atmega328p_usart_regs.h, because only the debug
- * build's serial logger uses them.
+ * build's serial logger uses them. The Timer/Counter2 registers are in
+ * atmega328p_timer2_regs.h.
  *
  * Bit positions are taken directly from the ATmega328P datasheet. This file
  * has no dependency on avr-libc's <avr/io.h> — it exists so the rest of the
@@ -54,5 +55,10 @@ extern volatile uint16_t ADC;    // ADC Data Register (10-bit result)
 #define ADPS0 0 // ADC Prescaler Select Bit 0 in ADCSRA
 
 #define REFS0 6 // Reference Selection Bit 0 in ADMUX
+
+// ---- CPU ----
+extern volatile uint8_t SREG; // Status Register
+
+#define SREG_I 7 // Global Interrupt Enable bit in SREG
 
 #endif /* ATMEGA328P_REGS_H */

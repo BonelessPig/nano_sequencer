@@ -24,7 +24,7 @@ typedef enum
 {
     HOST_EVENT_STEP_NOTE = 0, // log_step_note(step, note):  a = step, b = note
     HOST_EVENT_ERROR,         // log_error(what, status):     a = what, b = status
-    HOST_EVENT_DELAY          // delay_wait_ms(ms):           a = ms,   b = 0
+    HOST_EVENT_FLUSH          // log_flush():                 a = 0,    b = 0
 } host_event_kind_t;
 
 /**
@@ -38,8 +38,9 @@ typedef struct
 } host_event_t;
 
 /**
- * @brief Clears the event record and restores the default script: every port
- *        succeeds, all step bits are 0 and the tempo reading is 0.
+ * @brief Clears the event record and the call counts, and restores the
+ *        default script: every port succeeds, all step bits are 0, the tempo
+ *        reading is 0 and no time passes.
  */
 void host_reset(void);
 
@@ -63,6 +64,13 @@ void host_set_steps(const uint8_t *p_raw_bits, port_status_t status);
 void host_set_tempo(uint16_t raw, port_status_t status);
 
 /**
+ * @brief Sets what timebase_elapsed_ticks() returns, on every call until it
+ *        is set again.
+ * @param ticks  Elapsed ticks to report, 0 to 255.
+ */
+void host_set_elapsed_ticks(uint8_t ticks);
+
+/**
  * @brief Number of output-port calls recorded since host_reset().
  */
 uint16_t host_event_count(void);
@@ -83,5 +91,20 @@ uint16_t host_platform_init_count(void);
  * @brief The byte_count passed to the most recent step_input_read() call (0 if none).
  */
 uint8_t host_last_step_byte_count(void);
+
+/**
+ * @brief Number of times step_input_read() has been called since host_reset().
+ */
+uint16_t host_step_read_count(void);
+
+/**
+ * @brief Number of times tempo_input_read() has been called since host_reset().
+ */
+uint16_t host_tempo_read_count(void);
+
+/**
+ * @brief Number of times log_poll() has been called since host_reset().
+ */
+uint16_t host_log_poll_count(void);
 
 #endif /* HOST_PORTS_H */

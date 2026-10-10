@@ -3,7 +3,8 @@
  * @brief  Host tests for the target serial logger (adapters/target/serial_logger.c).
  *         The adapter's source is included directly, with the MCU register
  *         header replaced by a fake, so the exact bytes it would send over the
- *         UART can be compared with the expected text.
+ *         UART can be compared with the expected text. The logger only queues
+ *         a message; the tests call log_poll() to have it sent.
  * @author BonelessPig
  *
  * @copyright Copyright (c) 2026
@@ -15,12 +16,27 @@
 #include "serial_logger.c"        // The code under test, found via -Iadapters/target
 #include "test_harness.h"
 
-#define EXPECTED_CAPACITY (128U)
+#define EXPECTED_CAPACITY (256U)
+#define DRAIN_POLLS       (1000U) // Far more polls than the queue has bytes
 
 /**
- * @brief Checks that the bytes captured from the UART are exactly p_expected.
+ * @brief Polls the logger until everything it has queued must have been sent.
  */
-static void expect_uart(const char *p_expected)
+static void drain(void)
+{
+    for (unsigned int i = 0U; i < DRAIN_POLLS; i++)
+    {
+        log_poll();
+    }
+}
+
+
+
+/**
+ * @brief Checks that the bytes captured from the UART so far, without any
+ *        further polling, are exactly p_expected.
+ */
+static void expect_uart_so_far(const char *p_expected)
 {
     const size_t expected_length = strlen(p_expected);
 
@@ -29,6 +45,18 @@ static void expect_uart(const char *p_expected)
     {
         TEST_ASSERT_EQUAL(0, memcmp(p_expected, g_fake_uart, expected_length));
     }
+}
+
+
+
+/**
+ * @brief Sends everything queued, then checks that the bytes captured from
+ *        the UART are exactly p_expected.
+ */
+static void expect_uart(const char *p_expected)
+{
+    drain();
+    expect_uart_so_far(p_expected);
 }
 
 
@@ -168,21 +196,176 @@ static void test_off_is_never_an_enabled_message_level(void)
 
 
 
-static void test_write_waits_while_the_transmit_buffer_is_full(void)
+static void test_nothing_is_sent_until_polled(void)
 {
     (void)logger_init(LOGLVL_DEBUG);
     fake_uart_clear();
+    log_step_note(1U, 2U);
+    log_error(LOG_ERROR_INIT, ERR_GENERAL);
+
+    expect_uart_so_far("");
+}
+
+
+
+static void test_poll_sends_one_byte_at_a_time(void)
+{
+    static const char line[] = "Step 15 Note = 9\r\n";
+    char              expected[EXPECTED_CAPACITY];
+
+    (void)logger_init(LOGLVL_DEBUG);
+    fake_uart_clear();
+    log_step_note(15U, 9U);
+
+    for (size_t sent = 1U; sent < sizeof(line); sent++)
+    {
+        log_poll();
+        (void)memcpy(expected, line, sent);
+        expected[sent] = '\0';
+        expect_uart_so_far(expected);
+    }
+
+    // The queue is empty now: further polls send nothing
+    log_poll();
+    expect_uart_so_far(line);
+}
+
+
+
+static void test_poll_sends_nothing_while_the_transmit_buffer_is_full(void)
+{
+    (void)logger_init(LOGLVL_DEBUG);
+    fake_uart_clear();
+    log_step_note(15U, 9U);
+    g_fake_uart_busy_polls = 3U;
+
+    // It looks at the flag once per poll and comes straight back
+    log_poll();
+    log_poll();
+    log_poll();
+    TEST_ASSERT_EQUAL(0, g_fake_uart_busy_polls);
+    expect_uart_so_far("");
+
+    log_poll();
+    expect_uart_so_far("S");
+}
+
+
+
+static void test_poll_with_nothing_queued_leaves_the_usart_alone(void)
+{
+    (void)logger_init(LOGLVL_DEBUG);
+    fake_uart_clear();
+    g_fake_uart_busy_polls = 5U;
+    log_poll();
+
+    TEST_ASSERT_EQUAL(5, g_fake_uart_busy_polls); // The status register was not read
+    expect_uart_so_far("");
+    g_fake_uart_busy_polls = 0U;
+}
+
+
+
+static void test_messages_are_sent_in_the_order_they_were_logged(void)
+{
+    (void)logger_init(LOGLVL_DEBUG);
+    fake_uart_clear();
+    log_step_note(3U, 4U);
+    log_error(LOG_ERROR_TEMPO_READ, ERR_TIMEOUT);
+    log_step_note(4U, 5U);
+
+    expect_uart("Step 3 Note = 4\r\n"
+                "ADC read failed for delay channel, status code = 4\r\n"
+                "Step 4 Note = 5\r\n");
+}
+
+
+
+static void test_a_message_that_does_not_fit_is_dropped_whole(void)
+{
+    (void)logger_init(LOGLVL_DEBUG);
+    fake_uart_clear();
+
+    // Six 19-byte lines fill 114 of the 128 bytes; the seventh cannot fit
+    for (uint8_t note = 0U; note < 7U; note++)
+    {
+        log_step_note(15U, (uint8_t)(10U + note));
+    }
+    // Nor can a shorter one: 17 bytes into the 14 that are left
+    log_step_note(1U, 2U);
+
+    // Five bytes sent makes room for exactly one more 19-byte line
+    for (unsigned int i = 0U; i < 5U; i++)
+    {
+        log_poll();
+    }
+    log_step_note(14U, 13U);
+
+    // Only whole lines come out, with nothing of the dropped ones
+    expect_uart("Step 15 Note = 10\r\n"
+                "Step 15 Note = 11\r\n"
+                "Step 15 Note = 12\r\n"
+                "Step 15 Note = 13\r\n"
+                "Step 15 Note = 14\r\n"
+                "Step 15 Note = 15\r\n"
+                "Step 14 Note = 13\r\n");
+}
+
+
+
+static void test_the_queue_keeps_working_after_it_wraps(void)
+{
+    char expected[EXPECTED_CAPACITY];
+
+    (void)logger_init(LOGLVL_DEBUG);
+    // Far more bytes than the queue holds, a line at a time
+    for (unsigned int i = 0U; i < 100U; i++)
+    {
+        const unsigned int step = i % 16U;
+
+        fake_uart_clear();
+        log_step_note((uint8_t)step, (uint8_t)(15U - step));
+        (void)snprintf(expected, sizeof(expected), "Step %u Note = %u\r\n", step, 15U - step);
+        expect_uart(expected);
+    }
+}
+
+
+
+static void test_init_empties_the_queue(void)
+{
+    (void)logger_init(LOGLVL_DEBUG);
+    fake_uart_clear();
+    log_step_note(1U, 2U);
+
+    (void)logger_init(LOGLVL_DEBUG);
+    expect_uart("");
+}
+
+
+
+static void test_flush_sends_everything_and_waits_for_the_transmitter(void)
+{
+    (void)logger_init(LOGLVL_DEBUG);
+    fake_uart_clear();
+    log_error(LOG_ERROR_INIT, ERR_TIMEOUT);
+    log_step_note(1U, 2U);
     g_fake_uart_busy_polls = 25U;
-    write_char('A');
+    log_flush();
 
     TEST_ASSERT_EQUAL(0, g_fake_uart_busy_polls); // It polled until the flag came up
-    expect_uart("A");                             // And sent the byte once, afterwards
+    expect_uart_so_far("Initialization failed, status code = 4\r\nStep 1 Note = 2\r\n");
+}
 
-    // A whole message whose first byte has to wait still arrives intact
+
+
+static void test_flush_with_nothing_queued_returns_at_once(void)
+{
+    (void)logger_init(LOGLVL_DEBUG);
     fake_uart_clear();
-    g_fake_uart_busy_polls = 3U;
-    log_step_note(15U, 9U);
-    expect_uart("Step 15 Note = 9\r\n");
+    log_flush();
+
+    expect_uart_so_far("");
 }
 
 
@@ -196,6 +379,15 @@ int main(void)
     RUN_TEST(test_unknown_error_id_sends_nothing);
     RUN_TEST(test_level_filters_messages);
     RUN_TEST(test_off_is_never_an_enabled_message_level);
-    RUN_TEST(test_write_waits_while_the_transmit_buffer_is_full);
+    RUN_TEST(test_nothing_is_sent_until_polled);
+    RUN_TEST(test_poll_sends_one_byte_at_a_time);
+    RUN_TEST(test_poll_sends_nothing_while_the_transmit_buffer_is_full);
+    RUN_TEST(test_poll_with_nothing_queued_leaves_the_usart_alone);
+    RUN_TEST(test_messages_are_sent_in_the_order_they_were_logged);
+    RUN_TEST(test_a_message_that_does_not_fit_is_dropped_whole);
+    RUN_TEST(test_the_queue_keeps_working_after_it_wraps);
+    RUN_TEST(test_init_empties_the_queue);
+    RUN_TEST(test_flush_sends_everything_and_waits_for_the_transmitter);
+    RUN_TEST(test_flush_with_nothing_queued_returns_at_once);
     return TEST_RESULT();
 }

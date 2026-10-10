@@ -12,6 +12,7 @@
  */
 #include <stdbool.h>
 #include <stdint.h>
+#include "clock.h"
 
 #define SEQ_STEP_COUNT       (16U) // Number of sequencer steps
 #define SEQ_NOTE_BITS        (4U)  // Bits per step's note value; must evenly divide 8
@@ -21,15 +22,26 @@
 #define SEQ_RAW_BYTE_COUNT   ((SEQ_STEP_COUNT * SEQ_NOTE_BITS) / SEQ_BITS_PER_BYTE)
 
 #define SEQ_NOTE_MAX         ((1U << SEQ_NOTE_BITS) - 1U) // Largest note value (15)
-#define SEQ_TEMPO_RAW_PER_MS (4U)    // Tempo reading units per millisecond of delay
+
+// A step is a sixteenth note: four to the quarter note, 24 clock pulses each
+#define SEQ_STEPS_PER_BEAT   (4U)
+#define SEQ_PULSES_PER_STEP  (CLOCK_PPQN / SEQ_STEPS_PER_BEAT)
+
+// Tempo: the control's 10-bit range maps linearly onto 30 to 285 beats per
+// minute, so there is a floor at the slow end and no way to stop the clock.
+#define SEQ_BPM_MIN           (30U) // Tempo with the control at 0
+#define SEQ_TEMPO_RAW_PER_BPM (4U)  // Tempo reading units per beat per minute
 
 /**
  * @brief State the sequencer carries from one tick to the next.
  */
 typedef struct
 {
-    uint16_t last_tempo_raw; // Most recent valid tempo reading, 0 to 1023 (10-bit)
-    uint8_t  current_step;   // Step the next tick will play, 0 to SEQ_STEP_COUNT - 1
+    clock_state_t clock;          // Turns elapsed ticks into pulses at the tempo
+    uint16_t      last_tempo_raw; // Most recent valid tempo reading, 0 to 1023 (10-bit)
+    uint16_t      step_pulses;    // Pulses since the last step began; a step is due
+                                  // at SEQ_PULSES_PER_STEP
+    uint8_t       current_step;   // Step that begins next, 0 to SEQ_STEP_COUNT - 1
 } seq_state_t;
 
 /**
@@ -40,9 +52,10 @@ typedef struct
     // Step-note bits packed MSB first: step 0 is the high nibble of byte 0,
     // step 1 the low nibble of byte 0, step 2 the high nibble of byte 1, ...
     uint8_t  raw_steps[SEQ_RAW_BYTE_COUNT];
-    bool     b_steps_valid; // false if raw_steps could not be read this tick
+    bool     b_steps_valid; // false if raw_steps could not be read
     uint16_t tempo_raw;     // Tempo control position, 0 to 1023 (10-bit)
-    bool     b_tempo_valid; // false if tempo_raw could not be read this tick
+    bool     b_tempo_valid; // false if tempo_raw could not be read
+    uint8_t  elapsed_ticks; // Timebase ticks (milliseconds) since the previous tick
 } seq_inputs_t;
 
 /**
@@ -50,35 +63,42 @@ typedef struct
  */
 typedef struct
 {
-    uint8_t  step;         // Step played this tick, 0 to SEQ_STEP_COUNT - 1
-    uint8_t  note;         // Note value of that step, 0 to SEQ_NOTE_MAX; 0 if not valid
-    bool     b_note_valid; // false if the step inputs were not valid this tick
-    uint16_t delay_ms;     // Time to wait before the next tick, in milliseconds
+    bool    b_step_started; // true on the tick a step begins; the fields below
+                            // describe that step, and are 0 and false otherwise
+    uint8_t step;           // Step that began, 0 to SEQ_STEP_COUNT - 1
+    uint8_t note;           // Note value of that step, 0 to SEQ_NOTE_MAX; 0 if not valid
+    bool    b_note_valid;   // false if the step inputs were not valid on that tick
 } seq_outputs_t;
 
 /**
- * @brief  Puts the state into its power-on condition: the first tick plays
- *         step 0, and there is no tempo reading yet, so the delay is 0 ms
- *         until one arrives.
+ * @brief  Puts the state into its power-on condition: step 0 begins on the
+ *         first tick, and there is no tempo reading yet, so the tempo is
+ *         SEQ_BPM_MIN until one arrives.
  * @param  p_state  State to initialize. Ignored if null.
  */
 void seq_init(seq_state_t *p_state);
 
 /**
- * @brief  Runs one tick: plays one step, decoding its note, and works
- *         out the delay before the next tick. Reads *p_state and *p_in,
- *         writes *p_state and *p_out, and has no other effect.
+ * @brief  Runs one tick: moves the clock on by the elapsed time and, if that
+ *         brings a step due, begins it and decodes its note. Reads *p_state
+ *         and *p_in, writes *p_state and *p_out, and has no other effect.
  *
- *         Each tick plays one step and then moves on to the next, wrapping
- *         from the last step back to step 0. The note is taken from this
- *         tick's inputs, so a change on the panel is heard the next time its
- *         step comes round. The step advances on every tick, including one
- *         whose step inputs are not valid (that tick's note is 0), so a
- *         failed read does not shift the pattern in time.
+ *         A step lasts SEQ_PULSES_PER_STEP clock pulses, which is 15000 / BPM
+ *         milliseconds. Steps follow one another, wrapping from the last back
+ *         to step 0. The first tick after seq_init() begins step 0 whatever
+ *         the elapsed time, and that tick's time counts towards step 1, so
+ *         the first step is one tick shorter than the rest.
  *
- *         The delay is the tempo reading divided by SEQ_TEMPO_RAW_PER_MS
- *         (0 to 255 ms over the valid range). If the tempo reading is not
- *         valid this tick, the last valid one is reused.
+ *         The note is taken from the inputs of the tick on which its step
+ *         begins, so a change on the panel is heard the next time its step
+ *         comes round. A step begins on time even if the step inputs are not
+ *         valid (its note is then 0), so a failed read does not shift the
+ *         pattern in time. At most one step begins per tick: after a stall
+ *         of more than a step, the steps owed begin on successive ticks.
+ *
+ *         The tempo is SEQ_BPM_MIN plus the tempo reading divided by
+ *         SEQ_TEMPO_RAW_PER_BPM (30 to 285 BPM over the valid range). If the
+ *         tempo reading is not valid, the last valid one is reused.
  * @param  p_state  State from seq_init() or the previous tick; updated.
  * @param  p_in     Inputs for this tick.
  * @param  p_out    Receives the outputs; every field is written.

@@ -10,10 +10,10 @@
  */
 #include "host_ports.h"
 #include <stddef.h>
-#include "delay_port.h"
 #include "platform_port.h"
 #include "step_input_port.h"
 #include "tempo_input_port.h"
+#include "timebase_port.h"
 
 #define STEP_BYTE_COUNT_MIN (1U)
 
@@ -23,9 +23,14 @@ static uint16_t      g_platform_init_count = 0U;
 static uint8_t       g_raw_steps[HOST_RAW_STEP_BYTES];
 static port_status_t g_steps_status = STATUS_OK;
 static uint8_t       g_last_step_byte_count = 0U;
+static uint16_t      g_step_read_count = 0U;
 
 static uint16_t      g_tempo_raw = 0U;
 static port_status_t g_tempo_status = STATUS_OK;
+static uint16_t      g_tempo_read_count = 0U;
+
+static uint8_t       g_elapsed_ticks = 0U;
+static uint16_t      g_log_poll_count = 0U;
 
 static host_event_t  g_events[HOST_MAX_EVENTS];
 static uint16_t      g_event_count = 0U;
@@ -54,8 +59,12 @@ void host_reset(void)
     g_platform_init_count  = 0U;
     g_steps_status         = STATUS_OK;
     g_last_step_byte_count = 0U;
+    g_step_read_count      = 0U;
     g_tempo_raw            = 0U;
     g_tempo_status         = STATUS_OK;
+    g_tempo_read_count     = 0U;
+    g_elapsed_ticks        = 0U;
+    g_log_poll_count       = 0U;
     g_event_count          = 0U;
 
     for (uint8_t i = 0U; i < HOST_RAW_STEP_BYTES; i++)
@@ -95,6 +104,13 @@ void host_set_tempo(uint16_t raw, port_status_t status)
 
 
 
+void host_set_elapsed_ticks(uint8_t ticks)
+{
+    g_elapsed_ticks = ticks;
+}
+
+
+
 uint16_t host_event_count(void)
 {
     return g_event_count;
@@ -129,6 +145,27 @@ uint8_t host_last_step_byte_count(void)
 
 
 
+uint16_t host_step_read_count(void)
+{
+    return g_step_read_count;
+}
+
+
+
+uint16_t host_tempo_read_count(void)
+{
+    return g_tempo_read_count;
+}
+
+
+
+uint16_t host_log_poll_count(void)
+{
+    return g_log_poll_count;
+}
+
+
+
 port_status_t platform_init(void)
 {
     g_platform_init_count++;
@@ -142,6 +179,7 @@ port_status_t step_input_read(uint8_t *p_raw_bits, uint8_t byte_count)
     port_status_t status = g_steps_status;
 
     g_last_step_byte_count = byte_count;
+    g_step_read_count++;
 
     // Same parameter contract as the real adapter (see step_input_port.h)
     if ((NULL == p_raw_bits) || (byte_count < STEP_BYTE_COUNT_MIN) || (byte_count > HOST_RAW_STEP_BYTES))
@@ -168,6 +206,8 @@ port_status_t tempo_input_read(uint16_t *p_raw)
 {
     port_status_t status = g_tempo_status;
 
+    g_tempo_read_count++;
+
     if (NULL == p_raw)
     {
         status = ERR_INVALID_PARAM;
@@ -185,9 +225,9 @@ port_status_t tempo_input_read(uint16_t *p_raw)
 
 
 
-void delay_wait_ms(uint16_t ms)
+uint8_t timebase_elapsed_ticks(void)
 {
-    record_event(HOST_EVENT_DELAY, ms, 0U);
+    return g_elapsed_ticks;
 }
 
 
@@ -202,4 +242,18 @@ void log_step_note(uint8_t step, uint8_t note)
 void log_error(log_error_id_t what, port_status_t status)
 {
     record_event(HOST_EVENT_ERROR, (uint16_t)what, (uint16_t)status);
+}
+
+
+
+void log_poll(void)
+{
+    g_log_poll_count++;
+}
+
+
+
+void log_flush(void)
+{
+    record_event(HOST_EVENT_FLUSH, 0U, 0U);
 }

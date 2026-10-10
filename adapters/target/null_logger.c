@@ -51,3 +51,21 @@ void log_error(log_error_id_t what, port_status_t status)
     (void)what;
     (void)status;
 }
+
+
+
+/**
+ * @brief Does nothing; no message is ever queued (see log_port.h).
+ */
+void log_poll(void)
+{
+}
+
+
+
+/**
+ * @brief Does nothing; there is never anything queued (see log_port.h).
+ */
+void log_flush(void)
+{
+}

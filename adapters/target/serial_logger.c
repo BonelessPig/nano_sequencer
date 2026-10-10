@@ -2,8 +2,10 @@
  * @file   serial_logger.c
  * @brief  Target implementation of the log port for the debug build: text
  *         logging over USART0. The release build links null_logger.c instead.
- *         Messages are sent piece by piece (fixed text, then numbers as
- *         decimal digits), so no formatting buffer is needed.
+ *         Nothing here waits for the UART. A message is written piece by
+ *         piece (fixed text, then numbers as decimal digits) into a queue,
+ *         and log_poll() sends one queued byte each time the transmitter has
+ *         room. A message that does not fit in the queue is dropped whole.
  * @author BonelessPig
  * @date   2025-12-08
  *
@@ -40,7 +42,17 @@
 #define DECIMAL_BASE       (10U)
 #define MAX_DECIMAL_DIGITS (5U) // Digits in the largest 16-bit value (65535)
 
+// Room for the two longest messages one after the other (53 characters each)
+#define TX_QUEUE_SIZE (128U)
+
 static log_level_t g_log_level = LOGLVL_OFF; // Default log level
+
+static char    g_tx_queue[TX_QUEUE_SIZE]; // Bytes waiting to be sent, as a ring
+static uint8_t g_tx_tail  = 0U;           // Index of the next byte to send
+static uint8_t g_tx_count = 0U;           // Bytes waiting, 0 to TX_QUEUE_SIZE
+
+static uint8_t g_message_start_count = 0U;  // g_tx_count when the message began
+static bool    g_b_message_dropped   = false; // true once a byte of it did not fit
 
 
 
@@ -57,22 +69,56 @@ static bool is_level_enabled(log_level_t level)
 
 
 /**
- * @brief Sends one character over the serial port, waiting for room first.
- * @param character character to send
+ * @brief Starts a message. Everything written until end_message() is kept or
+ *        dropped together.
  */
-static void write_char(char character)
+static void begin_message(void)
 {
-    while (0U == (UCSR0A & (1U << UDRE0))) // Wait for empty transmit buffer
-    {
-    }
-    UDR0 = (uint8_t)character; // Put data into buffer, sends the data
+    g_message_start_count = g_tx_count;
+    g_b_message_dropped   = false;
 }
 
 
 
 /**
- * @brief Sends a null-terminated string over the serial port.
- * @param p_text string to send; must not be null
+ * @brief Ends a message. If any of it did not fit in the queue, the part that
+ *        did is taken back out, so only whole messages are ever sent.
+ */
+static void end_message(void)
+{
+    if (g_b_message_dropped)
+    {
+        g_tx_count = g_message_start_count;
+    }
+}
+
+
+
+/**
+ * @brief Adds one character to the queue, or marks the message as dropped if
+ *        the queue is full.
+ * @param character character to queue
+ */
+static void write_char(char character)
+{
+    if (g_tx_count < TX_QUEUE_SIZE)
+    {
+        const uint8_t index = (uint8_t)((g_tx_tail + g_tx_count) % TX_QUEUE_SIZE);
+
+        g_tx_queue[index] = character;
+        g_tx_count++;
+    }
+    else
+    {
+        g_b_message_dropped = true;
+    }
+}
+
+
+
+/**
+ * @brief Queues a null-terminated string.
+ * @param p_text string to queue; must not be null
  */
 static void write_text(const char *p_text)
 {
@@ -85,8 +131,8 @@ static void write_text(const char *p_text)
 
 
 /**
- * @brief Sends a number over the serial port as decimal digits, with no padding.
- * @param value number to send, 0 to 65535
+ * @brief Queues a number as decimal digits, with no padding.
+ * @param value number to queue, 0 to 65535
  */
 static void write_decimal(uint16_t value)
 {
@@ -94,7 +140,7 @@ static void write_decimal(uint16_t value)
     uint8_t  count     = 0U;
     uint16_t remaining = value;
 
-    // Digits come out least significant first, so collect them and send in reverse
+    // Digits come out least significant first, so collect them and queue in reverse
     do
     {
         const uint8_t digit = (uint8_t)(remaining % DECIMAL_BASE);
@@ -114,7 +160,7 @@ static void write_decimal(uint16_t value)
 
 
 /**
- * @brief Sets up USART0 and the log level (see logger.h).
+ * @brief Sets up USART0, empties the queue and sets the log level (see logger.h).
  * @param level level to set for logging
  * @return port_status_t status code (STATUS_OK for success)
  */
@@ -129,6 +175,9 @@ port_status_t logger_init(log_level_t level)
     UCSR0C = (uint8_t)((1U << UCSZ01) | (1U << UCSZ00)); // Frame format: 8 data bits, no parity, 1 stop bit
 
     UCSR0B = (uint8_t)((1U << RXEN0) | (1U << TXEN0)); // Enable receiver and transmitter
+
+    g_tx_tail  = 0U; // Empty the queue
+    g_tx_count = 0U;
 
     g_log_level = level; // Sets the Log Level
     return STATUS_OK; // Return success
@@ -145,11 +194,13 @@ void log_step_note(uint8_t step, uint8_t note)
 {
     if (is_level_enabled(LOGLVL_DEBUG))
     {
+        begin_message();
         write_text("Step ");
         write_decimal(step);
         write_text(" Note = ");
         write_decimal(note);
         write_text("\r\n");
+        end_message();
     }
 }
 
@@ -185,8 +236,43 @@ void log_error(log_error_id_t what, port_status_t status)
 
     if ((NULL != p_text) && is_level_enabled(LOGLVL_ERROR))
     {
+        begin_message();
         write_text(p_text);
         write_decimal((uint16_t)status);
         write_text("\r\n");
+        end_message();
+    }
+}
+
+
+
+/**
+ * @brief Sends the next queued byte if there is one and the transmitter has
+ *        room for it (see log_port.h). Never waits.
+ */
+void log_poll(void)
+{
+    if (g_tx_count > 0U)
+    {
+        if (0U != (UCSR0A & (1U << UDRE0))) // Transmit buffer empty
+        {
+            UDR0 = (uint8_t)g_tx_queue[g_tx_tail]; // Put data into buffer, sends the data
+            g_tx_tail = (uint8_t)((g_tx_tail + 1U) % TX_QUEUE_SIZE);
+            g_tx_count--;
+        }
+    }
+}
+
+
+
+/**
+ * @brief Sends everything still queued, waiting for the transmitter between
+ *        bytes (see log_port.h).
+ */
+void log_flush(void)
+{
+    while (g_tx_count > 0U)
+    {
+        log_poll();
     }
 }

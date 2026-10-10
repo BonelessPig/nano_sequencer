@@ -1,10 +1,12 @@
 #ifndef ATMEGA328P_REGS_H
 #define ATMEGA328P_REGS_H
-#define ATMEGA328P_USART_REGS_H // This file stands in for the USART header too
+#define ATMEGA328P_USART_REGS_H  // This file stands in for the USART header too
+#define ATMEGA328P_TIMER2_REGS_H // And for the Timer/Counter2 header
 /**
  * @file   fake_atmega328p_regs.h
- * @brief  Stand-in for adapters/target/atmega328p_regs.h and
- *         atmega328p_usart_regs.h so a target adapter can be compiled and
+ * @brief  Stand-in for adapters/target/atmega328p_regs.h,
+ *         atmega328p_usart_regs.h and atmega328p_timer2_regs.h so a target
+ *         adapter can be compiled and
  *         tested on a PC. It claims the real headers' include guards, so
  *         including this first makes the adapter's own #include of a real
  *         one a no-op. Registers become plain variables,
@@ -41,6 +43,30 @@
 #define TXEN0  3 // Tx Enable bit in UCSR0B
 #define UCSZ01 2 // Character Size bit 1 in UCSR0C
 #define UCSZ00 1 // Character Size bit 0 in UCSR0C
+
+#define SREG_I 7 // Global Interrupt Enable bit in SREG
+
+#define WGM21  1 // Waveform Generation Mode bit 1 in TCCR2A
+#define CS22   2 // Clock Select bit 2 in TCCR2B
+#define OCIE2A 1 // Output Compare Match A Interrupt Enable bit in TIMSK2
+
+// The interrupt handler becomes an ordinary function the test can call
+#define TIMER2_COMPA_ISR fake_timer2_compa_isr
+#define TIMER2_COMPA_ISR_ATTR
+
+// ---- CPU and Timer/Counter2 ----
+static uint8_t g_fake_sreg   = 0U;
+static uint8_t g_fake_tccr2a = 0U;
+static uint8_t g_fake_tccr2b = 0U;
+static uint8_t g_fake_tcnt2  = 0U;
+static uint8_t g_fake_ocr2a  = 0U;
+static uint8_t g_fake_timsk2 = 0U;
+
+// What the timer registers held each time SREG was accessed, so a test can
+// see whether the timer was fully set up before interrupts were enabled
+static uint8_t g_fake_tccr2b_at_sreg = 0U;
+static uint8_t g_fake_timsk2_at_sreg = 0U;
+static uint8_t g_fake_ocr2a_at_sreg  = 0U;
 
 // ---- I/O ports ----
 static uint8_t g_fake_ddrb  = 0U;
@@ -190,6 +216,17 @@ static inline uint8_t *fake_ucsr0a(void)
 }
 
 /**
+ * @brief SREG, noting the state of the timer at the moment it is touched.
+ */
+static inline uint8_t *fake_sreg(void)
+{
+    g_fake_tccr2b_at_sreg = g_fake_tccr2b;
+    g_fake_timsk2_at_sreg = g_fake_timsk2;
+    g_fake_ocr2a_at_sreg  = g_fake_ocr2a;
+    return &g_fake_sreg;
+}
+
+/**
  * @brief Where the next byte written to the UART data register lands.
  */
 static inline uint8_t *fake_udr0(void)
@@ -249,6 +286,16 @@ static inline void fake_regs_reset(void)
     g_fake_ucsr0c = 0U;
     g_fake_uart_busy_polls = 0U;
     fake_uart_clear();
+
+    g_fake_sreg   = 0U;
+    g_fake_tccr2a = 0U;
+    g_fake_tccr2b = 0U;
+    g_fake_tcnt2  = 0U;
+    g_fake_ocr2a  = 0U;
+    g_fake_timsk2 = 0U;
+    g_fake_tccr2b_at_sreg = 0U;
+    g_fake_timsk2_at_sreg = 0U;
+    g_fake_ocr2a_at_sreg  = 0U;
 }
 
 #define DDRB  g_fake_ddrb
@@ -271,5 +318,12 @@ static inline void fake_regs_reset(void)
 #define UCSR0B g_fake_ucsr0b
 #define UCSR0C g_fake_ucsr0c
 #define UDR0   (*fake_udr0())
+
+#define SREG   (*fake_sreg())
+#define TCCR2A g_fake_tccr2a
+#define TCCR2B g_fake_tccr2b
+#define TCNT2  g_fake_tcnt2
+#define OCR2A  g_fake_ocr2a
+#define TIMSK2 g_fake_timsk2
 
 #endif /* ATMEGA328P_REGS_H */

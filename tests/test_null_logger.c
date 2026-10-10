@@ -54,9 +54,23 @@ static void test_messages_are_discarded(void)
 
 
 
+static void test_poll_and_flush_send_nothing(void)
+{
+    fake_regs_reset();
+    (void)logger_init(LOGLVL_TRACE);
+
+    log_step_note(15U, 9U);
+    log_poll();
+    log_flush(); // Must return: there is nothing to wait for
+    expect_usart_untouched();
+}
+
+
+
 int main(void)
 {
     RUN_TEST(test_init_succeeds_at_every_level_without_touching_the_usart);
     RUN_TEST(test_messages_are_discarded);
+    RUN_TEST(test_poll_and_flush_send_nothing);
     return TEST_RESULT();
 }

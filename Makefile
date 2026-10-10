@@ -76,7 +76,8 @@ endif
 
 # MCU selects the instruction set, the startup object (crtatmega328p.o) and the
 # linker memory layout. F_CPU is the clock speed in Hz; the code uses it to work
-# out the UART baud divisor, so it must match the crystal on the board.
+# out the UART baud divisor and the timer period of the 1 kHz tick, so it must
+# match the crystal on the board.
 MCU        = atmega328p
 F_CPU      = 16000000UL
 
@@ -261,18 +262,22 @@ ifdef COVERAGE
     HOST_CFLAGS += --coverage -O0
 endif
 
-TEST_SEQ = $(HOST_DIR)/test_seq$(EXE)
 TEST_APP = $(HOST_DIR)/test_app$(EXE)
+
+# Tests for the core alone, one program per core module. tests/test_<name>.c
+# is linked with every core source; add new ones to this list.
+CORE_TESTS = test_seq test_clock
+TEST_CORE := $(patsubst %,$(HOST_DIR)/%$(EXE),$(CORE_TESTS))
 
 # Tests that #include the source file they test (one each for the target
 # adapters and main.c) rather than linking it. tests/test_<name>.c builds into
 # the program test_<name>; add new ones to this list.
 INCLUDING_TESTS = test_serial_logger test_null_logger test_register_init \
-                  test_analog_reader test_shift_reg_reader test_init test_delay \
-                  test_main
+                  test_analog_reader test_shift_reg_reader test_init \
+                  test_timebase test_main
 TEST_INCLUDING := $(patsubst %,$(HOST_DIR)/%$(EXE),$(INCLUDING_TESTS))
 
-TEST_PROGRAMS = $(TEST_SEQ) $(TEST_APP) $(TEST_INCLUDING)
+TEST_PROGRAMS = $(TEST_CORE) $(TEST_APP) $(TEST_INCLUDING)
 
 # One recipe line that runs one test program; the blank line is what separates
 # the lines when $(foreach) below strings several of these together.
@@ -295,9 +300,9 @@ $(TEST_INCLUDING): $(HOST_DIR)/%$(EXE): tests/%.c app/main.c $(HOST_HDRS) $(wild
 	$(HOST_CC) $(HOST_CFLAGS) -Iadapters/target -DF_CPU=$(F_CPU) -o $@ $<
 
 # Unit tests for the core alone: no ports, no adapters.
-$(TEST_SEQ): tests/test_seq.c $(CORE_SRCS) $(HOST_HDRS)
+$(TEST_CORE): $(HOST_DIR)/%$(EXE): tests/%.c $(CORE_SRCS) $(HOST_HDRS)
 	@$(call mkdir_p,$(HOST_DIR))
-	$(HOST_CC) $(HOST_CFLAGS) -o $@ tests/test_seq.c $(CORE_SRCS)
+	$(HOST_CC) $(HOST_CFLAGS) -o $@ $< $(CORE_SRCS)
 
 # Tests for the application loop: the real app.c and core, linked against the
 # fake ports in adapters/host instead of the MCU ones. main.c is left out; the

@@ -36,3 +36,13 @@ UCSR0C = 0xC2;
 UBRR0L = 0xC4;
 UBRR0H = 0xC5;
 UDR0   = 0xC6;
+
+/* ---- CPU ---- */
+SREG = 0x5F;
+
+/* ---- Timer/Counter2 ---- */
+TIMSK2 = 0x70;
+TCCR2A = 0xB0;
+TCCR2B = 0xB1;
+TCNT2  = 0xB2;
+OCR2A  = 0xB3;

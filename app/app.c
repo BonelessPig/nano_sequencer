@@ -11,63 +11,115 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "seq.h"
-#include "delay_port.h"
 #include "log_port.h"
 #include "platform_port.h"
 #include "step_input_port.h"
 #include "tempo_input_port.h"
+#include "timebase_port.h"
 
-static seq_state_t g_seq_state; // Sequencer state carried between ticks
+// The panel and the tempo control are read once every this many ticks
+// (125 times a second), not on every tick
+#define INPUT_SCAN_PERIOD_TICKS (8U)
+
+static seq_state_t   g_seq_state; // Sequencer state carried between ticks
+static seq_inputs_t  g_inputs;    // Latest snapshot of the inputs
+static seq_outputs_t g_outputs;   // What the last tick computed; applied at the next
+
+static port_status_t g_step_read_status  = STATUS_OK; // Status of the last step input read
+static port_status_t g_tempo_read_status = STATUS_OK; // Status of the last tempo input read
+static uint8_t       g_ticks_until_scan  = 0U;        // Ticks before the inputs are read again
 
 
 
 /**
- * @brief  Reads every input port into one snapshot for the core.
- * @param  p_in            Receives the snapshot; every field is written.
- * @param  p_steps_status  Receives the status of the step input read.
- * @param  p_tempo_status  Receives the status of the tempo input read.
+ * @brief  Acts on what the previous tick computed: when a step began, logs it
+ *         (or the failed step read), and a failed tempo read with it.
  */
-static void gather_inputs(seq_inputs_t *p_in, port_status_t *p_steps_status, port_status_t *p_tempo_status)
+static void apply_outputs(void)
 {
-    for (uint8_t i = 0U; i < SEQ_RAW_BYTE_COUNT; i++)
+    if (g_outputs.b_step_started)
     {
-        p_in->raw_steps[i] = 0U;
+        if (g_outputs.b_note_valid)
+        {
+            log_step_note(g_outputs.step, g_outputs.note);
+        }
+        else
+        {
+            log_error(LOG_ERROR_STEP_READ, g_step_read_status);
+        }
+
+        if (STATUS_OK != g_tempo_read_status)
+        {
+            log_error(LOG_ERROR_TEMPO_READ, g_tempo_read_status);
+        }
     }
-    p_in->tempo_raw = 0U;
-
-    *p_steps_status = step_input_read(p_in->raw_steps, (uint8_t)SEQ_RAW_BYTE_COUNT);
-    p_in->b_steps_valid = (STATUS_OK == *p_steps_status);
-
-    *p_tempo_status = tempo_input_read(&p_in->tempo_raw);
-    p_in->b_tempo_valid = (STATUS_OK == *p_tempo_status);
 }
 
 
 
 /**
- * @brief  Acts on the core's outputs: logs the step played (or the read
- *         failures), then waits out the delay.
- * @param  p_out         Outputs from this tick.
- * @param  steps_status  Status of this tick's step input read.
- * @param  tempo_status  Status of this tick's tempo input read.
+ * @brief  Reads the step and tempo input ports into the snapshot. A failed
+ *         read clears that input's valid flag and leaves its data as it was.
  */
-static void apply_outputs(const seq_outputs_t *p_out, port_status_t steps_status, port_status_t tempo_status)
+static void scan_inputs(void)
 {
-    if (p_out->b_note_valid)
+    g_step_read_status = step_input_read(g_inputs.raw_steps, (uint8_t)SEQ_RAW_BYTE_COUNT);
+    g_inputs.b_steps_valid = (STATUS_OK == g_step_read_status);
+
+    g_tempo_read_status = tempo_input_read(&g_inputs.tempo_raw);
+    g_inputs.b_tempo_valid = (STATUS_OK == g_tempo_read_status);
+}
+
+
+
+/**
+ * @brief  Brings the input snapshot up to date for this tick: records the
+ *         elapsed time, and re-reads the input ports if a scan is due.
+ * @param  elapsed_ticks  Ticks since the previous tick, 1 to 255.
+ */
+static void gather_inputs(uint8_t elapsed_ticks)
+{
+    g_inputs.elapsed_ticks = elapsed_ticks;
+
+    if (elapsed_ticks >= g_ticks_until_scan)
     {
-        log_step_note(p_out->step, p_out->note);
+        scan_inputs();
+        g_ticks_until_scan = INPUT_SCAN_PERIOD_TICKS;
     }
     else
     {
-        log_error(LOG_ERROR_STEP_READ, steps_status);
+        g_ticks_until_scan = (uint8_t)(g_ticks_until_scan - elapsed_ticks);
     }
+}
 
-    if (STATUS_OK != tempo_status)
+
+
+/**
+ * @brief  Puts everything the tick carries from one pass to the next into
+ *         its starting condition: nothing to apply, no inputs read yet, and
+ *         a scan due on the first tick.
+ */
+static void reset_tick_state(void)
+{
+    seq_init(&g_seq_state);
+
+    for (uint8_t i = 0U; i < SEQ_RAW_BYTE_COUNT; i++)
     {
-        log_error(LOG_ERROR_TEMPO_READ, tempo_status);
+        g_inputs.raw_steps[i] = 0U;
     }
+    g_inputs.b_steps_valid = false;
+    g_inputs.tempo_raw     = 0U;
+    g_inputs.b_tempo_valid = false;
+    g_inputs.elapsed_ticks = 0U;
 
-    delay_wait_ms(p_out->delay_ms);
+    g_outputs.b_step_started = false;
+    g_outputs.step           = 0U;
+    g_outputs.note           = 0U;
+    g_outputs.b_note_valid   = false;
+
+    g_step_read_status  = STATUS_OK;
+    g_tempo_read_status = STATUS_OK;
+    g_ticks_until_scan  = 0U;
 }
 
 
@@ -78,9 +130,11 @@ port_status_t app_init(void)
 
     if (STATUS_OK != status)
     {
+        // The main loop will not run, so nothing else would send this
         log_error(LOG_ERROR_INIT, status);
+        log_flush();
     }
-    seq_init(&g_seq_state);
+    reset_tick_state();
 
     return status;
 }
@@ -89,12 +143,16 @@ port_status_t app_init(void)
 
 void app_run_once(void)
 {
-    seq_inputs_t  in;
-    seq_outputs_t out;
-    port_status_t steps_status = STATUS_OK;
-    port_status_t tempo_status = STATUS_OK;
+    const uint8_t elapsed_ticks = timebase_elapsed_ticks();
 
-    gather_inputs(&in, &steps_status, &tempo_status);
-    seq_tick(&g_seq_state, &in, &out);
-    apply_outputs(&out, steps_status, tempo_status);
+    if (elapsed_ticks > 0U)
+    {
+        // A tick boundary. Outputs go first so that they change at the same
+        // point in every tick, however long the rest of the pass takes.
+        apply_outputs();
+        gather_inputs(elapsed_ticks);
+        seq_tick(&g_seq_state, &g_inputs, &g_outputs);
+    }
+
+    log_poll();
 }

@@ -14,15 +14,20 @@
 
 /**
  * @brief  Brings up the platform and resets the sequencer state. If the
- *         platform fails to come up, the failure is logged.
+ *         platform fails to come up, the failure is logged and the log is
+ *         sent in full before this returns.
  * @return STATUS_OK on success, otherwise the status platform_init() returned.
  */
 port_status_t app_init(void);
 
 /**
- * @brief  Runs one tick of the sequencer: gathers the inputs from the ports,
- *         runs the core, then applies its outputs (logging and the delay).
- *         Blocks for the logging time plus the tempo delay.
+ * @brief  Runs one pass of the main loop. Call it continuously; it never
+ *         waits. If one or more timebase ticks (milliseconds) have passed
+ *         since the last pass, it runs one tick of the sequencer: applies the
+ *         outputs the previous tick computed, gathers the inputs from the
+ *         ports, then runs the core. Every output is therefore one tick late,
+ *         by the same amount each time. On every pass it also gives the log
+ *         the chance to send a byte.
  */
 void app_run_once(void);
 
