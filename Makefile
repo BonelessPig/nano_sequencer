@@ -11,7 +11,8 @@
 #   make test         Build the code for this PC and run its unit tests
 #   make coverage     Run the tests instrumented and report line/branch coverage
 #   make misra        Run cppcheck with the MISRA addon over the source
-#   make clean        Delete the build/ directory
+#   make sim          Run both firmware images on an emulated board
+#   make clean       Delete the build/ directory
 #   make flash PORT=COM5   Override any variable below from the command line
 #
 # What a build does, in order:
@@ -358,6 +359,31 @@ misra-release:
 
 misra-host:
 	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_HOST_SCOPE) core ports app/app.c adapters/host tests/test_app.c
+
+# ---- Emulation --------------------------------------------------------------
+#
+# `make sim` runs both firmware images, exactly as they would be flashed, on an
+# emulated ATmega328P (the avr8js library, under Node) with the board's
+# external parts modelled in tools/sim/: the 74HC165 chain, the tempo pot and
+# a serial capture. The scenarios in tools/sim/scenarios/ assert on what the
+# firmware logs, the pulses it sends and how long a step takes, counted in CPU
+# cycles. Nothing here touches the board.
+#
+# The first run downloads avr8js into tools/sim/node_modules (needs a network
+# connection once); after that it only reinstalls if package-lock.json changes.
+NODE ?= node
+NPM  ?= npm
+SIM_DIR     = tools/sim
+SIM_MODULES = $(SIM_DIR)/node_modules/.package-lock.json
+
+.PHONY: sim
+sim: $(SIM_MODULES)
+	$(MAKE) CONFIG=debug $(BUILD_DIR)/debug/output.hex
+	$(MAKE) CONFIG=release $(BUILD_DIR)/release/output.hex
+	$(NODE) --test --test-reporter=spec "$(SIM_DIR)/scenarios/*.test.js"
+
+$(SIM_MODULES): $(SIM_DIR)/package-lock.json
+	$(NPM) --prefix $(SIM_DIR) ci
 
 # Upload the .hex to the board through the bootloader. The first line stops with
 # a clear message if no port was given and none could be auto-detected.

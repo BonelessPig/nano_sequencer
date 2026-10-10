@@ -1,0 +1,10 @@
+{
+  "name": "nano-sequencer-sim",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runs the firmware image under an AVR emulator (make sim)",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "avr8js": "0.21.1"
+  }
+}

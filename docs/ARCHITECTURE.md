@@ -83,6 +83,7 @@ Solid arrows are calls; dotted arrows show which file supplies the functions a p
 | `adapters/host/` | The ports faked for PC tests: scripted inputs, recorded outputs | No |
 | `app/` | Wires ports to the core; holds `main` | No |
 | `tests/` | Host test programs and a small assert-based harness | No |
+| `tools/sim/` | An emulated board that runs the built firmware images (JavaScript, not firmware source) | No |
 
 Ports are bound at link time: the firmware links `adapters/target/`, the tests link `adapters/host/`, and both use the same headers. There are no function-pointer tables. The debug and release builds are the same idea one level down: `adapters/target/` holds two implementations of the log port, and the Makefile links one of them (see Build configurations below).
 
@@ -436,7 +437,26 @@ pie showData
 
 `make coverage` rebuilds the same programs with `--coverage -O0` into `build/coverage/`, runs them, and has `tools/coverage/report.py` add up gcov's counts per source line across all the programs. It fails unless every `.c` file in `core/`, `app/` and `adapters/target/` has every line executed and every branch taken at least once; a firmware file no test compiles counts as a failure. `adapters/host/host_ports.c` is test support: its figures are printed (97% of lines, 75% of branches) but not enforced, and the tests themselves are not measured.
 
-What this does not show: the fakes are plain variables, so nothing here checks a register's address, the `sbi`/`cbi` instructions the pulses rely on, real timing, or what the hardware does in response. Those still need the board.
+What this does not show: the fakes are plain variables, so nothing here checks a register's address, the `sbi`/`cbi` instructions the pulses rely on, real timing, or what the hardware does in response. The emulated board below covers the first three; the last still needs the board.
+
+## Emulated board — `tools/sim/`
+
+`make sim` builds both configurations and runs each `output.hex`, exactly as it would be flashed, on an emulated ATmega328P. The emulator is the [avr8js](https://github.com/wokwi/avr8js) library (version pinned in `tools/sim/package-lock.json`), run under Node with its built-in test runner. Time is counted in CPU cycles at 16 MHz, so every run gives the same result.
+
+| Folder | Holds | Knows about the sequencer |
+|---|---|---|
+| `lib/` | `machine.js`: loads the HEX file and builds the chip (CPU, ports B to D, ADC, USART0) | No |
+| `parts/` | `hc165.js`: a 74HC165 chain driven from its load, clock and data wires | No |
+| `boards/` | `nano_sequencer.js`: which part is on which pin, the panel switches, the tempo pot, serial capture | Yes |
+| `scenarios/` | `debug.test.js`, `release.test.js`: what each image must do | Yes |
+
+The first two folders are kept free of anything specific to this project so they can be lifted out for another one.
+
+Eight scenarios run. For the debug image: every log line matches the switches set on the emulated panel across two passes of the pattern; the USART is set to 115200 baud in double-speed mode; each step reads the panel once with 64 clock pulses; a switch changed mid-pattern is heard the next time its step plays; and a step lasts the tempo delay plus under 2 ms. For the release image: the USART is never enabled, nothing is sent and PD0 and PD1 are left as inputs; each panel read has 64 clock pulses; and a step lasts the tempo delay plus under 1 ms.
+
+Measured there (the figures elsewhere in this document are calculated): a debug tick takes 1.5 to 1.7 ms besides the tempo delay (longer when the step or note has two digits), so with the pot at zero the pattern runs at about 625 steps per second.
+
+What this does not show: the chip and the parts are models. The 74HC165 model follows the datasheet's logic (the load input is level-sensitive) but has no setup, hold or pulse-width limits, nothing analog is modelled, and only the GPIO, ADC and USART parts of avr8js have been exercised. `make sim` is not part of the coverage figure.
 
 ## Build — `Makefile`
 

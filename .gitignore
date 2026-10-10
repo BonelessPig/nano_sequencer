@@ -1,5 +1,7 @@
 .vscode
 build
+# Downloaded by `make sim` (npm ci); package-lock.json pins what goes in it
+tools/sim/node_modules
 
 # MISRA rule text is copyrighted; fetch it locally with tools/misra/fetch_misra_headlines.sh
 tools/misra/*.txt
