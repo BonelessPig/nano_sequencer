@@ -3,7 +3,8 @@
  * The sequencer board as it is wired today: an ATmega328P at 16 MHz with
  * eight 74HC165s on PD2 (load), PD3 (clock) and PD4 (data), the tempo pot on
  * ADC channel 6, and USART0 going to a PC. Scenarios set the panel and the
- * pot, run the firmware, and read back what it did.
+ * pot, run the firmware, and read back what it did. Nothing is wired to
+ * Timer/Counter2; the firmware uses it for its 1 kHz tick.
  */
 const path = require('node:path');
 const { createAtmega328p } = require('../lib/machine');
@@ -13,6 +14,8 @@ const CLOCK_HZ = 16000000;
 const STEP_COUNT = 16;
 const NOTE_BITS = 4;
 const TEMPO_ADC_CHANNEL = 6;
+const ADC_REFERENCE_VOLTS = 5;
+const ADC_STEPS = 1024;
 const SHIFT_REG_PINS = { load: 2, clock: 3, data: 4 };
 const BUILD_DIR = path.resolve(__dirname, '..', '..', '..', 'build');
 
@@ -26,6 +29,7 @@ function createBoard(config) {
     const notes = new Array(STEP_COUNT).fill(0);
     const serial = { bytes: 0, lines: [] };
     let partial = '';
+    let partialStart = 0;
 
     // Step 0's most significant bit is the first bit out of the chain
     function panelBits() {
@@ -42,9 +46,16 @@ function createBoard(config) {
 
     machine.usart.onByteTransmit = (byte) => {
         serial.bytes++;
+        if (partial === '') {
+            partialStart = machine.cpu.cycles;
+        }
         partial += String.fromCharCode(byte);
         if (partial.endsWith('\r\n')) {
-            serial.lines.push({ text: partial.slice(0, -2), cycle: machine.cpu.cycles });
+            serial.lines.push({
+                text: partial.slice(0, -2),
+                startCycle: partialStart,
+                cycle: machine.cpu.cycles,
+            });
             partial = '';
         }
     };
@@ -66,6 +77,15 @@ function createBoard(config) {
             machine.adc.channelValues[TEMPO_ADC_CHANNEL] = volts;
         },
 
+        /**
+         * Sets the tempo pot so the firmware reads exactly this value,
+         * 0 to 1023 (the middle of that reading's voltage band).
+         */
+        setTempoReading(reading) {
+            const volts = ((reading + 0.5) * ADC_REFERENCE_VOLTS) / ADC_STEPS;
+            machine.adc.channelValues[TEMPO_ADC_CHANNEL] = volts;
+        },
+
         /** Runs until the firmware has read the panel this many times. */
         runUntilPanelReads(count, limitMs) {
             machine.runUntil(() => chain.reads.length >= count, limitMs);
@@ -81,6 +101,19 @@ function createBoard(config) {
             const periods = [];
             for (let i = 1; i < chain.reads.length; i++) {
                 const cycles = chain.reads[i].cycle - chain.reads[i - 1].cycle;
+                periods.push(machine.cyclesToMs(cycles));
+            }
+            return periods;
+        },
+
+        /**
+         * Milliseconds of chip time from the first byte of each log line to
+         * the first byte of the next.
+         */
+        lineStartPeriodsMs() {
+            const periods = [];
+            for (let i = 1; i < serial.lines.length; i++) {
+                const cycles = serial.lines[i].startCycle - serial.lines[i - 1].startCycle;
                 periods.push(machine.cyclesToMs(cycles));
             }
             return periods;
