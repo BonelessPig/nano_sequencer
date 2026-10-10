@@ -31,11 +31,24 @@ static uint8_t decode_note(const uint8_t *p_raw_steps, uint8_t step)
 
 
 
+/**
+ * @brief  Gives the step that follows the given one, wrapping after the last.
+ * @param  step  Step index, 0 to SEQ_STEP_COUNT - 1.
+ * @return The next step index, 0 to SEQ_STEP_COUNT - 1.
+ */
+static uint8_t next_step(uint8_t step)
+{
+    return (uint8_t)((step + 1U) % SEQ_STEP_COUNT);
+}
+
+
+
 void seq_init(seq_state_t *p_state)
 {
     if (NULL != p_state)
     {
         p_state->last_tempo_raw = 0U;
+        p_state->current_step   = 0U;
     }
 }
 
@@ -51,18 +64,18 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
             p_state->last_tempo_raw = p_in->tempo_raw;
         }
 
-        p_out->b_notes_valid = p_in->b_steps_valid;
-        for (uint8_t step = 0U; step < SEQ_STEP_COUNT; step++)
+        // Play the current step, then move on whether or not its note was readable
+        p_out->step         = p_state->current_step;
+        p_out->b_note_valid = p_in->b_steps_valid;
+        if (p_in->b_steps_valid)
         {
-            if (p_in->b_steps_valid)
-            {
-                p_out->notes[step] = decode_note(p_in->raw_steps, step);
-            }
-            else
-            {
-                p_out->notes[step] = 0U;
-            }
+            p_out->note = decode_note(p_in->raw_steps, p_state->current_step);
         }
+        else
+        {
+            p_out->note = 0U;
+        }
+        p_state->current_step = next_step(p_state->current_step);
 
         p_out->delay_ms = (uint16_t)(p_state->last_tempo_raw / SEQ_TEMPO_RAW_PER_MS);
     }

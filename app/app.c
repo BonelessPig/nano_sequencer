@@ -45,20 +45,17 @@ static void gather_inputs(seq_inputs_t *p_in, port_status_t *p_steps_status, por
 
 
 /**
- * @brief  Acts on the core's outputs: logs the notes (or the read failures),
- *         then waits out the delay.
+ * @brief  Acts on the core's outputs: logs the step played (or the read
+ *         failures), then waits out the delay.
  * @param  p_out         Outputs from this tick.
  * @param  steps_status  Status of this tick's step input read.
  * @param  tempo_status  Status of this tick's tempo input read.
  */
 static void apply_outputs(const seq_outputs_t *p_out, port_status_t steps_status, port_status_t tempo_status)
 {
-    if (p_out->b_notes_valid)
+    if (p_out->b_note_valid)
     {
-        for (uint8_t step = 0U; step < SEQ_STEP_COUNT; step++)
-        {
-            log_step_note(step, p_out->notes[step]);
-        }
+        log_step_note(p_out->step, p_out->note);
     }
     else
     {

@@ -29,6 +29,7 @@
 typedef struct
 {
     uint16_t last_tempo_raw; // Most recent valid tempo reading, 0 to 1023 (10-bit)
+    uint8_t  current_step;   // Step the next tick will play, 0 to SEQ_STEP_COUNT - 1
 } seq_state_t;
 
 /**
@@ -49,22 +50,31 @@ typedef struct
  */
 typedef struct
 {
-    uint8_t  notes[SEQ_STEP_COUNT]; // Note value per step, 0 to SEQ_NOTE_MAX; all 0 if not valid
-    bool     b_notes_valid;         // false if the step inputs were not valid this tick
-    uint16_t delay_ms;              // Time to wait before the next tick, in milliseconds
+    uint8_t  step;         // Step played this tick, 0 to SEQ_STEP_COUNT - 1
+    uint8_t  note;         // Note value of that step, 0 to SEQ_NOTE_MAX; 0 if not valid
+    bool     b_note_valid; // false if the step inputs were not valid this tick
+    uint16_t delay_ms;     // Time to wait before the next tick, in milliseconds
 } seq_outputs_t;
 
 /**
- * @brief  Puts the state into its power-on condition (no tempo reading yet,
- *         so the delay is 0 ms until one arrives).
+ * @brief  Puts the state into its power-on condition: the first tick plays
+ *         step 0, and there is no tempo reading yet, so the delay is 0 ms
+ *         until one arrives.
  * @param  p_state  State to initialize. Ignored if null.
  */
 void seq_init(seq_state_t *p_state);
 
 /**
- * @brief  Runs one tick: decodes the step notes and works out the delay
- *         before the next tick. Reads *p_state and *p_in, writes *p_state
- *         and *p_out, and has no other effect.
+ * @brief  Runs one tick: plays one step, decoding its note, and works
+ *         out the delay before the next tick. Reads *p_state and *p_in,
+ *         writes *p_state and *p_out, and has no other effect.
+ *
+ *         Each tick plays one step and then moves on to the next, wrapping
+ *         from the last step back to step 0. The note is taken from this
+ *         tick's inputs, so a change on the panel is heard the next time its
+ *         step comes round. The step advances on every tick, including one
+ *         whose step inputs are not valid (that tick's note is 0), so a
+ *         failed read does not shift the pattern in time.
  *
  *         The delay is the tempo reading divided by SEQ_TEMPO_RAW_PER_MS
  *         (0 to 255 ms over the valid range). If the tempo reading is not

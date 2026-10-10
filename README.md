@@ -4,7 +4,7 @@ A bare-metal firmware project for the ATmega328P (Arduino Nano), written from sc
 
 ## Status
 
-Work in progress. Currently the firmware initializes the ADC, USART, and I/O direction registers, then continuously reads 16 step note values from a daisy-chained 74HC165 shift register bank plus an analog channel used to modulate the inter-step delay, logging each reading over serial (debug build; the release build has no logging). The digital output/sequencing logic (driving gates, triggers, or CV out) is not yet implemented.
+Work in progress. The firmware initializes the ADC, USART, and I/O direction registers, then steps through a 16-step pattern: each tick it reads the 16 step note values from a daisy-chained 74HC165 shift register bank and a tempo pot, plays the next step (for now that means logging the step and its note over serial, in the debug build only), and waits a tempo-dependent delay. The output stage that would make a step audible (gates, triggers, or CV out) is not yet implemented.
 
 ## Why bare-metal?
 
@@ -16,7 +16,7 @@ The code follows a ports-and-adapters layout: the sequencer logic is a pure core
 
 ```
 core/                         # Pure sequencer logic; also compiles on a PC
-└── seq.c / seq.h                     # seq_tick(): raw inputs in, notes + delay out
+└── seq.c / seq.h                     # seq_tick(): raw inputs in, current step + note + delay out
 ports/                        # What the app needs from the outside world (headers only)
 ├── port_status.h                     # Shared status/error codes
 ├── platform_port.h                   # One-time platform bring-up
@@ -115,8 +115,8 @@ There are two build configurations, chosen with `CONFIG=`. They differ only in w
 
 | | Logging | Output | Flash | Static RAM |
 |---|---|---|---:|---:|
-| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 1328 bytes | 4 bytes |
-| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 796 bytes | 2 bytes |
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 1294 bytes | 5 bytes |
+| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 762 bytes | 3 bytes |
 
 `CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`). The tests, the coverage check and the static analysis always cover both loggers.
 

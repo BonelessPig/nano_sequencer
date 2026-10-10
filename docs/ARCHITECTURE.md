@@ -2,20 +2,20 @@
 
 How the firmware is structured, what happens from reset to the main loop, how each part works, and what is still open. The standing rules for the codebase are in [CLAUDE.md](../CLAUDE.md); this document describes what is there.
 
-How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite, the 115200 baud setting and the release build have not yet. Timing figures are calculated, not measured.
+How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite, the 115200 baud setting, the release build and the step advance have not yet. Timing figures are calculated, not measured.
 
 ## At a glance
 
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano), 16 MHz |
-| Flash used | 1328 bytes of 32 KB (debug build); 796 bytes (release build) |
-| RAM used | 4 bytes static (2-byte log level, 2-byte sequencer state), plus stack. The release build has no log level, so 2 bytes |
+| Flash used | 1294 bytes of 32 KB (debug build); 762 bytes (release build) |
+| RAM used | 5 bytes static (2-byte log level, 3-byte sequencer state), plus stack. The release build has no log level, so 3 bytes |
 | Interrupts | None. Everything is polled and blocking |
 | Inputs | 16 steps × 4 bits from eight 74HC165s; one pot on ADC channel 6 for tempo |
 | Outputs | Serial log only (115200 baud, debug build); none at all in the release build. No gate, trigger or CV output yet |
-| Tests | 63 host tests in 10 programs (12 for the core, 9 for the app loop, 39 for the seven target adapter sources, 3 for `main.c`) |
-| Coverage | 100% of lines (172) and branches (76) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
+| Tests | 69 host tests in 10 programs (17 for the core, 10 for the app loop, 39 for the seven target adapter sources, 3 for `main.c`) |
+| Coverage | 100% of lines (175) and branches (72) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
 
 ## Hardware
 
@@ -125,7 +125,7 @@ sequenceDiagram
     loop forever: app_run_once()
         A->>P: step_input_read(), tempo_input_read()
         A->>C: seq_tick(state, inputs, outputs)
-        A->>P: log_step_note() x16, delay_wait_ms()
+        A->>P: log_step_note(), delay_wait_ms()
     end
 ```
 
@@ -151,8 +151,8 @@ stateDiagram-v2
 `app_run_once()` in [`app/app.c`](../app/app.c) runs three steps:
 
 1. **Gather inputs.** Read 8 raw bytes from the step input port and one reading from the tempo port. Each read's success becomes a valid flag in `seq_inputs_t`.
-2. **Run the core.** `seq_tick()` decodes the notes and works out the delay.
-3. **Apply outputs.** Log the 16 notes (or one error if the step read failed), log an error if the tempo read failed, then wait `delay_ms`.
+2. **Run the core.** `seq_tick()` picks the step to play, decodes its note, and works out the delay.
+3. **Apply outputs.** Log the step played and its note (or one error if the step read failed), log an error if the tempo read failed, then wait `delay_ms`.
 
 The data that moves through those three steps, with the struct fields that carry it:
 
@@ -165,12 +165,12 @@ flowchart LR
     subgraph run["2. Run the core"]
         in["seq_inputs_t<br/>raw_steps: 8 bytes<br/>b_steps_valid<br/>tempo_raw: 0 to 1023<br/>b_tempo_valid"]
         tick["seq_tick"]
-        state[("seq_state_t<br/>last_tempo_raw<br/>kept between ticks")]
-        out["seq_outputs_t<br/>notes: 16 values, 0 to 15<br/>b_notes_valid<br/>delay_ms: 0 to 255"]
+        state[("seq_state_t<br/>last_tempo_raw<br/>current_step<br/>kept between ticks")]
+        out["seq_outputs_t<br/>step: 0 to 15<br/>note: 0 to 15<br/>b_note_valid<br/>delay_ms: 0 to 255"]
     end
     subgraph apply["3. Apply outputs"]
-        logn["log_step_note x 16<br/>if the notes are valid"]
-        loge["log_error<br/>if they are not"]
+        logn["log_step_note<br/>if the note is valid"]
+        loge["log_error<br/>if it is not"]
         wait["delay_wait_ms<br/>then the next tick starts"]
     end
     sr --> in
@@ -185,16 +185,16 @@ flowchart LR
 
 The two read statuses also go straight from step 1 to step 3 (not through the core), so a failed read can be logged with its status code.
 
-There is no notion of a "current step" yet. A tick is a sample-and-print sweep, and the tempo pot sets the pause between sweeps.
+A tick is one step of the pattern. The whole panel is read every tick, but only the step being played is decoded and logged, and the tempo pot sets the pause before the next step. Sixteen ticks go once round the pattern.
 
-**Where the time goes.** In the debug build, logging is blocking and is the largest fixed cost. Each line (`Step N Note = M\r\n`) is 17 to 19 characters, so a sweep sends about 280 to 295 characters. At 115200 baud that is roughly 25 ms per tick (it was about 0.3 s at 9600 baud, more than the largest possible tempo delay of 255 ms). The shift register read and the ADC conversion together take well under a millisecond, and in the release build they are all that is left besides the delay.
+**Where the time goes.** In the debug build, logging is blocking and is the largest fixed cost, but it is now small: one line (`Step N Note = M\r\n`) of 17 to 19 characters per tick, about 1.6 ms at 115200 baud. When every tick logged all 16 steps it was about 25 ms, and at 9600 baud about 0.3 s, more than the largest possible tempo delay of 255 ms. The shift register read and the ADC conversion together take well under a millisecond, and in the release build they are all that is left besides the delay.
 
 ```mermaid
 xychart-beta
     title "Time spent logging in one tick (calculated)"
-    x-axis ["Debug, 9600 baud (before)", "Debug, 115200 baud (now)", "Release (no logging)"]
+    x-axis ["16 lines at 9600 baud", "16 lines at 115200 baud", "1 line at 115200 baud (debug, now)", "Release (no logging)"]
     y-axis "Milliseconds" 0 --> 320
-    bar [300, 25, 0]
+    bar [300, 25, 1.6, 0]
 ```
 
 For scale, the tempo delay that follows the log is 0 to 255 ms, set by the pot.
@@ -208,9 +208,10 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
 
 `seq_tick()` reads the state and inputs, writes the state and outputs, and does nothing else.
 
-- **Note decoding.** The 64 input bits are packed MSB first, 4 bits per step: step 0 is the high nibble of byte 0, step 1 the low nibble, step 2 the high nibble of byte 1, and so on. If the step inputs are flagged invalid, every note is 0 and `b_notes_valid` is false.
+- **Note decoding.** The 64 input bits are packed MSB first, 4 bits per step: step 0 is the high nibble of byte 0, step 1 the low nibble, step 2 the high nibble of byte 1, and so on. Only the step being played is decoded. If the step inputs are flagged invalid, the note is 0 and `b_note_valid` is false.
 - **Delay.** `delay_ms` is the tempo reading divided by 4, giving 0 to 255 ms over the 10-bit range.
-- **State.** The last valid tempo reading. When a tempo read fails, the previous reading is reused, so the loop keeps its pace. Before any valid reading the delay is 0.
+- **Step advance.** Each tick plays one step and then moves to the next, wrapping from step 15 to step 0. The outputs carry the step played (`step`) and its note (`note`). The note comes from that tick's inputs, so a change on the panel is heard the next time its step comes round. The step advances on every tick, including one whose step read failed (that tick's note is 0), so a failed read does not shift the pattern in time. The first tick after `seq_init()` plays step 0.
+- **State.** The last valid tempo reading and the step the next tick will play. When a tempo read fails, the previous reading is reused, so the loop keeps its pace. Before any valid reading the delay is 0.
 
 ```mermaid
 flowchart TD
@@ -219,16 +220,36 @@ flowchart TD
     nullcheck -->|"no"| tempo{"b_tempo_valid?"}
     tempo -->|"yes"| store["last_tempo_raw = tempo_raw"]
     tempo -->|"no"| keep["keep the previous last_tempo_raw"]
-    store --> steps{"b_steps_valid?"}
-    keep --> steps
-    steps -->|"yes"| decode["notes = the 16 nibbles of raw_steps<br/>b_notes_valid = true"]
-    steps -->|"no"| zero["notes = all 0<br/>b_notes_valid = false"]
-    decode --> delay["delay_ms = last_tempo_raw / 4"]
-    zero --> delay
+    store --> play["step = current_step"]
+    keep --> play
+    play --> steps{"b_steps_valid?"}
+    steps -->|"yes"| decode["note = that step's nibble of raw_steps<br/>b_note_valid = true"]
+    steps -->|"no"| zero["note = 0<br/>b_note_valid = false"]
+    decode --> advance
+    zero --> advance
+    advance["current_step = the next step<br/>15 wraps to 0"] --> delay["delay_ms = last_tempo_raw / 4"]
     delay --> out(["return"])
 ```
 
-How the eight raw bytes become sixteen notes:
+Over successive ticks the step goes round the pattern:
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Step0: seq_init
+    Step0 --> Step1: tick
+    Step1 --> Step2: tick
+    Step2 --> Middle: tick
+    Middle --> Step15: tick
+    Step15 --> Step0: tick, wraps
+    Step0: Step 0
+    Step1: Step 1
+    Step2: Step 2
+    Middle: Steps 3 to 14
+    Step15: Step 15
+```
+
+Which nibble of the eight raw bytes belongs to each step:
 
 ```mermaid
 flowchart LR
@@ -358,7 +379,7 @@ flowchart TD
 
 ### Log — `null_logger.c` (release build)
 
-The same three functions (`logger_init()`, `log_step_note()`, `log_error()`) with empty bodies. It touches no registers, so the USART is never set up or enabled, and it keeps no state. The app still calls the log port 16 times per tick; each call returns immediately.
+The same three functions (`logger_init()`, `log_step_note()`, `log_error()`) with empty bodies. It touches no registers, so the USART is never set up or enabled, and it keeps no state. The app still calls the log port once per tick; the call returns immediately.
 
 ### Delay — `delay.c`
 
@@ -370,8 +391,8 @@ The same three functions (`logger_init()`, `log_step_note()`, `log_error()`) wit
 
 Two link the code they test:
 
-- `test_seq`: the core alone. Decoding of every step and nibble, the delay maths, last-valid-tempo reuse, independence of the two valid flags, and null-pointer handling.
-- `test_app`: the real `app.c` and core linked against the fakes. Checks that a tick logs 16 notes in order and then delays once, that a failed read logs the right error in the right place, and that init failure is logged and returned.
+- `test_seq`: the core alone. Decoding of every step and nibble, the step advance (starts at 0, one step per tick, wraps, takes its note from that tick's inputs, and keeps going through failed reads), the delay maths, last-valid-tempo reuse, independence of the two valid flags, and null-pointer handling.
+- `test_app`: the real `app.c` and core linked against the fakes. Checks that a tick logs the step played and its note and then delays once, that successive ticks log successive steps and wrap, that a failed read logs the right error in the right place, and that init failure is logged and returned.
 
 The other eight `#include` the one source file they test, with `tests/fake_atmega328p_regs.h` standing in for the register map (it claims the include guards of both real register headers) and any function that file calls but does not define supplied as a stub by the test:
 
@@ -388,8 +409,8 @@ Which program tests which source file. Solid arrows link the real file; dotted a
 
 ```mermaid
 flowchart LR
-    t_seq["test_seq<br/>12 tests"] --> seq["core/seq.c"]
-    t_app["test_app<br/>9 tests"] --> app["app/app.c"]
+    t_seq["test_seq<br/>17 tests"] --> seq["core/seq.c"]
+    t_app["test_app<br/>10 tests"] --> app["app/app.c"]
     t_app --> seq
     t_app --> hostp["adapters/host/host_ports.c"]
     t_main["test_main<br/>3 tests"] -.-> mainc["app/main.c"]
@@ -404,10 +425,10 @@ flowchart LR
 
 ```mermaid
 pie showData
-    title Host tests by area (63)
+    title Host tests by area (69)
     "Target adapters" : 39
-    "Core" : 12
-    "App loop" : 9
+    "Core" : 17
+    "App loop" : 10
     "main.c" : 3
 ```
 
@@ -445,9 +466,9 @@ flowchart TD
 
 | | Debug | Release |
 |---|---:|---:|
-| Flash | 1328 bytes | 796 bytes |
-| Static RAM | 4 bytes | 2 bytes |
-| Time per tick besides the tempo delay | about 25 ms | under 1 ms |
+| Flash | 1294 bytes | 762 bytes |
+| Static RAM | 5 bytes | 3 bytes |
+| Time per tick besides the tempo delay | about 2 ms | under 1 ms |
 
 A lower baud rate for release was considered and has no use: the release build never switches the USART on, so it has no baud rate.
 
@@ -457,11 +478,11 @@ Sizes of the linked functions and data, from `avr-nm --size-sort` on each `outpu
 
 ```mermaid
 pie showData
-    title Debug build flash, 1328 bytes
+    title Debug build flash, 1294 bytes
     "Serial logger code" : 330
     "Serial logger message text" : 150
-    "App loop and main" : 276
-    "Core" : 158
+    "App loop and main" : 256
+    "Core" : 144
     "Step and tempo input adapters" : 134
     "Vector table and startup" : 132
     "libgcc helpers" : 78
@@ -471,13 +492,13 @@ pie showData
 | Part | Debug | Release |
 |---|---:|---:|
 | Logger (code and message text) | 480 | 10 |
-| App loop and `main` | 276 | 276 |
-| Core | 158 | 158 |
+| App loop and `main` | 256 | 256 |
+| Core | 144 | 144 |
 | Step and tempo input adapters | 134 | 134 |
 | Vector table and startup code | 132 | 132 |
 | libgcc helpers | 78 | 16 |
 | Init and delay adapters | 70 | 70 |
-| **Total** | **1328** | **796** |
+| **Total** | **1294** | **762** |
 
 The serial logger is over a third of the debug image. The release build also sheds two libgcc helpers that only the logger needed: the 16-bit divide used to print decimal numbers, and the routine that copies initialised data (the message text) into RAM at startup. Either build uses under 5 % of the 30720 bytes available below the old bootloader.
 
@@ -512,22 +533,23 @@ flowchart LR
 
 Earlier findings from this analysis that have since been fixed are in the git history (log level filter, flash port default, header dependency tracking, register map, UART setup, robustness gaps, stale comments, Makefile flags, coding-standard cleanup of the target adapters). What remains:
 
-### 1. Blocking logging still puts a floor under the debug build's loop time
+### 1. The tempo range has no lower limit on the delay
 
-A debug-build tick spends about 25 ms in the UART (down from 0.3 s at 9600 baud). The tempo delay runs from 0 to 255 ms, so at the fast end of the pot the log is still most of the period: once the loop advances one step per tempo period, logging 16 lines per step caps the debug build at roughly 40 steps per second. The release build has no such cost. Options if that matters: log only the current step, lower the log level, or move to one of the exact higher rates (250000 baud and up).
+The delay between steps is the pot reading divided by 4: 0 to 255 ms. At the slow end that is about 4 steps per second. At the fast end the delay is 0, so the pattern runs as fast as the loop can go: several hundred steps per second in the debug build and a few thousand in the release build. Nothing useful happens up there. The mapping from pot to delay needs a floor, and probably a wider and more musical range, before an output stage makes the steps audible. That is a change to the core.
 
 ### 2. Unused pins are configured
 
 PB5, PC0 and PC1 are given a direction in `register_init.c` but never read or written. PD0, the USART receive pin, used to be set as an output there as well; that line was removed, because the release build never enables the receiver and would have driven the pin against the board's USB serial chip. PD0 and PD1 are now left as they are at reset (inputs) unless the serial logger takes them over.
 
-### 3. Tempo is sampled before logging
+### 3. The debug build plays slightly slower than the release build
 
-Because inputs are gathered before outputs are applied, the tempo pot is read before the notes are logged: about 25 ms before the delay it controls in the debug build (0.3 s at the old baud rate), and immediately before it in the release build.
+The step period is the tempo delay plus the time the rest of the tick takes: about 2 ms in the debug build (mostly the one log line) and under 1 ms in the release build. At slow tempos the difference is under 1 %; at fast ones it is most of the period. It goes away once the step period comes from a timer instead of a blocking delay.
 
 ## What the output stage will need
 
-- **Step advance in the core first**, with tests: a current-step index in `seq_state_t`, advanced once per tick, and the note for that step in `seq_outputs_t`.
+- **Step advance**: done. `seq_state_t` holds the current step, advanced once per tick; `seq_outputs_t` carries the step played and its note, and the app logs that one step.
+- **A usable tempo range** (open item 1), in the core.
 - **A new output port** (gate, trigger or CV) with a target adapter and a host fake. PB5, PC0 and PC1 are already configured and free.
 - **New register definitions** in `atmega328p_regs.h` (and addresses in the `.ld` file) for whatever drives the output: timer registers for PWM-based CV, or SPI registers for an external DAC.
 - **A timing decision.** `delay_wait_ms` blocks, so the inputs are only re-read between steps. A timer interrupt would be the next step up; under the project rules it would only bump a tick counter, with the core still called from the main loop.
-- **Keeping open item 1 in mind**, since it limits how fast the debug build's loop can run.
+- **A gate length.** A step currently has no duration of its own; a gate or trigger output needs to know how long to stay on within the step period.

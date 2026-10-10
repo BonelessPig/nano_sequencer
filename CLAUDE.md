@@ -81,11 +81,11 @@ MISRA C is a secondary, automated check. BARR-C plus the rules above is the stan
 - Target: ATmega328P on an Arduino Nano (old bootloader), 16 MHz, avr-gcc 12.1.0, GNU Make. Developed on Windows; the Makefile also has macOS and Linux branches that have never been run.
 - No Arduino core, no avr-libc headers or functions, no variadic functions, no `printf`, no `memset`/`memcpy`. The only non-project code is the startup object and a few libgcc helpers added at link time. `-ffreestanding` makes `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` come from the compiler.
 - No interrupts or timers yet. Everything is polled and blocking.
-- What the firmware does today: each tick reads 16 four-bit step notes from eight chained 74HC165s (PD2 load, PD3 clock, PD4 data), reads the tempo pot on ADC channel 6, logs the 16 notes over serial at 115200 baud (debug build only), then waits tempo/4 ms. There is no step advance, gate, CV or transport yet; that output stage is the next feature and goes into `core/` first.
+- What the firmware does today: each tick reads 16 four-bit step notes from eight chained 74HC165s (PD2 load, PD3 clock, PD4 data), reads the tempo pot on ADC channel 6, plays the next step of the pattern (the core advances one step per tick and wraps after 16), logs that step and its note over serial at 115200 baud (debug build only), then waits tempo/4 ms. There is no gate, CV or transport yet; new parts of that output stage go into `core/` first.
 - `port_status_t` values are printed in the serial log, so never renumber them.
 - Two build configurations, `CONFIG=debug` (default) and `CONFIG=release`. The only difference is which logger is linked: `serial_logger.c` or `null_logger.c`, both implementing `log_port.h` and `logger.h`. There are no configuration macros; keep it that way and add per-configuration behaviour as another link-time choice. Outputs go to `build/<config>/`; objects are shared in `build/obj/`.
 - The serial rate is 115200 baud in double-speed mode, which is 2.1 % fast at 16 MHz. 250000, 500000 and 1000000 are exact. The release build never enables the USART.
-- Size at the last check: debug 1328 bytes of flash and 4 bytes of static RAM; release 796 bytes and 2 bytes. `make` prints the current figures.
+- Size at the last check: debug 1294 bytes of flash and 5 bytes of static RAM; release 762 bytes and 3 bytes. `make` prints the current figures.
 
 ## Commands
 
@@ -113,8 +113,8 @@ MISRA C is a secondary, automated check. BARR-C plus the rules above is the stan
 
 ## Open items
 
-- Logging costs the debug build about 25 ms per tick at 115200 baud (it was 0.3 s at 9600). The tempo delay goes down to 0 ms, so the log still caps the debug build at about 40 ticks per second; the release build has no such cost. Further options: log only the current step, lower the log level, or use an exact higher rate.
-- The tempo pot is sampled before the notes are logged, so about 25 ms before the delay it controls in the debug build.
+- The tempo delay is 0 to 255 ms with no floor, so at the fast end of the pot the pattern runs as fast as the loop can go (hundreds of steps per second in debug, thousands in release). The pot-to-delay mapping in the core needs a floor and a more musical range before an output stage is useful.
+- A debug tick takes about 2 ms besides the tempo delay (one log line, about 1.6 ms) and a release tick under 1 ms, so the same pot position plays slightly slower in debug. A timer-based step period would remove the difference.
 - PB5, PC0 and PC1 are configured but unused, and are free for the output stage. PD0 and PD1 (the UART pins) are not configured by `register_init.c`; leave them alone so the release build does not drive them.
 - No crash log yet. The release build has no logging at all. A persistent error log in EEPROM is wanted and there is ample space, but the owner chose to wait until there is a watchdog and an output stage, so it can record real resets.
 - The MISRA result is zero findings from cppcheck, which implements only part of MISRA C. The `io_low` attribute and the delay builtin are compiler extensions it does not flag.

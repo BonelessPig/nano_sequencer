@@ -24,7 +24,7 @@ typedef enum
 } log_error_id_t;
 
 /**
- * @brief  Reports one step's note value (debug-level output).
+ * @brief  Reports the step being played and its note value (debug-level output).
  * @param  step  Step index, 0 to 15.
  * @param  note  Note value, 0 to 15.
  * @note   Not ISR-safe. Blocks until the message has been sent (under 2 ms
