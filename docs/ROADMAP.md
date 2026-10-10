@@ -40,6 +40,8 @@ Taken while building phase 1, as the simplest thing that met the plan. Each is o
 
 Taken while building phase 2, on the same basis. Each is contained in one core module.
 
+**To reconfirm.** Decisions 15 to 24 were accepted on 2026-10-10 as provisional, to keep the work moving, and have not been reviewed one by one. Go through them again before any of these controls gets hardware (phase 6 for reset, phase 7 for the rest), since that is when they become audible and when changing them stops being free. Remove this note once each is confirmed or changed.
+
 | # | Decision | Outcome |
 |---|---|---|
 | 15 | First step above last step | **The range runs round through step 15 to step 0** (first 14, last 1 is four steps), so no pair of settings is invalid. |
