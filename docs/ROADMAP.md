@@ -298,7 +298,7 @@ One lesson came with it. The first shift register model latched on the falling e
 
 ### The harness (`tools/sim/`, `make sim`)
 
-In place as of 2026-10-10: `lib/machine.js` (the chip), `lib/pin_recorder.js`, `lib/edge_flag.js`, `parts/hc165.js`, `parts/hc595.js`, `parts/mcp4822.js`, `parts/clock_source.js`, `parts/clock_patterns.js`, `parts/switch.js`, `boards/nano_sequencer.js` (wiring, panel, pot, the DAC's frames, gate and clock recorders, the two input jacks, the sync switch and run button, the mode switches, serial capture, the EEPROM's contents) and a hundred and fourteen scenarios across the two images. ARCHITECTURE.md describes it.
+In place as of 2026-10-10: `lib/machine.js` (the chip), `lib/pin_recorder.js`, `lib/edge_flag.js`, `parts/hc165.js`, `parts/hc595.js`, `parts/mcp4822.js`, `parts/clock_source.js`, `parts/clock_patterns.js`, `parts/switch.js`, `boards/nano_sequencer.js` (wiring, panel, pot, the DAC's frames, gate and clock recorders, the two input jacks, the sync switch and run button, the mode switches, serial capture, the EEPROM's contents) and a hundred and seventeen scenarios across the two images. ARCHITECTURE.md describes it.
 
 Still to add, each when a phase needs it:
 

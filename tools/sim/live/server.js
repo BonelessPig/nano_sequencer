@@ -25,6 +25,8 @@
  *                  { clockPattern: name }       How even its edges are:
  *                                               one of the board's
  *                                               CLOCK_PATTERNS.
+ *                  { tick: 'stop' }             Stops the firmware's tick,
+ *                                               for the watchdog to catch.
  *                  { power: 'debug' | 'release', keepEeprom: true | false },
  *                  which is a power cycle.
  *
@@ -40,6 +42,12 @@
  *
  * The sixteen step lights are not worked out: `leds` in the state and the
  * `led` events are what the two 74HC595s last latched, bit n for step n.
+ *
+ * Nor is the crash log: `crashLog` in the state and the `crash` events are
+ * what the board reads from the EEPROM, looked at after every slice. A
+ * watchdog reset is taken from the chip, not from the log, so it is seen on
+ * the release image too: it is a `watchdog` event, and the transport, the
+ * step and the mode are then worked out afresh, as at power-on.
  */
 const fs = require('node:fs');
 const http = require('node:http');
@@ -126,6 +134,9 @@ const place = { order: 0, x: 0, y: 0, xSteps: 0, ySteps: 0, isLoadOn: false };
 const seen = { mode: 0, notes: START_NOTES };
 let runUpDueMs = null;     // Chip time at which the run button is let go
 let runFreeMs = 0;         // Chip time from which it may be pressed again
+let isTickStopped = false; // The tick was stopped here and no reset has come
+let watchdogResets = 0;    // How many there have been since power-up
+let crashLog = null;       // The crash log as the board last read it
 let timer = null;
 let wallStartMs = 0;  // The wall time at which the chip's time was zero
 let speed = { wallMs: 0, chipMs: 0, percent: 100 };
@@ -173,8 +184,33 @@ function powerUp(config, eeprom) {
     seen.notes = panel.notes;
     runUpDueMs = null;
     runFreeMs = 0;
+    isTickStopped = false;
+    watchdogResets = 0;
+    crashLog = board.crashLog();
     wallStartMs = performance.now();
     speed = { wallMs: wallStartMs, chipMs: 0, percent: 100 };
+}
+
+/**
+ * Takes a watchdog reset. The firmware starts again as it does at power-on:
+ * it chooses its mode from the panel as it stands, comes up running and
+ * plays the pattern from its first step. The pins are left as the events
+ * give them, and the run button where it is: one held down through a
+ * start-up is not a press.
+ */
+function startAgain() {
+    isCalibrating = board.readsCalibrationEntry();
+    outputs.step = -1;
+    outputs.stageStep = 0;
+    outputs.stageSteps = 0;
+    outputs.transport = isCalibrating ? null : runningTransport();
+    outputs.transportFrom = 'controls';
+    isFirstStepDue = true;
+    stepEngine = ENGINE_PLAIN;
+    seen.mode = panel.mode;
+    seen.notes = panel.notes;
+    isTickStopped = false;
+    watchdogResets++;
 }
 
 /** The engine the mode switches choose, as the firmware takes them. */
@@ -375,6 +411,12 @@ function record(item, events) {
             }
             break;
         }
+        case 'watchdog':
+            // The controls only change between slices, so the firmware
+            // started again with the panel as it stands now
+            startAgain();
+            events.push({ t, k: 'watchdog' });
+            break;
         default:
             // An edge on the clock input or the reset input
             events.push({ t, k: item.kind });
@@ -399,6 +441,7 @@ function drain() {
     board.panelReads.forEach((read) => add(read.cycle, 'read'));
     board.clockIn.rises.forEach((cycle) => add(cycle, 'clockin'));
     board.resetIn.rises.forEach((cycle) => add(cycle, 'resetin'));
+    board.resets.forEach((cycle) => add(cycle, 'watchdog'));
     for (const line of [...serial.lines, ...serial.notices]) {
         add(line.startCycle, 'log', line.text);
     }
@@ -409,7 +452,7 @@ function drain() {
     for (const list of [board.gate.edges, board.clockOut.edges, board.cvWrites,
         board.cvIgnoredFrames, board.panelReads, board.spiSent,
         board.ledLatches, board.clockIn.rises, board.resetIn.rises,
-        serial.lines, serial.notices]) {
+        board.resets, serial.lines, serial.notices]) {
         list.length = 0;
     }
     return events;
@@ -430,6 +473,7 @@ function stateMessage(isFresh) {
     return {
         ...panel, ...outputs, runDown: board.runButton.isClosed(),
         calibrating: isCalibrating, ms: chipMs(), fresh: isFresh,
+        tickStopped: isTickStopped, watchdogResets, crashLog,
     };
 }
 
@@ -453,20 +497,46 @@ function releaseRunWhenDue() {
     }
 }
 
+/**
+ * Adds a `crash` event if the crash log in the EEPROM is not as it was when
+ * last looked at. A record is written a byte at a time, 3.6 ms each, so one
+ * can be seen arriving over a slice or two.
+ */
+function addCrashLogChange(events) {
+    const log = board.crashLog();
+
+    if (JSON.stringify(log) !== JSON.stringify(crashLog)) {
+        crashLog = log;
+        events.push({ t: chipMs(), k: 'crash', v: log });
+    }
+}
+
 /** Runs the chip on to where a real one would be by now. */
 function runSlice() {
     const nowMs = performance.now();
     let dueMs = (nowMs - wallStartMs) - chipMs();
+    let events = null;
 
     if (dueMs > MAX_SLICE_CHIP_MS) {
         // The PC is too slow, or was busy: let the lag go, not chase it
         wallStartMs += dueMs - MAX_SLICE_CHIP_MS;
         dueMs = MAX_SLICE_CHIP_MS;
     }
+    if (isTickStopped) {
+        // Asked again every slice until the reset comes: the last slice may
+        // have ended inside the tick interrupt, where asking does nothing
+        board.stopTick();
+    }
     if (dueMs > 0) {
         board.runForMs(dueMs);
     }
-    broadcast('run', { ms: chipMs(), speed: measureSpeed(nowMs), events: drain() });
+    events = drain();
+    addCrashLogChange(events);
+    broadcast('run', { ms: chipMs(), speed: measureSpeed(nowMs), events });
+    if (events.some((event) => event.k === 'watchdog')) {
+        // The mode, the transport and the count of resets have changed
+        broadcast('state', stateMessage(false));
+    }
     releaseRunWhenDue();
 }
 
@@ -593,6 +663,9 @@ function applyCommand(command) {
         setClock(command.clockMs, panel.clockPattern);
     } else if (CLOCK_PATTERNS.includes(command.clockPattern)) {
         setClock(panel.clockMs, command.clockPattern);
+    } else if (command.tick === 'stop') {
+        board.stopTick();
+        isTickStopped = true;
     } else if (CONFIGS.includes(command.power)) {
         const isErased = command.keepEeprom === false;
 

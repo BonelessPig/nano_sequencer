@@ -18,7 +18,7 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { createBoard } = require('../boards/nano_sequencer');
 const {
-    crashRecord, CRASH_LOG_ADDRESS, CRASH_RECORD_BYTES, CRASH_LOG_BYTES,
+    crashRecord, NO_CRASH_RECORD, CRASH_LOG_ADDRESS, CRASH_RECORD_BYTES, CRASH_LOG_BYTES,
 } = require('../boards/crash_record');
 
 const CONFIGS = ['debug', 'release'];
@@ -27,9 +27,7 @@ const PANEL = [3, 6, 9, 12, 15, 2, 5, 8, 11, 14, 1, 4, 7, 10, 13, 2];
 const READING_150_BPM = 480; // Exactly 100 ms a step
 const STEP_MS = 100;
 const RUN_LIMIT_MS = 5000;
-const WDTCSR = 0x60;         // Data addresses of the registers used
-const SREG = 0x5F;
-const INTERRUPT_ENABLE = 0x80;
+const WDTCSR = 0x60;         // Data address of the watchdog's control register
 const WATCHDOG_RESET_AT_250_MS = 0x0C; // Reset enable, prescaler for 256 ms
 const WATCHDOG_MS = 256;
 const MILLIVOLTS_PER_OCTAVE = 1000;
@@ -85,7 +83,7 @@ function logOf(...records) {
 // watchdog has restarted the firmware and it has had time to write a record
 function crashAfterGates(board, gates) {
     board.machine.runUntil(() => board.gate.rises().length >= gates, RUN_LIMIT_MS);
-    board.machine.cpu.data[SREG] &= ~INTERRUPT_ENABLE;
+    board.stopTick();
     board.machine.runUntil(() => board.gate.rises().length >= gates + 1, RUN_LIMIT_MS);
     board.runForMs(RECORD_WRITE_MS);
 }
@@ -129,6 +127,25 @@ for (const config of CONFIGS) {
         assert.deepEqual(stepsPlayed(next).slice(0, 5), [0, 1, 2, 3, 4]);
     });
 
+    test(`${config}: the board counts the resets and reads the crash log back`, () => {
+        const board = playingBoard(config);
+
+        board.runForMs(WATCHDOG_MS);
+        assert.deepEqual(board.resets, []);
+        assert.deepEqual(board.crashLog(), { newest: NO_CRASH_RECORD, records: [] });
+
+        crashAfterGates(board, 4);
+        crashAfterGates(board, 7);
+
+        assert.equal(board.resets.length, 2);
+        assert.deepEqual(board.crashLog(), {
+            newest: 0,
+            records: [{
+                slot: 0, number: 1, cause: WATCHDOG_RESET, place: PLACE_BETWEEN_TICKS, count: 2,
+            }],
+        });
+    });
+
     test(`${config}: the watchdog is set to reset after 250 ms and is kept quiet`, () => {
         const board = playingBoard(config);
 
@@ -146,7 +163,7 @@ for (const config of CONFIGS) {
 
         // Steps 0, 1 and 2 begin; then no more interrupts, so no more ticks
         board.machine.runUntil(() => board.gate.rises().length >= 3, RUN_LIMIT_MS);
-        board.machine.cpu.data[SREG] &= ~INTERRUPT_ENABLE;
+        board.stopTick();
         const stoppedMs = nowMs();
 
         board.machine.runUntil(() => board.gate.rises().length >= 5, RUN_LIMIT_MS);
@@ -169,10 +186,42 @@ test('debug: after a watchdog reset the start-up line gives it as the cause', ()
     assert.equal(board.serial.notices[0].text, 'Reset = 0 Cal = 0');
 
     board.runUntilLines(2, RUN_LIMIT_MS);
-    board.machine.cpu.data[SREG] &= ~INTERRUPT_ENABLE;
+    board.stopTick();
     board.runUntilNotices(2, RUN_LIMIT_MS);
 
     assert.equal(board.serial.notices[1].text, 'Reset = 8 Cal = 0');
+});
+
+test('debug: the record reported is the one the board reads as the newest', () => {
+    // A log that has gone round, its numbers going on from slot 1 to slot
+    // 2 only by a gap, with one record spoiled; and one whose numbers go
+    // round from 255 to 0. Neither start-up is a crash, so both are left
+    const record = (number, slot) => crashRecord(number, WATCHDOG_RESET, (slot % 5) + 1, slot + 1);
+    const gone = logOf(...[9, 10, 3, 4, 5, 6, 7, 8].map(record));
+    const wrapped = logOf(...[254, 255, 0].map(record));
+    const below = new Array(CRASH_LOG_ADDRESS).fill(ERASED);
+
+    gone[(4 * CRASH_RECORD_BYTES) + 3] ^= 1; // Slot 4's count, not as checksummed
+
+    const cases = [[gone, [0, 1, 2, 3, 5, 6, 7], 1], [wrapped, [0, 1, 2], 2]];
+
+    for (const [log, slots, newest] of cases) {
+        const board = playingBoard('debug', { eeprom: [...below, ...log] });
+        const read = board.crashLog();
+        const found = read.records.find((each) => each.slot === read.newest);
+
+        assert.deepEqual(read.records.map((each) => each.slot), slots);
+        assert.equal(read.newest, newest);
+        assert.deepEqual(found, {
+            slot: newest, number: log[newest * CRASH_RECORD_BYTES], cause: WATCHDOG_RESET,
+            place: (newest % 5) + 1, count: newest + 1,
+        });
+
+        board.runUntilNotices(2, RUN_LIMIT_MS);
+        assert.equal(board.serial.notices[1].text,
+            `Crash ${found.number} Place = ${found.place} Count = ${found.count}`);
+        assert.deepEqual(crashLog(board), log);
+    }
 });
 
 test('debug: a crash is logged at the start-up after it and at every one after', () => {
@@ -182,7 +231,7 @@ test('debug: a crash is logged at the start-up after it and at every one after',
     board.runUntilLines(2, RUN_LIMIT_MS);
     assert.deepEqual(board.serial.notices.map((notice) => notice.text), ['Reset = 0 Cal = 0']);
 
-    board.machine.cpu.data[SREG] &= ~INTERRUPT_ENABLE;
+    board.stopTick();
     board.runUntilNotices(3, RUN_LIMIT_MS);
     assert.equal(board.serial.notices[1].text, 'Reset = 8 Cal = 0');
     assert.equal(board.serial.notices[2].text, 'Crash 1 Place = 5 Count = 1');

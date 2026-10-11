@@ -10,7 +10,9 @@
  * output on PD4, the clock output on PD5, and USART0 going to a PC. Scenarios set the panel and
  * the pot, run the firmware, and read back what it did. Nothing is wired to
  * Timer/Counter2; the firmware uses it for its 1 kHz tick. The chip's own
- * EEPROM holds the pitch calibration record, from address 0.
+ * EEPROM holds the pitch calibration record, from address 0, and the crash
+ * log, from address 16. The chip's watchdog is running; stopTick() is how a
+ * scenario makes it bite.
  *
  * Four inputs, each with the chip's pull-up holding its pin high. The clock
  * input jack reaches PB0 and the reset input jack PD2 through a transistor
@@ -27,6 +29,7 @@ const { attachHc165Chain } = require('../parts/hc165');
 const { attachHc595Chain } = require('../parts/hc595');
 const { attachMcp4822 } = require('../parts/mcp4822');
 const { attachSwitch } = require('../parts/switch');
+const { readCrashLog, CRASH_LOG_ADDRESS, CRASH_LOG_BYTES } = require('./crash_record');
 
 const CLOCK_HZ = 16000000;
 const STEP_COUNT = 16;
@@ -43,6 +46,8 @@ const CLOCK_OUT_PIN = 5;      // On port D
 const SYNC_SWITCH_PIN = 3;    // On port D
 const RUN_BUTTON_PIN = 7;     // On port D
 const MCUSR = 0x54;           // Reset flags register, data address
+const SREG = 0x5F;            // Status register, data address
+const INTERRUPT_ENABLE = 0x80; // Its global interrupt enable bit
 const STEP_LINE_PREFIX = 'Step ';
 const BUILD_DIR = path.resolve(__dirname, '..', '..', '..', 'build');
 
@@ -176,6 +181,33 @@ function createBoard(config, options = {}) {
         resetIn,
         syncSwitch,
         runButton,
+        // The cycle of each reset since power-on, which only the watchdog
+        // causes
+        resets: machine.resets,
+
+        /**
+         * Stops the firmware's tick from outside, by switching the chip's
+         * interrupts off: the loop goes on round with nothing to do and the
+         * watchdog, no longer kicked, resets the chip about 256 ms later.
+         * The firmware never does this to itself. Asked while the chip is
+         * in its tick interrupt it does nothing, since the chip switches
+         * interrupts back on as it returns; a scenario asks at a pin edge,
+         * which is made in the loop.
+         */
+        stopTick() {
+            machine.cpu.data[SREG] &= ~INTERRUPT_ENABLE;
+        },
+
+        /**
+         * The crash log as the EEPROM holds it just now, read as
+         * readCrashLog() in crash_record.js gives it: the slots that hold
+         * a record, and which of them is the newest.
+         */
+        crashLog() {
+            const end = CRASH_LOG_ADDRESS + CRASH_LOG_BYTES;
+
+            return readCrashLog(machine.eepromMemory.slice(CRASH_LOG_ADDRESS, end));
+        },
 
         /**
          * Starts a clock on the clock input jack: the first rising edge

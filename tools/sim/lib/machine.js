@@ -12,6 +12,9 @@ const FLASH_BYTES = 0x8000; // 32 KB of program memory
 const EEPROM_BYTES = 1024;
 const HEX_DATA_RECORD = 0;  // Intel HEX record type that carries data
 const MS_PER_SECOND = 1000;
+// Two resets no further apart than this are one: no program gets anywhere
+// in so few cycles, and no watchdog times out in them
+const SAME_RESET_CYCLES = 16;
 
 // The two edge flags the firmware polls, by data address and bit
 const TIFR1 = 0x36;      // Timer/Counter1 flags; bit 5 is the input capture flag
@@ -83,6 +86,9 @@ function createAtmega328p(hexPath, clockHz) {
         // would not do
         watchdog: new avr8js.AVRWatchdog(
             cpu, avr8js.watchdogConfig, new avr8js.AVRClock(cpu, clockHz)),
+        // The cycle of each reset since the chip was created. Whoever reads
+        // the list may empty it
+        resets: [],
 
         /** Converts a cycle count to milliseconds of chip time. */
         cyclesToMs(cycles) {
@@ -116,9 +122,17 @@ function createAtmega328p(hexPath, clockHz) {
     // them back, and one of them matters to the firmware: the USART's
     // "ready for a byte" flag, without which nothing is ever sent again
     const restartProgram = cpu.reset.bind(cpu);
+    let lastReset = null; // The cycle of the last one, or null
     cpu.reset = () => {
         restartProgram();
         machine.usart.reset();
+        // The emulator's watchdog asks again an instruction later when its
+        // control register has been written twice since the last reset,
+        // as the timed sequence that sets it does. That is one reset
+        if ((lastReset === null) || ((cpu.cycles - lastReset) > SAME_RESET_CYCLES)) {
+            machine.resets.push(cpu.cycles);
+        }
+        lastReset = cpu.cycles;
     };
 
     // Drive these two pins through their setPin(), not the port's, so that
