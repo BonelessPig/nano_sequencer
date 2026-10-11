@@ -27,11 +27,12 @@ port_status_t register_init(void)
     PORTB |= BIT_1;
     DDRB  |= BIT_1;
 
-    // Gate (PD4) and clock (PD5) outputs: low first, so that neither is
-    // driven high on its way to being an output. gate_output.c and
-    // clock_output.c set their levels from then on
-    PORTD &= (uint8_t)~(BIT_4 | BIT_5);
-    DDRD  |= (BIT_4 | BIT_5);
+    // Gate (PD4) and clock (PD5) outputs and the level light (PD6): low
+    // first, so that none is driven high on its way to being an output.
+    // gate_output.c and clock_output.c set the first two's levels from then
+    // on; the light's stays low, and level_output.c puts a timer on the pin
+    PORTD &= (uint8_t)~(BIT_4 | BIT_5 | BIT_6);
+    DDRD  |= (BIT_4 | BIT_5 | BIT_6);
 
     // Inputs with their pull-ups on. The clock input (PB0) and the reset
     // input (PD2) are each pulled low by a transistor while their jack is

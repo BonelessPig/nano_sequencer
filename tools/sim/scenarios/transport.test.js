@@ -35,6 +35,7 @@ const EIMSK = 0x3D;
 const DDRB = 0x24;
 const PORTB = 0x25;
 const DDRD = 0x2A;
+const TCCR0B = 0x45;
 const PORTD = 0x2B;
 const CLOCK_IN_PIN = 0x01;       // PB0
 const PORT_D_INPUTS = 0x8C;      // PD2 (reset), PD3 (unused), PD7 (run)
@@ -376,6 +377,40 @@ for (const config of CONFIGS) {
         board.setTempoReading(1023);
         board.runUntilClockOutPulses(18, RUN_LIMIT_MS);
         assertNear(lastPeriodMs(), 15000 / 285, 1.1, 'met and turned up');
+    });
+
+    test(`${config}: the level light is as bright as the amount the selector is on`, () => {
+        const board = boardWith(config, READING_150_BPM, false);
+        const dutyOverMs = (ms) => {
+            board.takeLevel();
+            board.runForMs(ms);
+            return board.takeLevel();
+        };
+        const near = (duty, expected, what) => assert.ok(
+            Math.abs(duty - expected) < 0.01, `${what}: ${duty}, expected ${expected}`);
+
+        // The tempo's amount is the pot's reading, 480: a level of 120,
+        // which is high for 121 counts in 256, 977 times a second
+        board.runForMs(20);
+        near(dutyOverMs(100), 121 / 256, 'on the tempo');
+        assert.equal(board.machine.cpu.data[TCCR0B], 0x03);
+
+        // An amount of 0 is a pin that never rises
+        board.setSelector(1);
+        board.runForMs(20);
+        assert.equal(dutyOverMs(100), 0);
+
+        // Met at the bottom and turned right up: on all the time
+        board.setTempoReading(0);
+        board.runForMs(20);
+        board.setTempoReading(1023);
+        board.runForMs(20);
+        near(dutyOverMs(100), 1, 'at the top');
+
+        // Half way
+        board.setTempoReading(511);
+        board.runForMs(20);
+        near(dutyOverMs(100), 128 / 256, 'half way');
     });
 
     test(`${config}: a stop and a start go back to the internal clock`, () => {

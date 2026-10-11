@@ -2,6 +2,7 @@
 #define ATMEGA328P_REGS_H
 #define ATMEGA328P_USART_REGS_H  // This file stands in for the USART header too
 #define ATMEGA328P_TIMER2_REGS_H // And for the Timer/Counter2 header
+#define ATMEGA328P_TIMER0_REGS_H // And for the Timer/Counter0 header
 #define ATMEGA328P_SPI_REGS_H    // And for the SPI header
 #define ATMEGA328P_EEPROM_REGS_H // And for the EEPROM header
 #define ATMEGA328P_TIMER1_REGS_H // And for the Timer/Counter1 header
@@ -68,6 +69,12 @@
 #define CS22   2 // Clock Select bit 2 in TCCR2B
 #define OCIE2A 1 // Output Compare Match A Interrupt Enable bit in TIMSK2
 
+#define COM0A1 7 // Compare Output Mode A bit 1 in TCCR0A
+#define WGM01  1 // Waveform Generation Mode bit 1 in TCCR0A
+#define WGM00  0 // Waveform Generation Mode bit 0 in TCCR0A
+#define CS01   1 // Clock Select bit 1 in TCCR0B
+#define CS00   0 // Clock Select bit 0 in TCCR0B
+
 #define SPE  6 // SPI Enable bit in SPCR
 #define MSTR 4 // Master/Slave Select bit in SPCR
 #define SPR0 0 // SPI Clock Rate Select bit 0 in SPCR
@@ -113,6 +120,11 @@ static uint8_t g_fake_tccr2b = 0U;
 static uint8_t g_fake_tcnt2  = 0U;
 static uint8_t g_fake_ocr2a  = 0U;
 static uint8_t g_fake_timsk2 = 0U;
+
+// ---- Timer/Counter0 ----
+static uint8_t g_fake_tccr0a = 0U;
+static uint8_t g_fake_tccr0b = 0U;
+static uint8_t g_fake_ocr0a  = 0U;
 
 // What the timer registers held each time SREG was accessed, so a test can
 // see whether the timer was fully set up before interrupts were enabled
@@ -745,6 +757,9 @@ static inline void fake_regs_reset(void)
     g_fake_tcnt2  = 0U;
     g_fake_ocr2a  = 0U;
     g_fake_timsk2 = 0U;
+    g_fake_tccr0a = 0U;
+    g_fake_tccr0b = 0U;
+    g_fake_ocr0a  = 0U;
     g_fake_tccr2b_at_sreg = 0U;
     g_fake_timsk2_at_sreg = 0U;
     g_fake_ocr2a_at_sreg  = 0U;
@@ -796,5 +811,8 @@ static inline void fake_regs_reset(void)
 #define TCNT2  g_fake_tcnt2
 #define OCR2A  g_fake_ocr2a
 #define TIMSK2 g_fake_timsk2
+#define TCCR0A g_fake_tccr0a
+#define TCCR0B g_fake_tccr0b
+#define OCR0A  g_fake_ocr0a
 
 #endif /* ATMEGA328P_REGS_H */

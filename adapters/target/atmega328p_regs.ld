@@ -65,6 +65,11 @@ TIMSK1 = 0x6F;
 TCCR1A = 0x80;
 TCCR1B = 0x81;
 
+/* ---- Timer/Counter0 ---- */
+TCCR0A = 0x44;
+TCCR0B = 0x45;
+OCR0A  = 0x47;
+
 /* ---- Timer/Counter2 ---- */
 TIMSK2 = 0x70;
 TCCR2A = 0xB0;

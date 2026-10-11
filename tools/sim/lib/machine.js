@@ -78,6 +78,7 @@ function createAtmega328p(hexPath, clockHz) {
         portD: new avr8js.AVRIOPort(cpu, avr8js.portDConfig),
         adc: new avr8js.AVRADC(cpu, avr8js.adcConfig),
         usart: new avr8js.AVRUSART(cpu, avr8js.usart0Config, clockHz),
+        timer0: new avr8js.AVRTimer(cpu, avr8js.timer0Config),
         timer1: new avr8js.AVRTimer(cpu, avr8js.timer1Config),
         timer2: new avr8js.AVRTimer(cpu, avr8js.timer2Config),
         spi: new avr8js.AVRSPI(cpu, avr8js.spiConfig, clockHz),

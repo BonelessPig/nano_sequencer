@@ -12,6 +12,9 @@
 // The most an amount can be: the top of the pot's range
 #define AMOUNT_MAX (1023U)
 
+// An amount is 10 bits and a level 8
+#define AMOUNT_PER_LEVEL (4U)
+
 
 
 void bank_init(bank_state_t *p_state, uint8_t home_slot)
@@ -78,3 +81,17 @@ uint16_t bank_amount(const bank_state_t *p_state, uint8_t slot)
     return amount;
 }
 
+
+
+uint8_t bank_level(const bank_state_t *p_state)
+{
+    uint8_t level = 0U;
+
+    if (NULL != p_state)
+    {
+        // At most 1023 / 4, so it fits in a byte
+        level = (uint8_t)(p_state->amount[p_state->selected] / AMOUNT_PER_LEVEL);
+    }
+
+    return level;
+}

@@ -24,6 +24,7 @@
  * it.
  */
 const path = require('node:path');
+const { attachDutyMeter } = require('../lib/duty_meter');
 const { createAtmega328p } = require('../lib/machine');
 const { attachPinRecorder } = require('../lib/pin_recorder');
 const { CLOCK_PATTERNS, makeClockPattern } = require('../parts/clock_patterns');
@@ -49,6 +50,7 @@ const SHIFT_REG_LOAD_PIN = 1; // On port B
 const DAC_SELECT_PIN = 2;     // On port B
 const GATE_PIN = 4;           // On port D
 const CLOCK_OUT_PIN = 5;      // On port D
+const LEVEL_PIN = 6;          // On port D: the level light, on Timer/Counter0
 const RUN_BUTTON_PIN = 7;     // On port D
 const MCUSR = 0x54;           // Reset flags register, data address
 const SREG = 0x5F;            // Status register, data address
@@ -133,6 +135,8 @@ function createBoard(config, options = {}) {
     const leds = attachHc595Chain(machine.cpu, machine.portB, SHIFT_REG_LOAD_PIN, LED_CHIPS);
     const gate = attachPinRecorder(machine.cpu, machine.portD, GATE_PIN);
     const clockOut = attachPinRecorder(machine.cpu, machine.portD, CLOCK_OUT_PIN);
+    // Switched a thousand times a second, so measured and not recorded
+    const levelLight = attachDutyMeter(machine.cpu, machine.portD, LEVEL_PIN);
 
     // The two jacks, each through its inverting input stage, and whatever
     // is plugged into them: a clock source, and a source of reset pulses
@@ -426,6 +430,14 @@ function createBoard(config, options = {}) {
         /** A copy of the EEPROM's bytes from address 0. */
         eepromBytes(count) {
             return Array.from(machine.eepromMemory.slice(0, count));
+        },
+
+        /**
+         * How bright the level light has been since this was last asked:
+         * the part of the time its pin was high, 0 to 1.
+         */
+        takeLevel() {
+            return levelLight.take();
         },
 
         /** Runs for this many milliseconds of chip time. */

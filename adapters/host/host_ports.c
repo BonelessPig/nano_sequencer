@@ -16,6 +16,7 @@
 #include "cv_output_port.h"
 #include "gate_output_port.h"
 #include "led_output_port.h"
+#include "level_output_port.h"
 #include "midi_output_port.h"
 #include "nv_port.h"
 #include "platform_port.h"
@@ -46,6 +47,8 @@ static uint16_t      g_watchdog_kick_count = 0U;
 static uint16_t      g_log_poll_count = 0U;
 
 static bool          g_b_gate_high = false;
+static uint8_t       g_host_level = 0U;
+static uint16_t      g_host_level_write_count = 0U;
 static uint16_t      g_host_leds = 0U;
 static uint16_t      g_led_write_count = 0U;
 static uint16_t      g_gate_write_count = 0U;
@@ -149,6 +152,8 @@ void host_reset(void)
     g_event_count          = 0U;
 
     g_b_gate_high              = false;
+    g_host_level               = 0U;
+    g_host_level_write_count   = 0U;
     g_host_leds                = 0U;
     g_led_write_count          = 0U;
     g_gate_write_count         = 0U;
@@ -504,6 +509,20 @@ bool host_gate_level(void)
 
 
 
+uint8_t host_level(void)
+{
+    return g_host_level;
+}
+
+
+
+uint16_t host_level_write_count(void)
+{
+    return g_host_level_write_count;
+}
+
+
+
 uint16_t host_leds(void)
 {
     return g_host_leds;
@@ -683,6 +702,14 @@ void led_output_write(uint16_t leds)
 {
     g_led_write_count++;
     g_host_leds = leds;
+}
+
+
+
+void level_output_write(uint8_t level)
+{
+    g_host_level = level;
+    g_host_level_write_count++;
 }
 
 

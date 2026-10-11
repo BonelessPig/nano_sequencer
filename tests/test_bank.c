@@ -232,6 +232,30 @@ static void test_out_of_range_controls_wrap_or_stop_at_the_top(void)
 
 
 
+static void test_the_level_is_a_quarter_of_the_selected_amount(void)
+{
+    bank_init(&g_state, HOME_SLOT);
+    TEST_ASSERT_EQUAL(0, bank_level(&g_state));
+
+    tick(HOME_SLOT, 1023U);
+    TEST_ASSERT_EQUAL(255, bank_level(&g_state));
+    tick(HOME_SLOT, 483U);
+    TEST_ASSERT_EQUAL(120, bank_level(&g_state));
+    tick(HOME_SLOT, 3U);
+    TEST_ASSERT_EQUAL(0, bank_level(&g_state));
+
+    // Another slot's amount is another level, at once: no waiting for the pot
+    tick(1U, 3U);
+    tick(1U, 400U);
+    TEST_ASSERT_EQUAL(100, bank_level(&g_state));
+    tick(HOME_SLOT, 400U);
+    TEST_ASSERT_EQUAL(0, bank_level(&g_state));
+
+    TEST_ASSERT_EQUAL(0, bank_level(NULL));
+}
+
+
+
 static void test_null_pointers_are_ignored(void)
 {
     bank_state_t  untouched;
@@ -264,6 +288,7 @@ int main(void)
     RUN_TEST(test_coming_back_to_a_slot_the_pot_has_left_waits_too);
     RUN_TEST(test_the_same_inputs_again_change_nothing);
     RUN_TEST(test_out_of_range_controls_wrap_or_stop_at_the_top);
+    RUN_TEST(test_the_level_is_a_quarter_of_the_selected_amount);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();
 }

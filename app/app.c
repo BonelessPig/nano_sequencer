@@ -27,6 +27,7 @@
 #include "cv_output_port.h"
 #include "gate_output_port.h"
 #include "led_output_port.h"
+#include "level_output_port.h"
 #include "log_port.h"
 #include "midi_output_port.h"
 #include "nv_port.h"
@@ -85,6 +86,7 @@ static uint8_t          g_midi_room = 0U; // Bytes the MIDI output could take, a
 static bank_state_t g_bank;                // The amounts the pot sets, one a slot
 static uint16_t     g_pot_raw     = 0U;    // The pot's position, as last read
 static bool         g_b_pot_valid = false; // false if it could not be read
+static uint8_t      g_level       = 0U;    // The level light, as the last tick left it
 
 static port_status_t g_step_read_status  = STATUS_OK; // Status of the last step input read
 static port_status_t g_tempo_read_status = STATUS_OK; // Status of the last pot read
@@ -144,7 +146,8 @@ static void save_calibration(void)
  *         and the clock output are set first, on every tick, so that their
  *         edges are not held up by the log; the pitch goes ahead of the gate
  *         so that it is in place when the note starts. The step lights are
- *         given next; they show at the next input scan. The MIDI bytes are
+ *         given next; they show at the next input scan. The level light
+ *         follows them. The MIDI bytes are
  *         queued after them, to be sent as the loop goes round. Then saves the
  *         calibration if a point of it was stored, logs the transport if it
  *         changed, and, when a step began, logs it (or the failed step
@@ -158,6 +161,7 @@ static void apply_outputs(void)
     gate_output_write(g_outputs.b_gate);
     clock_output_write(g_outputs.b_clock_out);
     led_output_write(g_outputs.leds);
+    level_output_write(g_level);
     midi_output_write(g_midi_bytes.bytes, g_midi_bytes.count);
 
     if (g_cal_outputs.b_stored)
@@ -258,7 +262,8 @@ static void run_midi_out(void)
 /**
  * @brief  Lets the pot set the amount the selector chooses, and hands the
  *         sequencer the one it uses: the tempo. The bank always has a
- *         tempo to give, so it is always valid.
+ *         tempo to give, so it is always valid. The level light is given
+ *         the amount the selector is on.
  */
 static void run_bank(void)
 {
@@ -271,6 +276,7 @@ static void run_bank(void)
 
     g_inputs.tempo_raw     = bank_amount(&g_bank, (uint8_t)SLOT_TEMPO);
     g_inputs.b_tempo_valid = true;
+    g_level                = bank_level(&g_bank);
 }
 
 
@@ -381,6 +387,7 @@ static void reset_tick_state(void)
     bank_init(&g_bank, (uint8_t)SLOT_TEMPO);
     g_pot_raw     = 0U;
     g_b_pot_valid = false;
+    g_level       = 0U;
 
     midi_out_init(&g_midi_state);
     g_midi_bytes.count = 0U;

@@ -283,6 +283,16 @@ uint16_t host_log_poll_count(void);
 bool host_gate_level(void);
 
 /**
+ * @brief The level level_output_write() was last given (0 if never called).
+ */
+uint8_t host_level(void);
+
+/**
+ * @brief Number of times level_output_write() has been called since host_reset().
+ */
+uint16_t host_level_write_count(void);
+
+/**
  * @brief Number of times watchdog_kick() has been called since host_reset().
  */
 uint16_t host_watchdog_kick_count(void);

@@ -1577,6 +1577,47 @@ static void test_the_pot_sets_the_tempo_only_while_the_selector_is_on_it(void)
 
 
 
+static void test_the_level_light_shows_the_amount_the_selector_is_on(void)
+{
+    // Written on every tick, a tick behind: nothing has been worked out
+    // when the first tick applies
+    start_app();
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(1, host_level_write_count());
+    TEST_ASSERT_EQUAL(0, host_level());
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(2, host_level_write_count());
+    TEST_ASSERT_EQUAL(TEMPO_RAW_150_BPM / 4U, host_level());
+
+    // Another amount, which is 0 until the pot has met it and gone up
+    set_selector_and_pot(1U, TEMPO_RAW_150_BPM);
+    run_ticks(10U);
+    TEST_ASSERT_EQUAL(0, host_level());
+    set_selector_and_pot(1U, 0U);
+    run_ticks(10U);
+    set_selector_and_pot(1U, 600U);
+    run_ticks(10U);
+    TEST_ASSERT_EQUAL(150, host_level());
+
+    // And back: the tempo is where it was left
+    set_selector_and_pot(0U, 600U);
+    run_ticks(10U);
+    TEST_ASSERT_EQUAL(TEMPO_RAW_150_BPM / 4U, host_level());
+    TEST_ASSERT_EQUAL(42, host_level_write_count());
+}
+
+
+
+static void test_the_level_light_is_dark_in_calibration_mode(void)
+{
+    start_calibration(2U, CAL_TRIM_CENTRE);
+    run_ticks(50U);
+    TEST_ASSERT_EQUAL(50, host_level_write_count());
+    TEST_ASSERT_EQUAL(0, host_level());
+}
+
+
+
 static void test_calibration_mode_leaves_the_transport_alone(void)
 {
     start_calibration(2U, CAL_TRIM_CENTRE);
@@ -2009,6 +2050,8 @@ int main(void)
     RUN_TEST(test_the_reset_input_sends_the_pattern_back_to_its_start);
     RUN_TEST(test_init_starts_a_stopped_pattern_running_again);
     RUN_TEST(test_the_pot_sets_the_tempo_only_while_the_selector_is_on_it);
+    RUN_TEST(test_the_level_light_shows_the_amount_the_selector_is_on);
+    RUN_TEST(test_the_level_light_is_dark_in_calibration_mode);
     RUN_TEST(test_calibration_mode_leaves_the_transport_alone);
     RUN_TEST(test_the_midi_fake_records_what_is_written_and_scripts_the_room);
     return TEST_RESULT();

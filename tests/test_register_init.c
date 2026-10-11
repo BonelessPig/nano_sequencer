@@ -26,8 +26,9 @@ static void test_output_pins_are_set_from_all_inputs(void)
 
     TEST_ASSERT_EQUAL(0x02, g_fake_ddrb); // PB1 (shift register load)
     TEST_ASSERT_EQUAL(0x02, g_fake_ddrc); // PC1
-    // PD4 (gate) and PD5 (clock out). PD0 and PD1 are the UART's; the rest are free
-    TEST_ASSERT_EQUAL(0x30, g_fake_ddrd);
+    // PD4 (gate), PD5 (clock out) and PD6 (level light). PD0 and PD1 are
+    // the UART's; the rest are inputs
+    TEST_ASSERT_EQUAL(0x70, g_fake_ddrd);
 }
 
 
@@ -49,7 +50,7 @@ static void test_input_pins_are_cleared_and_other_bits_kept(void)
     fake_regs_reset();
     g_fake_ddrd = 0x02U;
     (void)register_init();
-    TEST_ASSERT_EQUAL(0x32, g_fake_ddrd);
+    TEST_ASSERT_EQUAL(0x72, g_fake_ddrd);
 }
 
 
@@ -97,9 +98,9 @@ static void test_gate_and_clock_outputs_start_low_and_were_low_before_they_were_
     g_fake_portd = 0xFFU;
     (void)register_init();
 
-    TEST_ASSERT_EQUAL(0xCF, g_fake_portd);
+    TEST_ASSERT_EQUAL(0x8F, g_fake_portd);
     TEST_ASSERT(g_fake_b_ddrd_accessed);
-    TEST_ASSERT_EQUAL(0xCF, g_fake_portd_at_first_ddrd);
+    TEST_ASSERT_EQUAL(0x8F, g_fake_portd_at_first_ddrd);
 }
 
 

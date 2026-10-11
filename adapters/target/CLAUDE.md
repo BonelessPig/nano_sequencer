@@ -59,6 +59,13 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 - That a flag latches with its interrupt off has not been tried on the chip, and the emulator's model of it was written here (`docs/ROADMAP.md` section 8).
 - `run_input.c` (PD7) reads a pin that is low while the contact is closed. It debounces nothing; the core does.
 
+## The level light
+
+- `level_output.c` implements `level_output_port.h` and owns Timer/Counter0; nothing else includes `atmega328p_timer0_regs.h`. The timer runs fast PWM, 8 bits, system clock / 64 (977 Hz), with no interrupt, and its compare output A is PD6.
+- Fast PWM cannot give a flat low: a compare value of 0 is still one count high in 256. A level of 0 therefore takes the timer off the pin (the compare output bits cleared), and the pin falls back to the port's level, which `register_init.c` left low. Nothing may write PD6 in `PORTD`, or a dark light is not dark.
+- The compare register is buffered in this mode and taken up as the count returns to 0, so writing it on every tick never cuts a pulse.
+- The bit positions and the three addresses were checked against the toolchain's `avr/iom328p.h`, and the emulator gives the duty asked for. The pin has not been tried on the board.
+
 ## Compiler
 
 - **Compiler builtins need a visible prototype** or cppcheck reports rule 17.3. One is in use, `__builtin_avr_wdr` (see Watchdog); avr-gcc accepts the redeclaration and still inlines it.
@@ -89,9 +96,9 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 ## Pins
 
 - The 74HC165 chain is ten chips: eight for the steps, one for the mode switches and, farthest from the MCU, one whose low three inputs are the selector. Another chip goes on the far end, so the bytes already read keep their places; it costs a constant in `shift_reg_reader.c`, the port header's range and the two fakes.
-- In use: PB1 (74HC165 load), PB5 (SCK, the clock of the chain and the DAC), PB4 (MISO, the chain's data, through 1 kΩ), PB3 (MOSI, the data of the DAC and of the step lights' 74HC595s), PB2 (SS, the DAC's chip select, idle high), PD4 (gate output), PD5 (clock output), ADC channel 6 (tempo pot), PB0 (clock input), PD2 (reset input), PD7 (run button), and PD1 as the USART's transmit pin: the log in the debug build, MIDI out in the midi build (PD0 is then its receive input, which nothing reads). Timer/Counter2 is the 1 kHz tick and drives no pin, and the EEPROM has none either. Timer/Counter1 runs only for its capture flag.
+- In use: PB1 (74HC165 load), PB5 (SCK, the clock of the chain and the DAC), PB4 (MISO, the chain's data, through 1 kΩ), PB3 (MOSI, the data of the DAC and of the step lights' 74HC595s), PB2 (SS, the DAC's chip select, idle high), PD4 (gate output), PD5 (clock output), ADC channel 6 (tempo pot), PB0 (clock input), PD2 (reset input), PD7 (run button), and PD1 as the USART's transmit pin: the log in the debug build, MIDI out in the midi build (PD0 is then its receive input, which nothing reads). Timer/Counter2 is the 1 kHz tick and drives no pin, and the EEPROM has none either. Timer/Counter1 runs only for its capture flag, and Timer/Counter0 only for the level light.
 - The MCP4822 is used on channel A at a gain of 2 from its internal reference (1 mV a step), with LDAC tied low. Its frame layout and pinout have been checked against the datasheet (`docs/ROADMAP.md` section 8).
-- PD3 and PD6 are free. PD3 is left an input with its pull-up on, so that it does not float. PC0 and PC1 are given a direction but are unused and free.
+- PD3 is free, and left an input with its pull-up on so that it does not float. PD6 is the level light, driven by Timer/Counter0. PC0 and PC1 are given a direction but are unused and free.
 - An input pin's direction and pull-up are set in `register_init.c` too. All three inputs use the MCU's own pull-ups.
 - An output pin's direction and idle level are set in `register_init.c`, level first. The adapter that writes it (`gate_output.c`, `clock_output.c`) only changes its level, one pin per statement so that it compiles to a single `sbi` or `cbi` and cannot disturb the rest of the port. Check that with `avr-objdump -d` for a new one.
 - The gate and clock outputs are active high. If a buffer stage inverts them, invert in those two files and nowhere else.

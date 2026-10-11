@@ -45,6 +45,7 @@ ports/                        # What the app needs from the outside world (heade
 ├── platform_port.h                   # One-time platform bring-up
 ├── step_input_port.h                 # Raw step-note bits
 ├── led_output_port.h                 # The sixteen step lights
+├── level_output_port.h               # The level light's brightness
 ├── watchdog_port.h                   # Telling the watchdog the firmware still runs
 ├── pot_input_port.h                # Raw tempo control position
 ├── timebase_port.h                   # Elapsed time in 1 ms ticks
@@ -70,6 +71,7 @@ adapters/
 │   ├── cv_output.c                   # Pitch CV output: MCP4822 DAC, over SPI
 │   ├── gate_output.c                 # Gate output: PD4
 │   ├── clock_output.c                # Clock output: PD5
+│   ├── level_output.c                # Level light: PD6, Timer/Counter0 PWM
 │   ├── clock_input.c / .h            # Clock input: PB0, Timer/Counter1's capture flag, polled
 │   ├── reset_input.c / .h            # Reset input: PD2, the INT0 flag, polled
 │   ├── run_input.c                   # Run button: PD7

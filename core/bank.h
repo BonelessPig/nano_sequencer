@@ -84,4 +84,12 @@ void bank_tick(bank_state_t *p_state, const bank_inputs_t *p_in);
  */
 uint16_t bank_amount(const bank_state_t *p_state, uint8_t slot);
 
+/**
+ * @brief  Gives the selected slot's amount as a level for a light: a
+ *         quarter of the amount.
+ * @param  p_state  State from bank_init() or bank_tick().
+ * @return The level, 0 to 255. 0 if p_state is null.
+ */
+uint8_t bank_level(const bank_state_t *p_state);
+
 #endif /* BANK_H */
