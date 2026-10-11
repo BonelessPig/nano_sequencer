@@ -65,6 +65,11 @@ button { cursor: pointer; }
 .step.group { margin-left: 6px; }
 .switch { width: 32px; height: 22px; padding: 0; font-size: 11px; color: var(--dim); }
 .switch.on { background: var(--on); border-color: var(--on); color: #1b1b1b; }
+#cal-banner { border-color: var(--on); }
+#cal-banner h2 { color: var(--on); }
+#cal-banner p, #cal-banner ul { margin: 0 0 6px; }
+#cal-help p, #cal-help ol { margin: 0 0 8px; max-width: 75ch; }
+#cal-help li { margin-bottom: 4px; }
 .led { width: 12px; height: 12px; border-radius: 50%; background: var(--off);
        border: 1px solid var(--line); display: inline-block; }
 .step.playing .led { background: var(--on); }
@@ -106,10 +111,25 @@ canvas { width: 100%; height: 190px; display: block; }
             <span class="num dim" id="bpm"></span>
         </div>
         <div class="row" style="margin-top: 10px">
-            <button id="cal-pattern">Set the calibration pattern</button>
-            <span class="dim">Then power cycle. Step 0 picks the point, the pot trims
-                it, and step 15's lowest switch, off and on again, stores it.</span>
+            <button id="cal-enter">Enter calibration mode</button>
+            <span class="dim">Sets steps 12 to 15 to 10, 5, 10, 5 and power cycles
+                the board, which is how the mode is entered.</span>
         </div>
+    </section>
+
+    <section id="cal-banner" hidden>
+        <h2>Calibration mode</h2>
+        <p>The sequence is stopped: no steps and no clock. The gate is held high
+            and the pitch CV sits at one point of the calibration table, to be
+            measured.</p>
+        <ul>
+            <li>Step 0's switches pick the point, 0 to 4: one per octave.</li>
+            <li>The tempo pot trims its voltage, a millivolt at a time.</li>
+            <li>Step 15's lowest switch, off and on again, stores it. The gate
+                drops for a quarter of a second to show it did.</li>
+        </ul>
+        <p>To leave: change any switch on steps 12 to 15, then power cycle. Keep
+            the EEPROM to play from what was stored.</p>
     </section>
 
     <section>
@@ -125,6 +145,42 @@ canvas { width: 100%; height: 190px; display: block; }
     <section>
         <h2>Serial log (115200 baud)</h2>
         <pre id="log"></pre>
+    </section>
+
+    <section id="cal-help">
+        <h2>How to use calibration mode</h2>
+        <p>The mode sets the table the firmware plays pitch from: five points,
+            one per octave, each the DAC value that should give exactly 0, 1, 2,
+            3 and 4 V. On a real board each point is trimmed against a voltmeter
+            on the pitch CV output. Here the DAC is ideal, so the Pitch CV figure
+            above stands in for the meter and nothing needs correcting, but a
+            point can be stored off its mark to see it take effect.</p>
+        <ol>
+            <li><b>Enter.</b> Click "Enter calibration mode". The sequence stops,
+                the gate goes high and stays there, and the pitch CV holds
+                still. With the sound on, that is one steady tone.</li>
+            <li><b>Pick a point.</b> Set step 0's switches to 0, 1, 2, 3 or 4
+                (the switches marked 1, 2 and 4; a higher value counts as 4).
+                Point <i>n</i> should read <i>n</i> volts.</li>
+            <li><b>Trim it.</b> Turn the tempo pot until the Pitch CV reads the
+                voltage wanted. The middle of the pot (a reading of about 512)
+                gives the point's nominal value, and its travel covers 64 mV
+                below that to 63 mV above, a millivolt for every 8 of the
+                reading. Point 0 cannot go below 0 V.</li>
+            <li><b>Store it.</b> Switch step 15's lowest switch (marked 1) off
+                and on again. The gate drops for a quarter of a second, heard as
+                a gap in the tone, and the debug image logs the point and the
+                value stored. It is written to the EEPROM there and then.</li>
+            <li><b>Repeat</b> for any other points. A point that is not stored
+                keeps the value it had.</li>
+            <li><b>Leave.</b> Change any switch on steps 12 to 15 so they no
+                longer read 10, 5, 10, 5, then click "Power cycle" with "Keep
+                the EEPROM" ticked. The debug image's first log line then says
+                Cal = 1, a stored table was found, and notes are played from it,
+                on the straight line between the octaves either side.</li>
+        </ol>
+        <p>To go back to the ideal table, untick "Keep the EEPROM" and power
+            cycle: the EEPROM is erased and the first log line says Cal = 0.</p>
     </section>
 </main>
 
@@ -154,7 +210,7 @@ let lastClockRiseMs = null;
 let sound = null;
 
 function post(command) {
-    fetch('/control', {
+    return fetch('/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(command),
@@ -384,6 +440,7 @@ function applyState(newState) {
         showGate(state.gate);
         showCv(state.millivolts);
     }
+    el('cal-banner').hidden = !state.calibrating;
     showPanel();
 }
 
@@ -406,17 +463,20 @@ function connect() {
 
 buildPanel();
 el('tempo').addEventListener('input', () => post({ tempo: Number(el('tempo').value) }));
-el('power').addEventListener('click', () => {
+function powerCycle() {
     post({ power: el('config').value, keepEeprom: el('keep-eeprom').checked });
-});
+}
+
+el('power').addEventListener('click', powerCycle);
 el('sound').addEventListener('click', toggleSound);
-el('cal-pattern').addEventListener('click', () => {
+el('cal-enter').addEventListener('click', () => {
     const notes = state.notes.slice();
 
     CAL_ENTRY_NOTES.forEach((note, i) => {
         notes[STEP_COUNT - CAL_ENTRY_NOTES.length + i] = note;
     });
-    post({ notes });
+    // The pattern has to be on the panel before the board powers up
+    post({ notes }).then(powerCycle);
 });
 connect();
 requestAnimationFrame(drawTrace);

@@ -180,6 +180,16 @@ function createBoard(config, options = {}) {
             }
         },
 
+        /**
+         * Whether the panel reads the calibration entry pattern just now. Asked
+         * at power-on, it says which mode the firmware is about to choose.
+         */
+        readsCalibrationEntry() {
+            const firstEntryStep = STEP_COUNT - CAL_ENTRY_NOTES.length;
+
+            return CAL_ENTRY_NOTES.every((note, i) => notes[firstEntryStep + i] === note);
+        },
+
         /** A copy of the EEPROM's bytes from address 0. */
         eepromBytes(count) {
             return Array.from(machine.eepromMemory.slice(0, count));

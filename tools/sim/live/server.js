@@ -7,7 +7,7 @@
  *
  *   GET  /         The page.
  *   GET  /events   A stream of server-sent events: `state` (the panel, which
- *                  image is running and the output levels) when a page
+ *                  image is running, its mode and the output levels) when a page
  *                  connects and when a control changes, and `run` every
  *                  slice with the chip time and what happened in it.
  *   POST /control  One change, as JSON: { notes: [16 values, 0 to 15] },
@@ -45,6 +45,7 @@ const panel = {
 const clients = new Set();
 let board = null;
 let outputs = null;
+let isCalibrating = false; // Powered up with the calibration entry pattern set
 let timer = null;
 let wallStartMs = 0;  // The wall time at which the chip's time was zero
 let speed = { wallMs: 0, chipMs: 0, percent: 100 };
@@ -59,6 +60,9 @@ function powerUp(config, eeprom) {
     board.setNotes(panel.notes);
     board.setTempoReading(panel.tempo);
     panel.config = config;
+    // The firmware chooses its mode once, from the panel as it is now. This
+    // is worked out from the panel, not read from the chip
+    isCalibrating = board.readsCalibrationEntry();
     outputs = { gate: false, clock: false, step: -1, millivolts: 0 };
     wallStartMs = performance.now();
     speed = { wallMs: wallStartMs, chipMs: 0, percent: 100 };
@@ -116,7 +120,9 @@ function broadcast(event, data) {
 
 /** What a page needs to draw itself. isFresh: forget what was drawn before. */
 function stateMessage(isFresh) {
-    return { ...panel, ...outputs, ms: chipMs(), fresh: isFresh };
+    return {
+        ...panel, ...outputs, calibrating: isCalibrating, ms: chipMs(), fresh: isFresh,
+    };
 }
 
 /** Chip time as a percentage of wall time, over the last second or so. */
