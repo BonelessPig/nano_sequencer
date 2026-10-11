@@ -7,7 +7,7 @@
  * The DAC takes one 16-bit frame, most significant bit first, while its chip
  * select is low: four configuration bits, then the 12-bit value. With its
  * LDAC pin tied low the output changes as chip select goes back high, and
- * a frame of any other length is ignored. It runs from its internal 2.048 V
+ * a frame cut short of 16 clocks is ignored. It runs from its internal 2.048 V
  * reference at a gain of 2, which makes one step of the value 1 mV and the
  * full range 0 to 4.095 V, so the value sent is the voltage in millivolts.
  *

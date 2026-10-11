@@ -634,7 +634,7 @@ The second device adapter on the SPI driver: it implements the `cv` port on chan
 
 `cv_output_write(millivolts)` takes PB2 low, sends two bytes, and takes PB2 high again. The sixteen bits are four of configuration (channel A, a gain of 2, output on: `0001`) and then the twelve of the value, most significant first. At a gain of 2 the full range is 4.096 V over 4096 steps, so one step is 1 mV and the value sent is the voltage asked for. With the DAC's LDAC pin tied low, the output changes as PB2 rises. A value above 4095 is refused with `ERR_INVALID_PARAM` and nothing is sent.
 
-If either transfer times out, the status is returned and PB2 is raised all the same. The DAC ignores a frame that is not exactly sixteen clocks, so a failed write leaves the output where it was, and the next tick tries again.
+If either transfer times out, the status is returned and PB2 is raised all the same. The DAC ignores a frame cut short of sixteen clocks, so a failed write leaves the output where it was, and the next tick tries again.
 
 The write takes 20 µs with PB2 low, and happens every millisecond. The 74HC165 chain is on the same clock and has no chip select, so those sixteen clocks shift it as well. That does no harm: the chain is loaded afresh before each read and its output is ignored in between.
 
@@ -651,7 +651,7 @@ How the part is wired (PDIP-8 pin numbers):
 | 7 VSS | Ground |
 | 8 VOUTA | The pitch CV |
 
-The pin numbers and the frame layout are from the datasheet as remembered, not checked against it in this piece of work; check them before wiring (open item 10). VOUTA can drive a high-impedance input directly for a first test. The roadmap's op-amp buffer goes between it and the jack.
+The pin numbers and the frame layout have been checked against the datasheet (DS20002249B, table 3-1 and register 5-1). VOUTA can drive a high-impedance input directly for a first test. The roadmap's op-amp buffer goes between it and the jack.
 
 ```mermaid
 sequenceDiagram
@@ -1033,7 +1033,7 @@ PD4 and PD5 are driven straight from the MCU, 0 V and 5 V. On the emulated board
 
 There is no DAC on the board yet. Everything about the pitch CV comes from the host tests and the emulated board, which check the bits sent and their timing against a model of the part. Still to do, in this order:
 
-- **Check the datasheet.** The frame layout (which bit is the channel, the gain and the output enable), the pin numbers in the wiring table under "Pitch CV output", and the 4.5 µs settling time quoted below were written from memory of the MCP4822 datasheet and not checked against it. A wrong gain or enable bit would show at once as half the voltage or none.
+- **Check the datasheet.** Done, against DS20002249B: the frame layout (which bit is the channel, the gain and the output enable), the pin numbers in the wiring table under "Pitch CV output", SPI mode 0, and the 4.5 µs settling time quoted below are all as the firmware and this document have them. A wrong gain or enable bit would still show at once as half the voltage or none.
 - **Measure it.** With a meter on VOUTA: 0 V for note value 1, and 83.3 mV more for each note value above it in the chromatic scale (1.167 V for note value 15). With nothing stored the table is the ideal one, so the part's own gain and offset error will show; calibration mode is what takes them out (open item 11).
 - **Listen for the bus.** The DAC is written every millisecond and the panel read every eight, on a clock that runs beside an analogue output. If that is audible as a tone or as roughness in the pitch, the first thing to try is writing the DAC only when the value changes, which is a few lines in `cv_output.c` and costs the even timing described under "The main loop and one tick".
 - **Buffer it.** VOUTA is the DAC's own output, with no protection and little drive. The op-amp buffer of the roadmap goes between it and the jack.

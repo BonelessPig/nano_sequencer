@@ -55,7 +55,7 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 ## Pins
 
 - In use: PB1 (74HC165 load), PB5 (SCK, the clock of the chain and the DAC), PB4 (MISO, the chain's data, through 1 kΩ), PB3 (MOSI, the DAC's data), PB2 (SS, the DAC's chip select, idle high), PD4 (gate output), PD5 (clock output), ADC channel 6 (tempo pot). Timer/Counter2 is the 1 kHz tick and drives no pin, and the EEPROM has none either.
-- The MCP4822 is used on channel A at a gain of 2 from its internal reference (1 mV a step), with LDAC tied low. Its frame layout and pinout have not been checked against the datasheet (`docs/ROADMAP.md` section 8).
+- The MCP4822 is used on channel A at a gain of 2 from its internal reference (1 mV a step), with LDAC tied low. Its frame layout and pinout have been checked against the datasheet (`docs/ROADMAP.md` section 8).
 - PD2, PD3, PD6 and PD7 are free. PC0 and PC1 are given a direction but are unused and free.
 - An output pin's direction and idle level are set in `register_init.c`, level first. The adapter that writes it (`gate_output.c`, `clock_output.c`) only changes its level, one pin per statement so that it compiles to a single `sbi` or `cbi` and cannot disturb the rest of the port. Check that with `avr-objdump -d` for a new one.
 - The gate and clock outputs are active high. If a buffer stage inverts them, invert in those two files and nowhere else.

@@ -4,8 +4,8 @@
  * chip select on an ordinary port pin.
  *
  *   CS    Low: the bits clocked in belong to a frame. The rising edge ends
- *         the frame. A frame of exactly 16 bits is taken; one of any other
- *         length is ignored.
+ *         the frame. A frame of fewer than 16 bits is ignored. Of a longer
+ *         one the first 16 bits are taken and the rest ignored.
  *   SDI   The frame, most significant bit first:
  *           bit 15       channel: 0 = A, 1 = B
  *           bit 14       not used
@@ -42,7 +42,7 @@ const MILLIVOLTS_PER_STEP_AT_1X = 0.5; // 2.048 V over 4096 steps
  *         per frame taken: the cycle chip select rose on, the channel ('A'
  *         or 'B'), the gain (1 or 2), whether the output is on, the value
  *         and the output in millivolts. ignored has the bit count and cycle
- *         of each frame of the wrong length. shiftByte(byte) gives the part
+ *         of each frame that was cut short. shiftByte(byte) gives the part
  *         the eight bits of one SPI transfer.
  */
 function attachMcp4822(cpu, port, selectPin) {
@@ -53,7 +53,7 @@ function attachMcp4822(cpu, port, selectPin) {
     let bitCount = 0;
 
     function endFrame() {
-        if (bitCount !== FRAME_BITS) {
+        if (bitCount < FRAME_BITS) {
             dac.ignored.push({ cycle: cpu.cycles, bits: bitCount });
             return;
         }
@@ -93,8 +93,10 @@ function attachMcp4822(cpu, port, selectPin) {
 
     dac.shiftByte = (byte) => {
         if (selected) {
-            // Bits beyond a frame's sixteen only need counting
-            frame = ((frame << BITS_PER_BYTE) | (byte & 0xFF)) & 0xFFFF;
+            // Clocks after a frame's sixteenth are counted and not shifted in
+            if (bitCount < FRAME_BITS) {
+                frame = (frame << BITS_PER_BYTE) | (byte & 0xFF);
+            }
             bitCount += BITS_PER_BYTE;
         }
     };

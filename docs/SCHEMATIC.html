@@ -240,9 +240,11 @@ With LDAC tied to ground the output changes as chip select rises.</p>
 
 <h2>Check before wiring</h2>
 <ul>
-    <li>The pin numbers of the MCP4822 and the 74HC165 here are the usual DIP pinouts written
-        from memory. Neither has been checked against the datasheet of the part in hand
-        (<a href="ARCHITECTURE.md">ARCHITECTURE.md</a>, open item 10).</li>
+    <li>The pin numbers here have been checked against Texas Instruments' SN74HC165
+        datasheet (SCLS116H, the D, N, NS and PW packages), Microchip's MCP4802/4812/4822
+        datasheet (DS20002249B, the PDIP, SOIC and MSOP packages) and Arduino's Nano pinout
+        sheet. A part from another maker, or in another package, is worth a look at its
+        own.</li>
     <li>How the panel switches are wired is not recorded anywhere in the repo. The firmware
         only needs an input to be high when its switch is on, and a 74HC165 input must never
         float: a switch to 5 V with a pull-down resistor on each input does both.</li>
