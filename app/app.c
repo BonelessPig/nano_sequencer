@@ -17,6 +17,8 @@
 #include "panel.h"
 #include "pitch_cal.h"
 #include "seq.h"
+#include "transport.h"
+#include "clock_input_port.h"
 #include "clock_output_port.h"
 #include "cv_output_port.h"
 #include "gate_output_port.h"
@@ -24,7 +26,10 @@
 #include "nv_port.h"
 #include "platform_port.h"
 #include "reset_cause_port.h"
+#include "reset_input_port.h"
+#include "run_input_port.h"
 #include "step_input_port.h"
+#include "sync_input_port.h"
 #include "tempo_input_port.h"
 #include "timebase_port.h"
 
@@ -107,10 +112,11 @@ static void save_calibration(void)
  * @brief  Acts on what the previous tick computed. The pitch CV, the gate
  *         and the clock output are set first, on every tick, so that their
  *         edges are not held up by the log; the pitch goes ahead of the gate
- *         so that it is in place when the note starts. Then, when a step
- *         began, logs it (or the failed step read), and with it a failed
- *         tempo read and a failed write of the pitch. Last, saves the
- *         calibration if a point of it was stored.
+ *         so that it is in place when the note starts. Then saves the
+ *         calibration if a point of it was stored, logs the transport if it
+ *         changed, and, when a step began, logs it (or the failed step
+ *         read), and with it a failed tempo read and a failed write of the
+ *         pitch.
  */
 static void apply_outputs(void)
 {
@@ -122,6 +128,11 @@ static void apply_outputs(void)
     if (g_cal_outputs.b_stored)
     {
         save_calibration();
+    }
+
+    if (g_outputs.b_transport_changed)
+    {
+        log_transport((uint8_t)g_outputs.transport);
     }
 
     if (g_outputs.b_step_started)
@@ -158,12 +169,17 @@ static void scan_inputs(void)
 
 /**
  * @brief  Brings the input snapshot up to date for this tick: records the
- *         elapsed time, and re-reads the input ports if a scan is due.
+ *         elapsed time, reads the transport inputs, which are read on every
+ *         tick, and re-reads the panel and the tempo if a scan is due.
  * @param  elapsed_ticks  Ticks since the previous tick, 1 to 255.
  */
 static void gather_inputs(uint8_t elapsed_ticks)
 {
     g_inputs.elapsed_ticks = elapsed_ticks;
+    g_inputs.b_clock_edge  = clock_input_edge();
+    g_inputs.b_reset       = reset_input_edge();
+    g_inputs.b_run_button  = run_input_read();
+    g_inputs.b_sync_switch = sync_input_read();
 
     if (elapsed_ticks >= g_ticks_until_scan)
     {
@@ -212,8 +228,8 @@ static void run_core(void)
 
 /**
  * @brief  Sets the controls the board has no hardware for yet to fixed
- *         values: all sixteen steps, forward, looping, never reset, the
- *         chromatic scale from the lowest pitch, a gate of half a step, and
+ *         values: all sixteen steps, forward, looping, the chromatic scale
+ *         from the lowest pitch, a gate of half a step, and
  *         the ideal pitch calibration table, which stays unless a stored
  *         one is loaded over it.
  */
@@ -226,7 +242,6 @@ static void set_fixed_controls(void)
     g_inputs.note_map.scale     = NOTE_MAP_SCALE_CHROMATIC;
     g_inputs.note_map.root      = 0U;
     g_inputs.gate.length        = (uint8_t)GATE_LENGTH_PULSES;
-    g_inputs.b_reset            = false;
 
     for (uint8_t point = 0U; point < PITCH_CAL_POINT_COUNT; point++)
     {
@@ -253,6 +268,10 @@ static void reset_tick_state(void)
     g_inputs.tempo_raw     = 0U;
     g_inputs.b_tempo_valid = false;
     g_inputs.elapsed_ticks = 0U;
+    g_inputs.b_reset       = false;
+    g_inputs.b_clock_edge  = false;
+    g_inputs.b_run_button  = false;
+    g_inputs.b_sync_switch = false;
     set_fixed_controls();
 
     g_outputs.b_step_started = false;
@@ -263,6 +282,8 @@ static void reset_tick_state(void)
     g_outputs.b_gate         = false;
     g_outputs.b_clock_out    = false;
     g_outputs.cv             = 0U;
+    g_outputs.transport           = TRANSPORT_INTERNAL;
+    g_outputs.b_transport_changed = false;
 
     cal_init(&g_cal_state);
     g_cal_outputs.b_active = false;

@@ -164,6 +164,9 @@ static void test_init_sets_the_power_on_state(void)
     TEST_ASSERT_EQUAL(SEQ_PULSES_PER_STEP, state.step_pulses); // A step is due
     TEST_ASSERT_EQUAL(0, state.gate.pulses_left);              // Gate closed
     TEST_ASSERT_EQUAL(0, state.cv);
+    TEST_ASSERT(state.transport.b_run);                        // Running
+    TEST_ASSERT(state.transport.b_starting);
+    TEST_ASSERT(!state.clock.b_synced);
 }
 
 
@@ -246,13 +249,11 @@ static void test_step_length_follows_the_tempo(void)
         seq_init(&state);
         in.tempo_raw = tempo_raw[i];
 
-        // The first tick begins step 0 and already counts towards step 1,
-        // so that one step is a tick short
+        // The first tick begins step 0, and its time is not counted
         TEST_ASSERT_EQUAL(1, ticks_to_next_step(&state, &in, &out));
-        TEST_ASSERT_EQUAL(expected_ticks[i] - 1U, ticks_to_next_step(&state, &in, &out));
 
-        // Every step after that is exactly 15000 / BPM ticks
-        for (unsigned int step = 2U; step < 40U; step++)
+        // Every step, the first included, is exactly 15000 / BPM ticks
+        for (unsigned int step = 1U; step < 40U; step++)
         {
             TEST_ASSERT_EQUAL(expected_ticks[i], ticks_to_next_step(&state, &in, &out));
             TEST_ASSERT_EQUAL(step % PANEL_STEP_COUNT, out.step);
@@ -295,7 +296,7 @@ static void test_fastest_tempo_is_285_bpm(void)
     seq_init(&state);
     in.tempo_raw = TEMPO_RAW_MAX;
     seq_tick(&state, &in, &out); // Step 0, not counted
-    for (unsigned int tick = 1U; tick < 10000U; tick++)
+    for (unsigned int tick = 1U; tick <= 10000U; tick++)
     {
         seq_tick(&state, &in, &out);
         if (out.b_step_started)
@@ -499,7 +500,7 @@ static void test_steps_and_tempo_validity_are_independent(void)
 
     in.b_steps_valid = true;
     in.b_tempo_valid = false;
-    TEST_ASSERT_EQUAL(59, ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(60, ticks_to_next_step(&state, &in, &out));
     TEST_ASSERT(out.b_note_valid);
     TEST_ASSERT_EQUAL(1, out.step);
     TEST_ASSERT_EQUAL(1, out.semitone); // The step still decodes when tempo fails
@@ -510,7 +511,7 @@ static void test_steps_and_tempo_validity_are_independent(void)
 static void test_several_ticks_at_once_count_in_full(void)
 {
     // 150 BPM is 100 ticks per step; handed over ten at a time, a step
-    // begins on every tenth call
+    // begins on every tenth call. The time on the first call is not counted
     seq_state_t   state;
     seq_inputs_t  in = make_valid_inputs();
     seq_outputs_t out;
@@ -519,7 +520,7 @@ static void test_several_ticks_at_once_count_in_full(void)
     in.tempo_raw     = TEMPO_RAW_150_BPM;
     in.elapsed_ticks = 10U;
     TEST_ASSERT_EQUAL(1, ticks_to_next_step(&state, &in, &out));
-    TEST_ASSERT_EQUAL(9, ticks_to_next_step(&state, &in, &out)); // First step is short
+    TEST_ASSERT_EQUAL(10, ticks_to_next_step(&state, &in, &out));
     TEST_ASSERT_EQUAL(10, ticks_to_next_step(&state, &in, &out));
     TEST_ASSERT_EQUAL(10, ticks_to_next_step(&state, &in, &out));
     TEST_ASSERT_EQUAL(3, out.step);
@@ -669,7 +670,7 @@ static void test_addressing_controls_set_the_order_of_steps(void)
         const unsigned int ticks = ticks_to_next_step(&state, &in, &out);
 
         // The first step of the pattern begins on the first tick, as ever
-        TEST_ASSERT_EQUAL((0U == i) ? 1U : ((1U == i) ? 99U : 100U), ticks);
+        TEST_ASSERT_EQUAL((0U == i) ? 1U : 100U, ticks);
         TEST_ASSERT_EQUAL(expected_steps[i], out.step);
         TEST_ASSERT_EQUAL(expected_steps[i] - 1U, out.semitone);
     }
@@ -756,7 +757,6 @@ static void test_reset_held_keeps_the_pattern_on_its_first_step(void)
     in.b_reset            = true;
     (void)ticks_to_next_step(&state, &in, &out);
     TEST_ASSERT_EQUAL(6, out.step);
-    (void)ticks_to_next_step(&state, &in, &out); // The first step is a tick short
     for (unsigned int count = 0U; count < 4U; count++)
     {
         TEST_ASSERT_EQUAL(6, out.step);
@@ -809,10 +809,10 @@ static void test_gate_opens_with_a_pitch_for_its_length(void)
     in.tempo_raw = TEMPO_RAW_150_BPM;
     (void)memset(in.raw_steps, 0x11, sizeof(in.raw_steps)); // Every step a pitch
     (void)memset(&out, POISON_BYTE, sizeof(out));
-    seq_tick(&state, &in, &out); // Step 0 begins, a tick short
+    seq_tick(&state, &in, &out); // Step 0 begins
     TEST_ASSERT(out.b_gate);     // The gate opens on the tick the step begins
     TEST_ASSERT(out.b_clock_out);
-    run_and_trace(&state, &in, 98U, &gate, &clock_out);
+    run_and_trace(&state, &in, 99U, &gate, &clock_out);
     TEST_ASSERT(!gate.b_level);
 
     // Sixteen whole steps: one gate each, open for half of it
@@ -842,7 +842,7 @@ static void test_gate_length_is_counted_in_pulses(void)
         in.tempo_raw   = TEMPO_RAW_150_BPM;
         in.gate.length = lengths[i];
         (void)memset(in.raw_steps, 0x11, sizeof(in.raw_steps));
-        run_and_trace(&state, &in, 99U, &gate, &clock_out); // Step 0, a tick short
+        run_and_trace(&state, &in, 100U, &gate, &clock_out); // All of step 0
         TEST_ASSERT(!gate.b_level);
         gate.high_ticks = 0U;
         gate.rises      = 0U;
@@ -868,7 +868,7 @@ static void test_gate_stays_closed_for_a_rest_and_an_unreadable_step(void)
     in.raw_steps[0] = 0x50U; // Step 0 a pitch, step 1 a rest
     in.raw_steps[1] = 0x55U; // Steps 2 and 3 pitches
 
-    run_and_trace(&state, &in, 99U, &gate, &clock_out); // Step 0
+    run_and_trace(&state, &in, 100U, &gate, &clock_out); // Step 0
     TEST_ASSERT_EQUAL(1, gate.rises);
     run_and_trace(&state, &in, 100U, &gate, &clock_out); // Step 1, a rest
     TEST_ASSERT_EQUAL(1, gate.rises);
@@ -880,7 +880,7 @@ static void test_gate_stays_closed_for_a_rest_and_an_unreadable_step(void)
     in.b_steps_valid = true;
     run_and_trace(&state, &in, 100U, &gate, &clock_out); // Step 3
     TEST_ASSERT_EQUAL(2, gate.rises);
-    TEST_ASSERT_EQUAL(49U + 50U, gate.high_ticks);
+    TEST_ASSERT_EQUAL(50U + 50U, gate.high_ticks);
 }
 
 
@@ -899,17 +899,17 @@ static void test_a_whole_step_gate_ties_notes_and_a_rest_ends_it(void)
     in.raw_steps[1] = 0x50U;
     in.raw_steps[2] = 0x50U; // Step 4 a pitch again
 
-    // Three notes are one gate, 299 ticks long with the first step a tick short
-    run_and_trace(&state, &in, 299U, &gate, &clock_out);
+    // Three notes are one gate, 300 ticks long
+    run_and_trace(&state, &in, 300U, &gate, &clock_out);
     TEST_ASSERT_EQUAL(1, gate.rises);
-    TEST_ASSERT_EQUAL(299, gate.high_ticks);
+    TEST_ASSERT_EQUAL(300, gate.high_ticks);
     TEST_ASSERT(gate.b_level);
 
     // The rest closes it on the tick step 3 begins
     run_and_trace(&state, &in, 1U, &gate, &clock_out);
     TEST_ASSERT(!gate.b_level);
     run_and_trace(&state, &in, 99U, &gate, &clock_out);
-    TEST_ASSERT_EQUAL(299, gate.high_ticks);
+    TEST_ASSERT_EQUAL(300, gate.high_ticks);
 
     run_and_trace(&state, &in, 1U, &gate, &clock_out); // Step 4
     TEST_ASSERT(gate.b_level);
@@ -932,13 +932,13 @@ static void test_gate_length_is_read_when_the_step_begins(void)
 
     // Changed while step 0 is held: that note keeps the length it began with
     in.gate.length = 0U;
-    run_and_trace(&state, &in, 89U, &gate, &clock_out);
-    TEST_ASSERT_EQUAL(49, gate.high_ticks);
+    run_and_trace(&state, &in, 90U, &gate, &clock_out);
+    TEST_ASSERT_EQUAL(50, gate.high_ticks);
 
     // And step 1 takes the new one: it never opens
     run_and_trace(&state, &in, 100U, &gate, &clock_out);
     TEST_ASSERT_EQUAL(1, gate.rises);
-    TEST_ASSERT_EQUAL(49, gate.high_ticks);
+    TEST_ASSERT_EQUAL(50, gate.high_ticks);
 }
 
 
@@ -994,16 +994,16 @@ static void test_clock_out_is_high_for_the_first_half_of_every_step(void)
 
     seq_init(&state);
     in.tempo_raw = TEMPO_RAW_150_BPM;
-    run_and_trace(&state, &in, 99U, &gate, &clock_out); // Step 0, a tick short
+    run_and_trace(&state, &in, 100U, &gate, &clock_out); // Step 0
     TEST_ASSERT_EQUAL(1, clock_out.rises);
-    TEST_ASSERT_EQUAL(49, clock_out.high_ticks);
+    TEST_ASSERT_EQUAL(50, clock_out.high_ticks);
     TEST_ASSERT(!clock_out.b_level);
 
     run_and_trace(&state, &in, 1U, &gate, &clock_out); // It rises as step 1 begins
     TEST_ASSERT(clock_out.b_level);
     run_and_trace(&state, &in, 1599U, &gate, &clock_out);
     TEST_ASSERT_EQUAL(17, clock_out.rises);
-    TEST_ASSERT_EQUAL(49U + (16U * 50U), clock_out.high_ticks);
+    TEST_ASSERT_EQUAL(17U * 50U, clock_out.high_ticks);
 
     // It does not depend on a note: the gate never opened
     TEST_ASSERT_EQUAL(0, gate.rises);
@@ -1030,11 +1030,11 @@ static void test_clock_out_runs_on_when_a_one_shot_has_finished(void)
     TEST_ASSERT(gate.b_level);
     run_and_trace(&state, &in, 800U, &gate, &clock_out);
     TEST_ASSERT_EQUAL(1, gate.rises);
-    TEST_ASSERT_EQUAL(199, gate.high_ticks);
+    TEST_ASSERT_EQUAL(200, gate.high_ticks);
 
     // The clock output kept its beat through all ten step lengths
     TEST_ASSERT_EQUAL(10, clock_out.rises);
-    TEST_ASSERT_EQUAL(499, clock_out.high_ticks);
+    TEST_ASSERT_EQUAL(500, clock_out.high_ticks);
 }
 
 
@@ -1056,9 +1056,9 @@ static void test_reset_does_not_cut_a_held_note(void)
     in.b_reset = false;
     run_and_trace(&state, &in, 88U, &gate, &clock_out);
 
-    TEST_ASSERT_EQUAL(49, gate.high_ticks);
+    TEST_ASSERT_EQUAL(50, gate.high_ticks);
     TEST_ASSERT_EQUAL(1, clock_out.rises);
-    TEST_ASSERT_EQUAL(49, clock_out.high_ticks);
+    TEST_ASSERT_EQUAL(50, clock_out.high_ticks);
 }
 
 
@@ -1217,6 +1217,628 @@ static void test_calibration_table_is_read_when_the_step_begins(void)
 
 
 
+#define SETTLE_TICKS (20U) // Debounce time of the run button and the sync switch
+
+// Tempo readings that are a ratio on the external clock
+#define TEMPO_RAW_DIVIDE_4   (0U)    // A step to every four edges
+#define TEMPO_RAW_ONE_TO_ONE (500U)  // A step to an edge
+#define TEMPO_RAW_MULTIPLY_4 (1023U) // Four steps to an edge
+
+/**
+ * @brief Runs single ticks and returns the steps that began. The outputs
+ *        are those of the last tick.
+ */
+static unsigned int run_ticks(seq_state_t *p_state, const seq_inputs_t *p_in,
+                              seq_outputs_t *p_out, unsigned int ticks)
+{
+    unsigned int steps = 0U;
+
+    for (unsigned int tick = 0U; tick < ticks; tick++)
+    {
+        seq_tick(p_state, p_in, p_out);
+        steps += p_out->b_step_started ? 1U : 0U;
+    }
+    return steps;
+}
+
+/**
+ * @brief One tick with an edge of the external clock on it.
+ */
+static void edge_tick(seq_state_t *p_state, seq_inputs_t *p_in, seq_outputs_t *p_out)
+{
+    p_in->b_clock_edge = true;
+    seq_tick(p_state, p_in, p_out);
+    p_in->b_clock_edge = false;
+}
+
+/**
+ * @brief Holds the run button down until the press counts, which is on the
+ *        last tick, and lets go without running a tick. The outputs are
+ *        those of the tick the press took effect on.
+ */
+static void press_run(seq_state_t *p_state, seq_inputs_t *p_in, seq_outputs_t *p_out)
+{
+    p_in->b_run_button = true;
+    (void)run_ticks(p_state, p_in, p_out, SETTLE_TICKS);
+    p_in->b_run_button = false;
+}
+
+
+
+static void test_transport_is_given_on_every_tick(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    for (unsigned int tick = 0U; tick < 3U; tick++)
+    {
+        (void)memset(&out, POISON_BYTE, sizeof(out));
+        seq_tick(&state, &in, &out);
+        TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, out.transport);
+        TEST_ASSERT(!out.b_transport_changed);
+    }
+}
+
+
+
+static void test_run_button_stops_the_pattern_at_once(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    seq_outputs_t out;
+    uint16_t      cv;
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_150_BPM;
+    (void)memset(in.raw_steps, 0x77, sizeof(in.raw_steps)); // Every step a pitch
+    (void)run_ticks(&state, &in, &out, 10U);
+    cv = out.cv;
+    TEST_ASSERT(cv > 0U);
+
+    // The press counts once it has settled, and the note is cut there
+    in.b_run_button = true;
+    (void)run_ticks(&state, &in, &out, SETTLE_TICKS - 1U);
+    TEST_ASSERT(out.b_gate);
+    TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, out.transport);
+
+    (void)memset(&out, POISON_BYTE, sizeof(out));
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, out.transport);
+    TEST_ASSERT(out.b_transport_changed);
+    TEST_ASSERT(!out.b_gate);
+    TEST_ASSERT(!out.b_clock_out);
+    TEST_ASSERT(!out.b_step_started);
+    TEST_ASSERT(!out.b_note_valid);
+    TEST_ASSERT(!out.b_rest);
+    TEST_ASSERT_EQUAL(0, out.step);
+    TEST_ASSERT_EQUAL(0, out.semitone);
+    TEST_ASSERT_EQUAL(cv, out.cv); // The pitch holds
+
+    // Nothing begins while it is stopped, however long
+    in.b_run_button = false;
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 2000U));
+    TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, out.transport);
+    TEST_ASSERT(!out.b_transport_changed);
+    TEST_ASSERT(!out.b_gate);
+    TEST_ASSERT(!out.b_clock_out);
+    TEST_ASSERT_EQUAL(cv, out.cv);
+}
+
+
+
+static void test_run_button_starts_again_from_the_first_step(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_150_BPM;
+    TEST_ASSERT_EQUAL(5, run_ticks(&state, &in, &out, 437U)); // Into step 4
+
+    press_run(&state, &in, &out);
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 333U));
+
+    // The first step begins on the tick the press counts, and is a whole one
+    (void)memset(&out, POISON_BYTE, sizeof(out));
+    press_run(&state, &in, &out);
+    TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, out.transport);
+    TEST_ASSERT(out.b_transport_changed);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(0, out.step);
+    TEST_ASSERT(out.b_clock_out);
+
+    TEST_ASSERT_EQUAL(100, ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(1, out.step);
+    TEST_ASSERT_EQUAL(100, ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(2, out.step);
+}
+
+
+
+static void test_time_on_the_tick_of_a_start_is_not_counted(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_150_BPM;
+    (void)run_ticks(&state, &in, &out, 10U);
+    press_run(&state, &in, &out);
+    (void)run_ticks(&state, &in, &out, SETTLE_TICKS);
+
+    // A late pass starts the pattern: its time went by before the start
+    in.b_run_button  = true;
+    in.elapsed_ticks = 250U;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(0, out.step);
+
+    in.b_run_button  = false;
+    in.elapsed_ticks = 1U;
+    TEST_ASSERT_EQUAL(100, ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(1, out.step);
+}
+
+
+
+static void test_a_stopped_pattern_ignores_reset_and_the_external_clock(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
+    in.b_sync_switch = true;
+    seq_tick(&state, &in, &out);
+    press_run(&state, &in, &out);
+    TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, out.transport);
+
+    in.b_reset      = true;
+    in.b_clock_edge = true;
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 300U));
+    TEST_ASSERT(!out.b_gate);
+    TEST_ASSERT(!out.b_clock_out);
+    TEST_ASSERT(!state.clock.b_synced); // The edges were not followed
+}
+
+
+
+static void test_sync_switch_makes_each_external_edge_a_step(void)
+{
+    // Each gap is more than half the one before, so no step is held back
+    static const unsigned int gaps[] = { 100U, 60U, 250U, 130U, 70U };
+    seq_state_t               state;
+    seq_inputs_t              in = make_counting_inputs();
+    seq_outputs_t             out;
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
+    in.b_sync_switch = true;
+
+    // On from the first tick: nothing begins until an edge comes
+    (void)memset(&out, POISON_BYTE, sizeof(out));
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, out.transport);
+    TEST_ASSERT(out.b_transport_changed);
+    TEST_ASSERT(!out.b_step_started);
+    TEST_ASSERT(!out.b_gate);
+    TEST_ASSERT(!out.b_clock_out);
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 3000U));
+    TEST_ASSERT(!out.b_clock_out);
+
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(0, out.step);
+    TEST_ASSERT(out.b_clock_out);
+
+    // Each edge after it begins the next step, whatever the gap
+    for (size_t i = 0U; i < (sizeof(gaps) / sizeof(gaps[0])); i++)
+    {
+        TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, gaps[i] - 1U));
+        edge_tick(&state, &in, &out);
+        TEST_ASSERT(out.b_step_started);
+        TEST_ASSERT_EQUAL(i + 1U, out.step);
+    }
+
+    // And when the edges stop, so does the pattern
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 5000U));
+    TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, out.transport);
+}
+
+
+
+static void test_external_gate_and_clock_out_are_half_the_measured_step(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    level_trace_t gate      = { 0U, 0U, false };
+    level_trace_t clock_out = { 0U, 0U, false };
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
+    in.b_sync_switch = true;
+    (void)memset(in.raw_steps, 0x11, sizeof(in.raw_steps));
+    run_and_trace(&state, &in, 5U, &gate, &clock_out);
+
+    // The first step has no spacing to go by: it is taken as 20 ticks
+    in.b_clock_edge = true;
+    run_and_trace(&state, &in, 1U, &gate, &clock_out);
+    in.b_clock_edge = false;
+    run_and_trace(&state, &in, 99U, &gate, &clock_out);
+    TEST_ASSERT_EQUAL(1, gate.rises);
+    TEST_ASSERT_EQUAL(10, gate.high_ticks);
+    TEST_ASSERT_EQUAL(1, clock_out.rises);
+    TEST_ASSERT_EQUAL(10, clock_out.high_ticks);
+
+    // From the second edge the steps are known to be 100 ticks
+    for (unsigned int step = 1U; step <= 8U; step++)
+    {
+        in.b_clock_edge = true;
+        run_and_trace(&state, &in, 1U, &gate, &clock_out);
+        in.b_clock_edge = false;
+        run_and_trace(&state, &in, 99U, &gate, &clock_out);
+        TEST_ASSERT_EQUAL(1U + step, gate.rises);
+        TEST_ASSERT_EQUAL(10U + (50U * step), gate.high_ticks);
+        TEST_ASSERT_EQUAL(1U + step, clock_out.rises);
+        TEST_ASSERT_EQUAL(10U + (50U * step), clock_out.high_ticks);
+    }
+}
+
+
+
+static void test_tempo_reading_is_a_ratio_on_the_external_clock(void)
+{
+    static const struct
+    {
+        uint16_t tempo_raw;
+        uint8_t  divide;
+        uint8_t  multiply;
+    } cases[] =
+    {
+        { 0U, 4U, 1U },   { 146U, 4U, 1U }, { 147U, 3U, 1U }, { 293U, 3U, 1U },
+        { 294U, 2U, 1U }, { 440U, 2U, 1U }, { 441U, 1U, 1U }, { 587U, 1U, 1U },
+        { 588U, 1U, 2U }, { 734U, 1U, 2U }, { 735U, 1U, 3U }, { 881U, 1U, 3U },
+        { 882U, 1U, 4U }, { 1023U, 1U, 4U }, { 1030U, 1U, 4U }, { UINT16_MAX, 1U, 4U }
+    };
+
+    for (size_t i = 0U; i < (sizeof(cases) / sizeof(cases[0])); i++)
+    {
+        seq_state_t   state;
+        seq_inputs_t  in = make_valid_inputs();
+        seq_outputs_t out;
+
+        seq_init(&state);
+        in.tempo_raw     = cases[i].tempo_raw;
+        in.b_sync_switch = true;
+
+        // Two sync edges, so that the second has a spacing to multiply into
+        for (unsigned int edges = 0U; edges < (2U * cases[i].divide); edges++)
+        {
+            edge_tick(&state, &in, &out);
+            (void)run_ticks(&state, &in, &out, 9U);
+        }
+        edge_tick(&state, &in, &out);
+        TEST_ASSERT_EQUAL(cases[i].divide - 1U, state.clock.edges_left);
+        TEST_ASSERT_EQUAL(24U * cases[i].multiply, state.clock.per_sync);
+    }
+}
+
+
+
+static void test_a_multiplied_clock_fits_steps_between_the_edges(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_MULTIPLY_4;
+    in.b_sync_switch = true;
+
+    // Two edges 100 ticks apart measure the spacing; one step each so far
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 99U));
+
+    // Then four steps to an edge, 25 ticks apart, the first on the edge
+    for (unsigned int tick = 0U; tick < 400U; tick++)
+    {
+        in.b_clock_edge = (0U == (tick % 100U));
+        seq_tick(&state, &in, &out);
+        TEST_ASSERT_EQUAL(0U == (tick % 25U), out.b_step_started);
+        if (out.b_step_started)
+        {
+            TEST_ASSERT_EQUAL((1U + (tick / 25U)) % PANEL_STEP_COUNT, out.step);
+        }
+    }
+}
+
+
+
+static void test_steps_owed_after_an_early_edge_begin_one_per_tick(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_MULTIPLY_4;
+    in.b_sync_switch = true;
+    edge_tick(&state, &in, &out);
+    (void)run_ticks(&state, &in, &out, 99U);
+    edge_tick(&state, &in, &out); // Four steps to an edge from here: step 1
+    TEST_ASSERT_EQUAL(1, out.step);
+
+    // The next edge comes after 10 ticks, not 100: three of the four steps
+    // had not begun. None is dropped: they begin on the ticks that follow,
+    // the first of them a tick after the edge, since step 1 was still high
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 9U));
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT(!out.b_step_started);
+    for (uint8_t step = 2U; step <= 5U; step++)
+    {
+        seq_tick(&state, &in, &out);
+        TEST_ASSERT(out.b_step_started);
+        TEST_ASSERT_EQUAL(step, out.step);
+    }
+}
+
+
+
+static void test_an_early_edge_gets_a_tick_of_low_before_its_step(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+    level_trace_t gate      = { 0U, 0U, false };
+    level_trace_t clock_out = { 0U, 0U, false };
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
+    in.b_sync_switch = true;
+    (void)memset(in.raw_steps, 0x33, sizeof(in.raw_steps)); // Every step a pitch
+
+    // Two edges 200 ticks apart: the steps are taken to be that long, so
+    // the gate and the clock output are high for 100 ticks of each
+    in.b_clock_edge = true;
+    run_and_trace(&state, &in, 1U, &gate, &clock_out);
+    in.b_clock_edge = false;
+    run_and_trace(&state, &in, 199U, &gate, &clock_out);
+    in.b_clock_edge = true;
+    run_and_trace(&state, &in, 1U, &gate, &clock_out);
+    in.b_clock_edge = false;
+    run_and_trace(&state, &in, 59U, &gate, &clock_out);
+    TEST_ASSERT(gate.b_level);
+    TEST_ASSERT(clock_out.b_level);
+    TEST_ASSERT_EQUAL(2, gate.rises);
+
+    // The third edge comes after 60: both are still high. Its step waits
+    // one tick, and both are low for it
+    (void)memset(&out, POISON_BYTE, sizeof(out));
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT(!out.b_step_started);
+    TEST_ASSERT(!out.b_gate);
+    TEST_ASSERT(!out.b_clock_out);
+
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(2, out.step);
+    TEST_ASSERT(out.b_gate);
+    TEST_ASSERT(out.b_clock_out);
+
+    // And only that step: the next edge, 60 later again, is on time
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 58U));
+    TEST_ASSERT(!out.b_clock_out);
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(3, out.step);
+}
+
+
+
+static void test_a_tied_gate_is_not_broken_by_an_edge_on_time(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    level_trace_t gate      = { 0U, 0U, false };
+    level_trace_t clock_out = { 0U, 0U, false };
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
+    in.b_sync_switch = true;
+    in.gate.length   = SEQ_PULSES_PER_STEP;
+    (void)memset(in.raw_steps, 0x33, sizeof(in.raw_steps));
+
+    // A whole-step gate ties the notes on the external clock as on the
+    // internal one: the clock output has fallen by each edge, so no step
+    // is held back
+    for (unsigned int step = 0U; step < 5U; step++)
+    {
+        in.b_clock_edge = true;
+        run_and_trace(&state, &in, 1U, &gate, &clock_out);
+        in.b_clock_edge = false;
+        run_and_trace(&state, &in, 99U, &gate, &clock_out);
+    }
+    TEST_ASSERT_EQUAL(1, gate.rises);
+    TEST_ASSERT_EQUAL(5, clock_out.rises);
+}
+
+
+
+static void test_a_divided_clock_passes_over_edges(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_DIVIDE_4;
+    in.b_sync_switch = true;
+
+    // Edges 25 ticks apart: a step on the first and on every fourth after
+    for (unsigned int tick = 0U; tick < 800U; tick++)
+    {
+        in.b_clock_edge = (0U == (tick % 25U));
+        seq_tick(&state, &in, &out);
+        TEST_ASSERT_EQUAL(0U == (tick % 100U), out.b_step_started);
+        if (out.b_step_started)
+        {
+            TEST_ASSERT_EQUAL(tick / 100U, out.step);
+        }
+    }
+}
+
+
+
+static void test_last_valid_tempo_reading_is_the_ratio_when_one_fails(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_DIVIDE_4;
+    in.b_sync_switch = true;
+    seq_tick(&state, &in, &out);
+
+    in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
+    in.b_tempo_valid = false;
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(3, state.clock.edges_left);
+}
+
+
+
+static void test_going_to_the_external_clock_finishes_the_step_and_waits(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_ONE_TO_ONE; // 155 BPM as a tempo
+    TEST_ASSERT_EQUAL(2, run_ticks(&state, &in, &out, 110U));
+    TEST_ASSERT(out.b_gate); // Step 1, a pitch, just begun
+
+    in.b_sync_switch = true;
+    (void)run_ticks(&state, &in, &out, SETTLE_TICKS - 1U);
+    TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, out.transport);
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, out.transport);
+    TEST_ASSERT(out.b_transport_changed);
+    TEST_ASSERT(!out.b_step_started); // A change of clock is not a start
+
+    // The rest of step 1 goes by at 24 pulses to 20 ticks, and then nothing
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 20U));
+    TEST_ASSERT(!out.b_gate);
+    TEST_ASSERT(!out.b_clock_out);
+    TEST_ASSERT_EQUAL(SEQ_PULSES_PER_STEP - 1U, state.step_pulses);
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 1000U));
+
+    // The first edge begins the next step, not the first
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(2, out.step);
+}
+
+
+
+static void test_going_back_to_the_internal_clock_carries_on(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_150_BPM;
+    in.b_sync_switch = true;
+    seq_tick(&state, &in, &out);
+    edge_tick(&state, &in, &out); // Step 0
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 200U));
+
+    // Step 0 was waiting one pulse short of its end, so step 1 comes at once
+    in.b_sync_switch = false;
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, SETTLE_TICKS - 1U));
+    TEST_ASSERT(ticks_to_next_step(&state, &in, &out) <= 5U);
+    TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, out.transport);
+    TEST_ASSERT_EQUAL(1, out.step);
+    TEST_ASSERT(!state.clock.b_synced);
+
+    // And the tempo sets the pace from there
+    TEST_ASSERT_EQUAL(100, ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(2, out.step);
+}
+
+
+
+static void test_reset_on_the_external_clock_plays_the_first_step_at_the_next_edge(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
+    in.b_sync_switch = true;
+    for (unsigned int step = 0U; step < 3U; step++)
+    {
+        edge_tick(&state, &in, &out);
+        TEST_ASSERT_EQUAL(step, out.step);
+        (void)run_ticks(&state, &in, &out, 49U);
+    }
+
+    in.b_reset = true;
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 1U));
+    in.b_reset = false;
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 49U));
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(0, out.step);
+
+    // A reset on the same tick as the edge counts for that edge
+    (void)run_ticks(&state, &in, &out, 99U);
+    in.b_reset = true;
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(0, out.step);
+}
+
+
+
+static void test_a_start_on_the_external_clock_waits_for_an_edge(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
+    in.b_sync_switch = true;
+    for (unsigned int step = 0U; step < 3U; step++)
+    {
+        edge_tick(&state, &in, &out);
+        (void)run_ticks(&state, &in, &out, 49U);
+    }
+
+    press_run(&state, &in, &out);
+    (void)run_ticks(&state, &in, &out, SETTLE_TICKS);
+    press_run(&state, &in, &out);
+    TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, out.transport);
+    TEST_ASSERT(!out.b_step_started);
+    TEST_ASSERT(!out.b_clock_out);
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 500U));
+
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(0, out.step);
+}
+
+
+
 static void test_null_pointers_are_ignored(void)
 {
     seq_state_t   state;
@@ -1290,6 +1912,24 @@ int main(void)
     RUN_TEST(test_cv_holds_through_a_rest_an_unreadable_step_and_a_reset);
     RUN_TEST(test_cv_holds_when_a_one_shot_has_finished);
     RUN_TEST(test_calibration_table_is_read_when_the_step_begins);
+    RUN_TEST(test_transport_is_given_on_every_tick);
+    RUN_TEST(test_run_button_stops_the_pattern_at_once);
+    RUN_TEST(test_run_button_starts_again_from_the_first_step);
+    RUN_TEST(test_time_on_the_tick_of_a_start_is_not_counted);
+    RUN_TEST(test_a_stopped_pattern_ignores_reset_and_the_external_clock);
+    RUN_TEST(test_sync_switch_makes_each_external_edge_a_step);
+    RUN_TEST(test_external_gate_and_clock_out_are_half_the_measured_step);
+    RUN_TEST(test_tempo_reading_is_a_ratio_on_the_external_clock);
+    RUN_TEST(test_a_multiplied_clock_fits_steps_between_the_edges);
+    RUN_TEST(test_steps_owed_after_an_early_edge_begin_one_per_tick);
+    RUN_TEST(test_an_early_edge_gets_a_tick_of_low_before_its_step);
+    RUN_TEST(test_a_tied_gate_is_not_broken_by_an_edge_on_time);
+    RUN_TEST(test_a_divided_clock_passes_over_edges);
+    RUN_TEST(test_last_valid_tempo_reading_is_the_ratio_when_one_fails);
+    RUN_TEST(test_going_to_the_external_clock_finishes_the_step_and_waits);
+    RUN_TEST(test_going_back_to_the_internal_clock_carries_on);
+    RUN_TEST(test_reset_on_the_external_clock_plays_the_first_step_at_the_next_edge);
+    RUN_TEST(test_a_start_on_the_external_clock_waits_for_an_edge);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();
 }

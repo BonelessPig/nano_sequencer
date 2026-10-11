@@ -39,6 +39,8 @@ const TICK_MS = 1;
 // Outputs are set first thing in a tick, so their edges land on the tick to
 // within the time the idle loop takes to notice it
 const EDGE_JITTER_MAX_MS = 0.02;
+// How long after reset the firmware may take to start its timer
+const START_UP_MAX_MS = 0.2;
 const MILLIVOLTS_PER_OCTAVE = 1000;
 const SEMITONES_PER_OCTAVE = 12;
 // The DAC takes its frame this long before the gate is written, at most
@@ -94,18 +96,16 @@ test('the clock output pulses once a step, high for half of it', () => {
     const pulses = board.clockOutPulsesMs();
 
     assert.equal(pulses.length, STEP_COUNT + 1);
-    // The first tick begins step 0 and counts towards step 1
-    assertNear(pulses[0].widthMs, HALF_STEP_MS - TICK_MS, EDGE_JITTER_MAX_MS, 'first width');
-    assertNear(pulses[1].riseMs - pulses[0].riseMs, STEP_MS - TICK_MS,
-        EDGE_JITTER_MAX_MS, 'first period');
-    for (let i = 1; i < STEP_COUNT; i++) {
+    // The first step is as long as the rest: the tick that starts the
+    // pattern does not count towards it
+    for (let i = 0; i < STEP_COUNT; i++) {
         assertNear(pulses[i].widthMs, HALF_STEP_MS, EDGE_JITTER_MAX_MS, `width ${i}`);
         assertNear(pulses[i + 1].riseMs - pulses[i].riseMs, STEP_MS,
             EDGE_JITTER_MAX_MS, `period ${i}`);
     }
     // No drift: sixteen steps take sixteen step lengths
     assertNear(pulses[STEP_COUNT].riseMs - pulses[0].riseMs,
-        (STEP_COUNT * STEP_MS) - TICK_MS, EDGE_JITTER_MAX_MS, 'whole pattern');
+        STEP_COUNT * STEP_MS, EDGE_JITTER_MAX_MS, 'whole pattern');
 });
 
 test('the gate opens for half of every step with a note, and not for a rest', () => {
@@ -124,21 +124,21 @@ test('the gate opens for half of every step with a note, and not for a rest', ()
     assert.equal(gates.length, noteSteps.length);
     gates.forEach((gate, i) => {
         const step = noteSteps[i];
-        const widthMs = (step === 0) ? HALF_STEP_MS - TICK_MS : HALF_STEP_MS;
 
         // Each gate rises with its step's clock pulse, a couple of
         // instructions ahead of it
         assertNear(gate.riseMs, clocks[step].riseMs, 0.001, `gate ${step} rise`);
         assert.ok(gate.riseMs < clocks[step].riseMs, `gate ${step} leads the clock`);
-        assertNear(gate.widthMs, widthMs, EDGE_JITTER_MAX_MS, `gate ${step} width`);
+        assertNear(gate.widthMs, HALF_STEP_MS, EDGE_JITTER_MAX_MS, `gate ${step} width`);
     });
 });
 
 test('the first gate opens on the second tick', () => {
     const board = playedBoard();
 
-    // Worked out on the first tick, 1 ms after reset, and applied on the next
-    assertNear(board.gatePulsesMs()[0].riseMs, 2 * TICK_MS, 0.1, 'first gate');
+    // Worked out on the first tick and applied on the next. The timer
+    // starts about 0.1 ms after reset, once everything else is set up
+    assertNear(board.gatePulsesMs()[0].riseMs, 2 * TICK_MS, START_UP_MAX_MS, 'first gate');
 });
 
 test('sets Timer/Counter2 for a 1 kHz interrupt and enables interrupts', () => {
@@ -183,7 +183,8 @@ test('sends the DAC one whole frame a tick: channel A, gain 2, output on', () =>
         assert.equal(write.active, true);
     }
     // One a tick, from the first tick on, each at the same point in its tick
-    assertNear(board.machine.cyclesToMs(writes[0].cycle), TICK_MS, 0.1, 'first write');
+    assertNear(board.machine.cyclesToMs(writes[0].cycle), TICK_MS, START_UP_MAX_MS,
+        'first write');
     for (let i = 1; i < writes.length; i++) {
         const periodMs = board.machine.cyclesToMs(writes[i].cycle - writes[i - 1].cycle);
         assertNear(periodMs, TICK_MS, EDGE_JITTER_MAX_MS, `write ${i} period`);

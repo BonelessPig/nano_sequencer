@@ -267,6 +267,24 @@ void log_cal_point(uint8_t point, uint16_t cv)
 
 
 /**
+ * @brief Logs a change of transport at INFO level (see log_port.h).
+ * @param mode 0 stopped, 1 internal clock, 2 external clock
+ */
+void log_transport(uint8_t mode)
+{
+    if (is_level_enabled(LOGLVL_INFO))
+    {
+        begin_message();
+        write_text("Transport = ");
+        write_decimal(mode);
+        write_text("\r\n");
+        end_message();
+    }
+}
+
+
+
+/**
  * @brief Logs a failed operation and its status code at ERROR level (see log_port.h).
  * @param what which operation failed
  * @param status the status code it returned

@@ -29,7 +29,8 @@ typedef enum
     HOST_EVENT_STEP_REST,     // log_step_rest(step):           a = step, b = 0
     HOST_EVENT_ERROR,         // log_error(what, status):       a = what, b = status
     HOST_EVENT_FLUSH,         // log_flush():                   a = 0,    b = 0
-    HOST_EVENT_CAL_POINT      // log_cal_point(point, cv):      a = point, b = cv
+    HOST_EVENT_CAL_POINT,     // log_cal_point(point, cv):      a = point, b = cv
+    HOST_EVENT_TRANSPORT      // log_transport(mode):           a = mode, b = 0
 } host_event_kind_t;
 
 /**
@@ -89,6 +90,31 @@ void host_set_elapsed_ticks(uint8_t ticks);
  * @param cause  Reset flags to report, 0 to 15.
  */
 void host_set_reset_cause(uint8_t cause);
+
+/**
+ * @brief Puts an edge on the external clock input: the next
+ *        clock_input_edge() returns true, and the ones after it false.
+ */
+void host_pulse_clock_input(void);
+
+/**
+ * @brief Puts an edge on the reset input: the next reset_input_edge()
+ *        returns true, and the ones after it false.
+ */
+void host_pulse_reset_input(void);
+
+/**
+ * @brief Sets what run_input_read() returns until it is set again. Nothing
+ *        bounces: the app's own debounce still makes it wait.
+ * @param b_pressed  true to hold the run button down.
+ */
+void host_set_run_button(bool b_pressed);
+
+/**
+ * @brief Sets what sync_input_read() returns until it is set again.
+ * @param b_on  true for the sync switch on.
+ */
+void host_set_sync_switch(bool b_on);
 
 /**
  * @brief Puts bytes straight into the non-volatile storage, as if written

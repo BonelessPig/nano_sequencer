@@ -217,6 +217,22 @@ static void test_cal_point_text_matches_the_printf_format(void)
 
 
 
+static void test_transport_text_matches_the_printf_format(void)
+{
+    char expected[EXPECTED_CAPACITY];
+
+    (void)logger_init(LOGLVL_DEBUG);
+    for (unsigned int mode = 0U; mode <= 255U; mode += (mode < 3U) ? 1U : 252U)
+    {
+        fake_uart_clear();
+        log_transport((uint8_t)mode);
+        (void)snprintf(expected, sizeof(expected), "Transport = %d\r\n", (int)mode);
+        expect_uart(expected);
+    }
+}
+
+
+
 static void test_unknown_error_id_sends_nothing(void)
 {
     (void)logger_init(LOGLVL_DEBUG);
@@ -237,13 +253,14 @@ static void test_level_filters_messages(void)
     expect_uart("");
 
     // ERROR: errors pass; debug-level step notes and rests and the
-    // info-level start-up and calibration lines do not
+    // info-level start-up, calibration and transport lines do not
     (void)logger_init(LOGLVL_ERROR);
     fake_uart_clear();
     log_step_note(1U, 2U);
     log_step_rest(3U);
     log_startup(1U, true);
     log_cal_point(2U, 2013U);
+    log_transport(2U);
     expect_uart("");
     log_error(LOG_ERROR_INIT, ERR_GENERAL);
     expect_uart("Initialization failed, status code = 1\r\n");
@@ -261,7 +278,8 @@ static void test_level_filters_messages(void)
     log_step_note(1U, 2U);
     log_startup(1U, true);
     log_cal_point(2U, 2013U);
-    expect_uart("Reset = 1 Cal = 1\r\nCal point 2 = 2013\r\n");
+    log_transport(2U);
+    expect_uart("Reset = 1 Cal = 1\r\nCal point 2 = 2013\r\nTransport = 2\r\n");
 
     // FATAL is less verbose than ERROR, so errors are dropped too
     (void)logger_init(LOGLVL_FATAL);
@@ -476,6 +494,7 @@ int main(void)
     RUN_TEST(test_error_text_matches_the_printf_format);
     RUN_TEST(test_startup_text_matches_the_printf_format);
     RUN_TEST(test_cal_point_text_matches_the_printf_format);
+    RUN_TEST(test_transport_text_matches_the_printf_format);
     RUN_TEST(test_unknown_error_id_sends_nothing);
     RUN_TEST(test_level_filters_messages);
     RUN_TEST(test_off_is_never_an_enabled_message_level);

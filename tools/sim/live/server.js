@@ -10,12 +10,25 @@
  *                  image is running, its mode and the output levels) when a page
  *                  connects and when a control changes, and `run` every
  *                  slice with the chip time and what happened in it.
- *   POST /control  One change, as JSON: { notes: [16 values, 0 to 15] },
- *                  { tempo: 0 to 1023 } or { power: 'debug' | 'release',
- *                  keepEeprom: true | false }, which is a power cycle.
+ *   POST /control  One change, as JSON:
+ *                  { notes: [16 values, 0 to 15] }
+ *                  { tempo: 0 to 1023 }
+ *                  { sync: true | false }       The sync switch.
+ *                  { run: 'press' }             One press of the run button.
+ *                  { pulse: 'clock' | 'reset' } One pulse on that input jack.
+ *                  { clockOn: true | false }    The clock source plugged
+ *                                               into the clock input jack.
+ *                  { clockMs: 20 to 1000 }      Its period.
+ *                  { power: 'debug' | 'release', keepEeprom: true | false },
+ *                  which is a power cycle.
  *
  * Unlike a scenario this is paced by the PC's clock, so no two runs are the
  * same; nothing is asserted here. The chip stops while no page is connected.
+ *
+ * Two things shown are worked out here, not read from the chip: the
+ * transport and the step that is playing. Both follow the log where there is
+ * one and what this server did to the controls where there is not; see
+ * predictRunPress() and record().
  */
 const fs = require('node:fs');
 const http = require('node:http');
@@ -36,16 +49,36 @@ const MAX_TEMPO_READING = 1023;
 const MAX_BODY_BYTES = 1024;
 const START_NOTES = [1, 8, 13, 8, 4, 8, 11, 0, 1, 8, 13, 8, 6, 9, 13, 0];
 const START_TEMPO_READING = 480; // 150 BPM
+const START_CLOCK_MS = 100;      // A step to an edge at this is 150 BPM too
+const MIN_CLOCK_MS = 20;
+const MAX_CLOCK_MS = 1000;
+const JACK_PULSE_MS = 5;         // How long a single pulse on a jack is high
+// A press of the run button holds it down this long, and the next press is
+// not taken until it has been up as long: both well over the 20 ms the
+// firmware wants before it believes the button, so every press counts once
+const RUN_HOLD_MS = 60;
+const TRANSPORT_STOPPED = 0;     // As the firmware numbers them in its log
+const TRANSPORT_INTERNAL = 1;
+const TRANSPORT_EXTERNAL = 2;
+const TRANSPORT_LINE = /^Transport = ([0-2])$/;
+const STEP_LINE = /^Step (\d+) /;
 
+// Where the controls stand. They outlast a power cycle, as the real ones do
 const panel = {
     config: CONFIGS[0],
     notes: START_NOTES.slice(),
     tempo: START_TEMPO_READING,
+    sync: false,
+    clockOn: false,
+    clockMs: START_CLOCK_MS,
 };
 const clients = new Set();
 let board = null;
 let outputs = null;
 let isCalibrating = false; // Powered up with the calibration entry pattern set
+let isFirstStepDue = false; // The next step to begin is the pattern's first
+let runUpDueMs = null;     // Chip time at which the run button is let go
+let runFreeMs = 0;         // Chip time from which it may be pressed again
 let timer = null;
 let wallStartMs = 0;  // The wall time at which the chip's time was zero
 let speed = { wallMs: 0, chipMs: 0, percent: 100 };
@@ -54,18 +87,98 @@ function chipMs() {
     return board.machine.cyclesToMs(board.machine.cpu.cycles);
 }
 
+function runningTransport() {
+    return panel.sync ? TRANSPORT_EXTERNAL : TRANSPORT_INTERNAL;
+}
+
 /** Starts a board from reset with the panel as it stands. */
 function powerUp(config, eeprom) {
     board = createBoard(config, { eeprom, resetFlags: POWER_ON_RESET });
     board.setNotes(panel.notes);
     board.setTempoReading(panel.tempo);
+    // A toggle switch stays where it was and whatever is plugged into the
+    // clock input carries on; the run button is up
+    board.setSyncSwitch(panel.sync);
+    if (panel.clockOn) {
+        board.startClockIn(panel.clockMs);
+    }
     panel.config = config;
     // The firmware chooses its mode once, from the panel as it is now. This
     // is worked out from the panel, not read from the chip
     isCalibrating = board.readsCalibrationEntry();
-    outputs = { gate: false, clock: false, step: -1, millivolts: 0 };
+    // The firmware comes up running. In calibration mode nothing is
+    // sequenced and there is no transport to speak of
+    outputs = {
+        gate: false,
+        clock: false,
+        step: -1,
+        millivolts: 0,
+        transport: isCalibrating ? null : runningTransport(),
+        transportFrom: 'controls',
+    };
+    isFirstStepDue = true;
+    runUpDueMs = null;
+    runFreeMs = 0;
     wallStartMs = performance.now();
     speed = { wallMs: wallStartMs, chipMs: 0, percent: 100 };
+}
+
+/**
+ * Takes one thing the board recorded: brings `outputs` up to date with it
+ * and adds what the page should be told to `events`.
+ *
+ * The step playing is counted from the clock output, which pulses once a
+ * step, starting again from 0 when this server has done something that
+ * sends the pattern back to its first step. The debug image also names each
+ * step in its log, just after the pulse, and that is believed over the count.
+ */
+function record(item, events) {
+    const t = board.machine.cyclesToMs(item.cycle);
+    const setStep = (step) => {
+        outputs.step = step % STEP_COUNT;
+        events.push({ t, k: 'step', v: outputs.step });
+    };
+
+    switch (item.kind) {
+        case 'gate':
+            outputs.gate = item.value;
+            events.push({ t, k: 'gate', v: item.value });
+            break;
+        case 'clock':
+            outputs.clock = item.value;
+            events.push({ t, k: 'clock', v: item.value });
+            if (item.value) {
+                setStep(isFirstStepDue ? 0 : outputs.step + 1);
+                isFirstStepDue = false;
+            }
+            break;
+        case 'cv':
+            // The DAC is written every tick; only a change is worth telling
+            if (item.value !== outputs.millivolts) {
+                outputs.millivolts = item.value;
+                events.push({ t, k: 'cv', v: item.value });
+            }
+            break;
+        case 'log': {
+            const transport = TRANSPORT_LINE.exec(item.value);
+            const step = STEP_LINE.exec(item.value);
+
+            events.push({ t, k: 'log', v: item.value });
+            if (transport !== null) {
+                outputs.transport = Number(transport[1]);
+                outputs.transportFrom = 'log';
+                events.push({ t, k: 'transport', v: outputs.transport, from: 'log' });
+            }
+            if (step !== null) {
+                setStep(Number(step[1]));
+            }
+            break;
+        }
+        default:
+            // An edge on the clock input or the reset input
+            events.push({ t, k: item.kind });
+            break;
+    }
 }
 
 /**
@@ -73,39 +186,30 @@ function powerUp(config, eeprom) {
  * it happened, and empties the records so a long run does not fill memory.
  */
 function drain() {
-    const { machine, serial } = board;
+    const { serial } = board;
+    const items = [];
     const events = [];
-    const at = (cycle) => machine.cyclesToMs(cycle);
+    const add = (cycle, kind, value) => items.push({ cycle, kind, value });
 
-    for (const edge of board.gate.edges) {
-        outputs.gate = edge.high;
-        events.push({ t: at(edge.cycle), k: 'gate', v: edge.high });
-    }
-    for (const edge of board.clockOut.edges) {
-        outputs.clock = edge.high;
-        if (edge.high) {
-            // The clock output pulses once a step, from step 0
-            outputs.step = (outputs.step + 1) % STEP_COUNT;
-        }
-        events.push({ t: at(edge.cycle), k: 'clock', v: edge.high, step: outputs.step });
-    }
-    // The DAC is written every tick; only a change is worth telling
-    for (const write of board.cvWrites) {
-        if (write.millivolts !== outputs.millivolts) {
-            outputs.millivolts = write.millivolts;
-            events.push({ t: at(write.cycle), k: 'cv', v: write.millivolts });
-        }
-    }
+    board.gate.edges.forEach((edge) => add(edge.cycle, 'gate', edge.high));
+    board.clockOut.edges.forEach((edge) => add(edge.cycle, 'clock', edge.high));
+    board.cvWrites.forEach((write) => add(write.cycle, 'cv', write.millivolts));
+    board.clockIn.rises.forEach((cycle) => add(cycle, 'clockin'));
+    board.resetIn.rises.forEach((cycle) => add(cycle, 'resetin'));
     for (const line of [...serial.lines, ...serial.notices]) {
-        events.push({ t: at(line.startCycle), k: 'log', v: line.text });
+        add(line.startCycle, 'log', line.text);
     }
+    // A step's clock pulse comes ahead of its log line, and stays ahead
+    items.sort((a, b) => a.cycle - b.cycle);
+    items.forEach((item) => record(item, events));
 
     for (const list of [board.gate.edges, board.clockOut.edges, board.cvWrites,
         board.cvIgnoredFrames, board.panelReads, board.spiSent,
+        board.clockIn.rises, board.resetIn.rises,
         serial.lines, serial.notices]) {
         list.length = 0;
     }
-    return events.sort((a, b) => a.t - b.t);
+    return events;
 }
 
 function send(client, event, data) {
@@ -121,7 +225,8 @@ function broadcast(event, data) {
 /** What a page needs to draw itself. isFresh: forget what was drawn before. */
 function stateMessage(isFresh) {
     return {
-        ...panel, ...outputs, calibrating: isCalibrating, ms: chipMs(), fresh: isFresh,
+        ...panel, ...outputs, runDown: board.runButton.isClosed(),
+        calibrating: isCalibrating, ms: chipMs(), fresh: isFresh,
     };
 }
 
@@ -133,6 +238,16 @@ function measureSpeed(nowMs) {
         speed = { wallMs: nowMs, chipMs: chipMs(), percent: Math.round(ratio * 100) };
     }
     return speed.percent;
+}
+
+/** Lets the run button go once it has been held down long enough. */
+function releaseRunWhenDue() {
+    if ((runUpDueMs !== null) && (chipMs() >= runUpDueMs)) {
+        board.runButton.set(false);
+        runUpDueMs = null;
+        runFreeMs = chipMs() + RUN_HOLD_MS;
+        broadcast('state', stateMessage(false));
+    }
 }
 
 /** Runs the chip on to where a real one would be by now. */
@@ -149,6 +264,7 @@ function runSlice() {
         board.runForMs(dueMs);
     }
     broadcast('run', { ms: chipMs(), speed: measureSpeed(nowMs), events: drain() });
+    releaseRunWhenDue();
 }
 
 function startRunning() {
@@ -167,6 +283,80 @@ function isNotes(value) {
         && value.every((note) => isWholeNumberUpTo(note, MAX_NOTE));
 }
 
+/**
+ * Says what the firmware will make of a run button press, since the button
+ * only toggles and the release image never says which way it went: stopped
+ * becomes running, from the first step, and running becomes stopped. It is
+ * a prediction from the presses made here, each held long enough to count;
+ * the debug image's `Transport = N` line then confirms or corrects it.
+ */
+function predictRunPress() {
+    if (isCalibrating) {
+        return; // Nothing is sequenced, so the button does nothing
+    }
+    if (outputs.transport === TRANSPORT_STOPPED) {
+        outputs.transport = runningTransport();
+        isFirstStepDue = true;
+    } else {
+        outputs.transport = TRANSPORT_STOPPED;
+    }
+    outputs.transportFrom = 'controls';
+}
+
+/** Presses the run button, unless it is still down or only just let go. */
+function pressRun() {
+    if (board.runButton.isClosed() || (chipMs() < runFreeMs)) {
+        return;
+    }
+    board.runButton.set(true);
+    runUpDueMs = chipMs() + RUN_HOLD_MS;
+    predictRunPress();
+}
+
+function setSync(isOn) {
+    panel.sync = isOn;
+    board.setSyncSwitch(isOn);
+    // While running, the switch chooses the clock; stopped stays stopped
+    if (!isCalibrating && (outputs.transport !== TRANSPORT_STOPPED)) {
+        outputs.transport = runningTransport();
+        outputs.transportFrom = 'controls';
+    }
+}
+
+/** Switches the clock source on or off. Switching on gives an edge at once. */
+function setClockOn(isOn) {
+    if (isOn !== panel.clockOn) {
+        panel.clockOn = isOn;
+        if (isOn) {
+            board.startClockIn(panel.clockMs);
+        } else {
+            board.stopClockIn();
+        }
+    }
+}
+
+/** Sets the clock source's period. A running clock starts again at it. */
+function setClockMs(periodMs) {
+    panel.clockMs = periodMs;
+    if (panel.clockOn) {
+        board.startClockIn(periodMs);
+    }
+}
+
+function pulseJack(jack) {
+    if (jack === 'reset') {
+        board.pulseResetIn(JACK_PULSE_MS);
+        // A reset is taken only while running, and plays the first step at
+        // the next step boundary
+        if (!isCalibrating && (outputs.transport !== TRANSPORT_STOPPED)) {
+            isFirstStepDue = true;
+        }
+    } else if (!panel.clockOn) {
+        // With the clock source running, the jack is already taken
+        board.pulseClockIn(JACK_PULSE_MS);
+    }
+}
+
 /** Applies one change from a page. Returns false if it is not a valid one. */
 function applyCommand(command) {
     let isFresh = false;
@@ -180,6 +370,17 @@ function applyCommand(command) {
     } else if (isWholeNumberUpTo(command.tempo, MAX_TEMPO_READING)) {
         panel.tempo = command.tempo;
         board.setTempoReading(panel.tempo);
+    } else if (typeof command.sync === 'boolean') {
+        setSync(command.sync);
+    } else if (command.run === 'press') {
+        pressRun();
+    } else if ((command.pulse === 'clock') || (command.pulse === 'reset')) {
+        pulseJack(command.pulse);
+    } else if (typeof command.clockOn === 'boolean') {
+        setClockOn(command.clockOn);
+    } else if (isWholeNumberUpTo(command.clockMs, MAX_CLOCK_MS)
+        && (command.clockMs >= MIN_CLOCK_MS)) {
+        setClockMs(command.clockMs);
     } else if (CONFIGS.includes(command.power)) {
         const isErased = command.keepEeprom === false;
 

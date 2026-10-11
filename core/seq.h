@@ -19,6 +19,7 @@
 #include "note_map.h"
 #include "panel.h"
 #include "pitch_cal.h"
+#include "transport.h"
 
 // A step is a sixteenth note: four to the quarter note, 24 clock pulses each
 #define SEQ_STEPS_PER_BEAT   (4U)
@@ -37,13 +38,15 @@
  */
 typedef struct
 {
-    clock_state_t        clock;          // Turns elapsed ticks into pulses at the tempo
+    clock_state_t        clock;          // Turns elapsed ticks into pulses, at the
+                                         // tempo or following the external clock
     uint16_t             last_tempo_raw; // Most recent valid tempo reading, 0 to 1023
     uint16_t             step_pulses;    // Pulses since the last step was due; the
                                          // next is due at SEQ_PULSES_PER_STEP
     engine_plain_state_t engine;         // Where the engine has got to in the pattern
     gate_state_t         gate;           // How much of the current note's gate is left
     uint16_t             cv;             // Pitch CV value of the last note played
+    transport_state_t    transport;      // Whether the pattern runs, and from which clock
 } seq_state_t;
 
 /**
@@ -62,6 +65,10 @@ typedef struct
     gate_config_t     gate;          // Gate length
     pitch_cal_config_t pitch_cal;    // Pitch CV value of each octave
     bool              b_reset;       // true to send the pattern back to its start
+    bool              b_clock_edge;  // true if an edge arrived on the external clock
+                                     // since the previous tick
+    bool              b_run_button;  // true while the run button is held down, as read
+    bool              b_sync_switch; // true while the sync switch is on, as read
 } seq_inputs_t;
 
 /**
@@ -85,13 +92,18 @@ typedef struct
     uint16_t cv;            // Pitch CV value after this tick, 0 to
                             // PITCH_CAL_CV_MAX: that of the last note played,
                             // held through rests. Given on every tick
+    transport_mode_t transport; // Whether the pattern is stopped, or running
+                            // from the internal clock or the external one.
+                            // Given on every tick
+    bool    b_transport_changed; // true on a tick whose transport is not
+                            // the last one's
 } seq_outputs_t;
 
 /**
- * @brief  Puts the state into its power-on condition: the first step of the
- *         pattern begins on the first tick, and there is no tempo reading
- *         yet, so the tempo is SEQ_BPM_MIN until one arrives. The pitch CV
- *         value is 0 until the first note.
+ * @brief  Puts the state into its power-on condition: running, so that the
+ *         first tick starts the pattern, with no tempo reading yet, so the
+ *         tempo is SEQ_BPM_MIN until one arrives. The pitch CV value is 0
+ *         until the first note.
  * @param  p_state  State to initialize. Ignored if null.
  */
 void seq_init(seq_state_t *p_state);
@@ -102,11 +114,38 @@ void seq_init(seq_state_t *p_state);
  *         *p_state and *p_in, writes *p_state and *p_out, and has no other
  *         effect.
  *
- *         A step lasts SEQ_PULSES_PER_STEP clock pulses, which is 15000 / BPM
- *         milliseconds. The first tick after seq_init() begins the first
- *         step whatever the elapsed time, and that tick's time counts
- *         towards the second, so the first step is one tick shorter than
- *         the rest.
+ *         The run button and the sync switch decide whether the pattern
+ *         runs and from which clock (see transport.h); both are debounced
+ *         here and are given as read. The pattern is running after
+ *         seq_init(), and each press of the button stops it or starts it
+ *         again.
+ *
+ *         A start is the first tick after seq_init() and each tick on which
+ *         the button starts the pattern again. It goes back to the first
+ *         step of the pattern, and the time elapsed on that tick is not
+ *         counted, so the step it begins is a whole one. On the internal
+ *         clock that step begins on the same tick. On the external clock it
+ *         begins on the first edge.
+ *
+ *         While the pattern is stopped nothing is due and nothing begins.
+ *         The gate is closed at once and the clock output is low; the pitch
+ *         CV value holds. Reset and the external clock are ignored.
+ *
+ *         On the internal clock a step lasts SEQ_PULSES_PER_STEP clock
+ *         pulses, which is 15000 / BPM milliseconds.
+ *
+ *         On the external clock the pulses come from clock_follow() (see
+ *         clock.h), and the tempo reading sets a ratio in place of a tempo:
+ *         seven equal parts of its range give one step to every 4, 3 or 2
+ *         edges, one step an edge in the middle, and 2, 3 or 4 steps an
+ *         edge. With no edges, no step begins. If an edge comes so early
+ *         that the clock output is still high from the step before, its
+ *         step begins one tick late, and for that tick the gate is closed
+ *         and the clock output low, so that every step has a rising edge
+ *         of its own on both. A change of clock does not
+ *         restart the pattern: going to the external clock, the step in
+ *         progress is finished quickly and the next waits for an edge; going
+ *         back, the internal clock carries on from there.
  *
  *         Which step begins is up to the engine (the plain engine, see
  *         engine_plain.h) and the addressing controls in p_in->address (see
@@ -145,7 +184,8 @@ void seq_init(seq_state_t *p_state);
  *
  *         The tempo is SEQ_BPM_MIN plus the tempo reading divided by
  *         SEQ_TEMPO_RAW_PER_BPM (30 to 285 BPM over the valid range). If the
- *         tempo reading is not valid, the last valid one is reused.
+ *         tempo reading is not valid, the last valid one is reused, for the
+ *         ratio as for the tempo.
  * @param  p_state  State from seq_init() or the previous tick; updated.
  * @param  p_in     Inputs for this tick.
  * @param  p_out    Receives the outputs; every field is written.

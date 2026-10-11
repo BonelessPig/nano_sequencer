@@ -10,13 +10,17 @@
  */
 #include "host_ports.h"
 #include <stddef.h>
+#include "clock_input_port.h"
 #include "clock_output_port.h"
 #include "cv_output_port.h"
 #include "gate_output_port.h"
 #include "nv_port.h"
 #include "platform_port.h"
 #include "reset_cause_port.h"
+#include "reset_input_port.h"
+#include "run_input_port.h"
 #include "step_input_port.h"
+#include "sync_input_port.h"
 #include "tempo_input_port.h"
 #include "timebase_port.h"
 
@@ -51,6 +55,11 @@ static uint16_t      g_cv_write_count = 0U;
 static uint16_t      g_cv_millivolts_at_gate_rise = 0U;
 
 static uint8_t       g_reset_cause = 0U;
+
+static bool          g_b_clock_edge = false;
+static bool          g_b_reset_edge = false;
+static bool          g_b_run_button = false;
+static bool          g_b_sync_switch = false;
 
 static uint8_t       g_nv_bytes[HOST_NV_BYTES];
 static port_status_t g_nv_read_status = STATUS_OK;
@@ -122,6 +131,10 @@ void host_reset(void)
     g_cv_millivolts_at_gate_rise = 0U;
 
     g_reset_cause          = 0U;
+    g_b_clock_edge         = false;
+    g_b_reset_edge         = false;
+    g_b_run_button         = false;
+    g_b_sync_switch        = false;
     g_nv_read_status       = STATUS_OK;
     g_nv_write_status      = STATUS_OK;
     g_nv_read_count        = 0U;
@@ -146,6 +159,34 @@ void host_reset(void)
 void host_set_reset_cause(uint8_t cause)
 {
     g_reset_cause = cause;
+}
+
+
+
+void host_pulse_clock_input(void)
+{
+    g_b_clock_edge = true;
+}
+
+
+
+void host_pulse_reset_input(void)
+{
+    g_b_reset_edge = true;
+}
+
+
+
+void host_set_run_button(bool b_pressed)
+{
+    g_b_run_button = b_pressed;
+}
+
+
+
+void host_set_sync_switch(bool b_on)
+{
+    g_b_sync_switch = b_on;
 }
 
 
@@ -523,6 +564,40 @@ uint8_t reset_cause_read(void)
 
 
 
+bool clock_input_edge(void)
+{
+    const bool b_edge = g_b_clock_edge;
+
+    g_b_clock_edge = false; // Reading it forgets it, as on the hardware
+    return b_edge;
+}
+
+
+
+bool reset_input_edge(void)
+{
+    const bool b_edge = g_b_reset_edge;
+
+    g_b_reset_edge = false; // Reading it forgets it, as on the hardware
+    return b_edge;
+}
+
+
+
+bool run_input_read(void)
+{
+    return g_b_run_button;
+}
+
+
+
+bool sync_input_read(void)
+{
+    return g_b_sync_switch;
+}
+
+
+
 port_status_t nv_read(uint16_t address, uint8_t *p_data, uint8_t count)
 {
     port_status_t status = g_nv_read_status;
@@ -598,6 +673,13 @@ void log_startup(uint8_t reset_cause, bool b_calibrated)
 void log_cal_point(uint8_t point, uint16_t cv)
 {
     record_event(HOST_EVENT_CAL_POINT, point, cv);
+}
+
+
+
+void log_transport(uint8_t mode)
+{
+    record_event(HOST_EVENT_TRANSPORT, mode, 0U);
 }
 
 

@@ -10,9 +10,11 @@
  *
  */
 #include "platform_port.h"
+#include "clock_input.h"
 #include "logger.h"
 #include "register_init.h"
 #include "port_status.h"
+#include "reset_input.h"
 #include "spi.h"
 #include "timebase.h"
 
@@ -36,8 +38,10 @@ port_status_t platform_init(void)
 
     if (STATUS_OK == status)
     {
-        spi_init();      // After the registers: the load line is idle by now
-        timebase_init(); // Start the 1 kHz tick and enable interrupts
+        spi_init();         // After the registers: the load line is idle by now
+        clock_input_init(); // After the registers: the pins are inputs by now
+        reset_input_init();
+        timebase_init();    // Start the 1 kHz tick and enable interrupts
     }
 
     return status; // STATUS_OK, or the status of the step that failed

@@ -40,9 +40,10 @@ static void test_input_pins_are_cleared_and_other_bits_kept(void)
     g_fake_ddrd = 0xFFU;
     (void)register_init();
 
-    TEST_ASSERT_EQUAL(0xFF, g_fake_ddrb);
+    TEST_ASSERT_EQUAL(0xFE, g_fake_ddrb); // PB0 (clock input) made an input
     TEST_ASSERT_EQUAL(0xFE, g_fake_ddrc); // PC0 made an input
-    TEST_ASSERT_EQUAL(0xFF, g_fake_ddrd); // No port D pin is made an input
+    // PD2 (reset input), PD3 (sync switch) and PD7 (run button) made inputs
+    TEST_ASSERT_EQUAL(0x73, g_fake_ddrd);
 
     // In particular the UART's pins keep whatever direction they had
     fake_regs_reset();
@@ -69,18 +70,22 @@ static void test_load_line_idles_high_and_other_levels_are_left_alone(void)
     // Once with every other level low and once with them high
     fake_regs_reset();
     (void)register_init();
-    TEST_ASSERT_EQUAL(0x02, g_fake_portb); // PB1 high: the chain in shift mode
+    // PB1 high: the chain in shift mode. PB0: the clock input's pull-up
+    TEST_ASSERT_EQUAL(0x03, g_fake_portb);
     TEST_ASSERT_EQUAL(0x00, g_fake_portc);
-    TEST_ASSERT_EQUAL(0x00, g_fake_portd);
+    // The pull-ups of the reset input, the sync switch and the run button
+    TEST_ASSERT_EQUAL(0x8C, g_fake_portd);
 
     fake_regs_reset();
     g_fake_portb = 0x58U;
     g_fake_portc = 0xA5U;
     g_fake_portd = 0x3CU;
     (void)register_init();
-    TEST_ASSERT_EQUAL(0x5A, g_fake_portb);
+    TEST_ASSERT_EQUAL(0x5B, g_fake_portb);
     TEST_ASSERT_EQUAL(0xA5, g_fake_portc);
-    TEST_ASSERT_EQUAL(0x0C, g_fake_portd); // Only the gate and clock pins change
+    // The gate and clock pins go low, the three pull-ups come on, and the
+    // UART's pins and PD6 are left as they were
+    TEST_ASSERT_EQUAL(0x8C, g_fake_portd);
 }
 
 

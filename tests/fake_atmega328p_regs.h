@@ -4,16 +4,19 @@
 #define ATMEGA328P_TIMER2_REGS_H // And for the Timer/Counter2 header
 #define ATMEGA328P_SPI_REGS_H    // And for the SPI header
 #define ATMEGA328P_EEPROM_REGS_H // And for the EEPROM header
+#define ATMEGA328P_TIMER1_REGS_H // And for the Timer/Counter1 header
+#define ATMEGA328P_EXTINT_REGS_H // And for the external interrupt header
 /**
  * @file   fake_atmega328p_regs.h
  * @brief  Stand-in for adapters/target/atmega328p_regs.h,
  *         atmega328p_usart_regs.h, atmega328p_timer2_regs.h,
- *         atmega328p_spi_regs.h and atmega328p_eeprom_regs.h so a target
+ *         atmega328p_spi_regs.h, atmega328p_eeprom_regs.h,
+ *         atmega328p_timer1_regs.h and atmega328p_extint_regs.h so a target
  *         adapter can be compiled and
  *         tested on a PC. It claims the real headers' include guards, so
  *         including this first makes the adapter's own #include of a real
  *         one a no-op. Registers become plain variables,
- *         with five small hardware models behind them:
+ *         with six small hardware models behind them:
  *           - USART:  bytes written to the data register are captured, and the
  *                     "transmit buffer empty" flag can be held off for a while
  *           - ADC:    a started conversion finishes after a set number of polls
@@ -27,6 +30,9 @@
  *                     register; a write strobe stores it, but only if it
  *                     was armed first, and the write then shows as in
  *                     progress for a set number of polls
+ *           - Flag registers (TIFR1, EIFR): a flag the test sets stays set
+ *                     until the code writes a one to it, and every write is
+ *                     recorded
  *
  *         Everything is static, so each test program gets its own copy. Call
  *         fake_regs_reset() at the start of each test.
@@ -70,6 +76,13 @@
 #define EEPE  1 // EEPROM Write Enable bit in EECR
 #define EEMPE 2 // EEPROM Master Write Enable bit in EECR
 
+#define ICNC1 7 // Input Capture Noise Canceler bit in TCCR1B
+#define CS11  1 // Clock Select bit 1 in TCCR1B
+#define ICF1  5 // Input Capture Flag in TIFR1
+
+#define ISC01 1 // Interrupt Sense Control 0 bit 1 in EICRA
+#define INTF0 0 // External Interrupt Flag 0 in EIFR
+
 // The interrupt handler becomes an ordinary function the test can call
 #define TIMER2_COMPA_ISR fake_timer2_compa_isr
 #define TIMER2_COMPA_ISR_ATTR
@@ -88,6 +101,35 @@ static uint8_t g_fake_timsk2 = 0U;
 static uint8_t g_fake_tccr2b_at_sreg = 0U;
 static uint8_t g_fake_timsk2_at_sreg = 0U;
 static uint8_t g_fake_ocr2a_at_sreg  = 0U;
+
+// ---- Flag registers: Timer/Counter1 and the external interrupts ----
+// A register whose bits the hardware sets and the code clears by writing a
+// one to them. It is 16 bits wide here so that a write can be told from a
+// read: the model shows the flags with FAKE_FLAGS_UNWRITTEN set above them,
+// and a write from the code, which is 8 bits, takes that bit away
+#define FAKE_FLAGS_UNWRITTEN (0x100U)
+
+typedef struct
+{
+    uint16_t shown;      // What the code reads and writes
+    uint8_t  flags;      // What the hardware holds; a test sets bits here
+    uint8_t  last_write; // The value of the last write
+    uint16_t writes;     // Writes so far
+} fake_flag_reg_t;
+
+static fake_flag_reg_t g_fake_tifr1 = { FAKE_FLAGS_UNWRITTEN, 0U, 0U, 0U };
+static fake_flag_reg_t g_fake_eifr  = { FAKE_FLAGS_UNWRITTEN, 0U, 0U, 0U };
+
+static uint8_t g_fake_tccr1a = 0U;
+static uint8_t g_fake_tccr1b = 0U;
+static uint8_t g_fake_timsk1 = 0U;
+static uint8_t g_fake_eicra  = 0U;
+static uint8_t g_fake_eimsk  = 0U;
+
+// What the registers that choose the edge held when the flag register was
+// last written, so a test can see that the flag was cleared after them
+static uint8_t g_fake_tccr1b_at_tifr1_write = 0U;
+static uint8_t g_fake_eicra_at_eifr_write   = 0U;
 
 // ---- I/O ports ----
 static uint8_t g_fake_ddrb  = 0U;
@@ -217,6 +259,55 @@ static inline uint8_t *fake_ddrb(void)
         g_fake_b_ddrb_accessed     = true;
     }
     return &g_fake_ddrb;
+}
+
+/**
+ * @brief  Brings a flag register up to date with whatever the code last did
+ *         to it: a write clears the flags it had ones for. A register
+ *         access is seen before the write it makes, so every access (and
+ *         the test, before it checks) calls this for the previous one.
+ * @return true if the code had written the register since the last look.
+ */
+static inline bool fake_flag_reg_sync(fake_flag_reg_t *p_reg)
+{
+    const bool b_written = (0U == (p_reg->shown & FAKE_FLAGS_UNWRITTEN));
+
+    if (b_written)
+    {
+        p_reg->last_write = (uint8_t)p_reg->shown;
+        p_reg->writes++;
+        p_reg->flags &= (uint8_t)~p_reg->last_write;
+    }
+    p_reg->shown = (uint16_t)(FAKE_FLAGS_UNWRITTEN | p_reg->flags);
+    return b_written;
+}
+
+/**
+ * @brief Brings both flag registers up to date, noting what the edge
+ *        select registers held at a write.
+ */
+static inline void fake_flags_sync(void)
+{
+    if (fake_flag_reg_sync(&g_fake_tifr1))
+    {
+        g_fake_tccr1b_at_tifr1_write = g_fake_tccr1b;
+    }
+    if (fake_flag_reg_sync(&g_fake_eifr))
+    {
+        g_fake_eicra_at_eifr_write = g_fake_eicra;
+    }
+}
+
+static inline uint16_t *fake_tifr1(void)
+{
+    fake_flags_sync();
+    return &g_fake_tifr1.shown;
+}
+
+static inline uint16_t *fake_eifr(void)
+{
+    fake_flags_sync();
+    return &g_fake_eifr.shown;
 }
 
 /**
@@ -564,6 +655,22 @@ static inline void fake_regs_reset(void)
     g_fake_eeprom_unarmed    = 0U;
     g_fake_eeprom_b_unmasked = false;
 
+    g_fake_tifr1.shown      = (uint16_t)FAKE_FLAGS_UNWRITTEN;
+    g_fake_tifr1.flags      = 0U;
+    g_fake_tifr1.last_write = 0U;
+    g_fake_tifr1.writes     = 0U;
+    g_fake_eifr.shown       = (uint16_t)FAKE_FLAGS_UNWRITTEN;
+    g_fake_eifr.flags       = 0U;
+    g_fake_eifr.last_write  = 0U;
+    g_fake_eifr.writes      = 0U;
+    g_fake_tccr1a = 0U;
+    g_fake_tccr1b = 0U;
+    g_fake_timsk1 = 0U;
+    g_fake_eicra  = 0U;
+    g_fake_eimsk  = 0U;
+    g_fake_tccr1b_at_tifr1_write = 0U;
+    g_fake_eicra_at_eifr_write   = 0U;
+
     g_fake_mcusr  = 0U;
     g_fake_sreg   = 0U;
     g_fake_tccr2a = 0U;
@@ -605,6 +712,14 @@ static inline void fake_regs_reset(void)
 #define EEDR  (*fake_eedr())
 #define EEARL g_fake_eearl
 #define EEARH g_fake_eearh
+
+#define TCCR1A g_fake_tccr1a
+#define TCCR1B g_fake_tccr1b
+#define TIMSK1 g_fake_timsk1
+#define TIFR1  (*fake_tifr1())
+#define EICRA  g_fake_eicra
+#define EIMSK  g_fake_eimsk
+#define EIFR   (*fake_eifr())
 
 #define MCUSR  g_fake_mcusr
 #define SREG   (*fake_sreg())

@@ -13,8 +13,10 @@
  *
  * The USART0 registers are in atmega328p_usart_regs.h, because only the debug
  * build's serial logger uses them. The Timer/Counter2 registers are in
- * atmega328p_timer2_regs.h, the SPI registers in atmega328p_spi_regs.h and
- * the EEPROM registers in atmega328p_eeprom_regs.h.
+ * atmega328p_timer2_regs.h, the SPI registers in atmega328p_spi_regs.h,
+ * the EEPROM registers in atmega328p_eeprom_regs.h, the Timer/Counter1
+ * registers in atmega328p_timer1_regs.h and the external interrupt registers
+ * in atmega328p_extint_regs.h.
  *
  * Bit positions are taken directly from the ATmega328P datasheet. This file
  * has no dependency on avr-libc's <avr/io.h> — it exists so the rest of the

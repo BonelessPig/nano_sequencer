@@ -8,13 +8,13 @@
 :root {
     --bg: #fbfaf7; --fg: #1f2328; --muted: #646b73; --line: #d5d2ca; --panel: #ffffff;
     --spi: #1d5fbf; --out: #1a7f4b; --ana: #a15c00; --pwr: #b3261e; --gnd: #4d545c;
-    --sw: #6b3fa0; --nc: #8f959c;
+    --sw: #6b3fa0; --nc: #8f959c; --in: #0b7285;
 }
 @media (prefers-color-scheme: dark) {
     :root {
         --bg: #15171a; --fg: #e4e6e9; --muted: #9aa1a9; --line: #3a3f45; --panel: #1e2125;
         --spi: #7fb0ff; --out: #63d096; --ana: #f0b35a; --pwr: #ff8a80; --gnd: #aeb5bd;
-        --sw: #c4a2f2; --nc: #747b83;
+        --sw: #c4a2f2; --nc: #747b83; --in: #5fc9d8;
     }
 }
 * { box-sizing: border-box; }
@@ -61,12 +61,14 @@ svg .pwr { stroke: var(--pwr); color: var(--pwr); }
 svg .gnd { stroke: var(--gnd); color: var(--gnd); }
 svg .sw { stroke: var(--sw); color: var(--sw); }
 svg .nc { stroke: var(--nc); color: var(--nc); }
+svg .in { stroke: var(--in); color: var(--in); }
 svg text.spi, svg text.out, svg text.ana, svg text.pwr, svg text.gnd, svg text.sw,
-svg text.nc { fill: currentColor; stroke: none; }
+svg text.nc, svg text.in { fill: currentColor; stroke: none; }
 svg .dot.spi, svg .dot.out, svg .dot.ana { fill: currentColor; }
+svg .dot.in, svg .dot.plain, svg .arrow { fill: currentColor; stroke: none; }
 .spi { color: var(--spi); } .out { color: var(--out); } .ana { color: var(--ana); }
 .pwr { color: var(--pwr); } .gnd { color: var(--gnd); } .sw { color: var(--sw); }
-.nc { color: var(--nc); }
+.nc { color: var(--nc); } .in { color: var(--in); }
 </style>
 </head>
 <body>
@@ -81,7 +83,8 @@ change it here too.</p>
     <li class="spi"><i></i>SPI bus and load line</li>
     <li class="out"><i></i>Outputs</li>
     <li class="ana"><i></i>Analog</li>
-    <li class="sw"><i></i>Panel switches</li>
+    <li class="in"><i></i>Clock and reset inputs</li>
+    <li class="sw"><i></i>Panel switches and the run button</li>
     <li class="pwr"><i></i>5 V</li>
     <li class="gnd"><i></i>Ground</li>
     <li class="nc"><i></i>Not connected or free</li>
@@ -92,12 +95,13 @@ change it here too.</p>
 USB.</p>
 
 <div class="fig">
-<svg viewBox="0 0 960 590" role="img" aria-labelledby="sys-t">
-<title id="sys-t">The Nano, the 74HC165 chain, the MCP4822 DAC, the tempo pot and the two
-logic outputs, with the wires between them</title>
+<svg viewBox="0 0 960 810" role="img" aria-labelledby="sys-t">
+<title id="sys-t">The Nano, the 74HC165 chain, the MCP4822 DAC, the tempo pot, the two
+logic outputs, the clock and reset inputs, the sync switch and the run button, with the
+wires between them</title>
 
 <!-- Arduino Nano -->
-<rect class="box" x="40" y="40" width="200" height="520" rx="6"/>
+<rect class="box" x="40" y="40" width="200" height="740" rx="6"/>
 <text class="title" x="140" y="64" text-anchor="middle">Arduino Nano</text>
 <text class="sub" x="140" y="80" text-anchor="middle">ATmega328P, 16 MHz</text>
 <text x="232" y="124" text-anchor="end">D12 · PB4 · MISO</text>
@@ -108,6 +112,10 @@ logic outputs, with the wires between them</title>
 <text x="232" y="454" text-anchor="end">D4 · PD4</text>
 <text x="232" y="484" text-anchor="end">D5 · PD5</text>
 <text x="232" y="534" text-anchor="end">A6 · ADC6</text>
+<text x="232" y="604" text-anchor="end">D8 · PB0 · ICP1</text>
+<text x="232" y="654" text-anchor="end">D2 · PD2 · INT0</text>
+<text x="232" y="704" text-anchor="end">D3 · PD3</text>
+<text x="232" y="754" text-anchor="end">D7 · PD7</text>
 <text class="sub" x="50" y="454">USB: power,</text>
 <text class="sub" x="50" y="469">upload, and the</text>
 <text class="sub" x="50" y="484">debug log on TX1</text>
@@ -194,6 +202,35 @@ logic outputs, with the wires between them</title>
 <text class="title" x="480" y="534" text-anchor="middle">Tempo pot</text>
 <text class="lbl" x="312" y="523">wiper</text>
 <text class="sub" x="552" y="534">Ends to 5 V and ground</text>
+
+<!-- Clock and reset inputs, each through its input stage -->
+<path class="w in" d="M240 600H420M540 600H655M240 650H420M540 650H655"/>
+<rect class="box dash" x="420" y="582" width="120" height="36" rx="4"/>
+<rect class="box dash" x="420" y="632" width="120" height="36" rx="4"/>
+<text class="title" x="480" y="604" text-anchor="middle">Input stage</text>
+<text class="title" x="480" y="654" text-anchor="middle">Input stage</text>
+<circle class="w in" cx="660" cy="600" r="5"/>
+<circle class="w in" cx="660" cy="650" r="5"/>
+<text class="lbl" x="312" y="593">low while jack high</text>
+<text class="lbl" x="312" y="643">low while jack high</text>
+<text x="674" y="598">Clock in: steps follow its rising edges</text>
+<text class="sub" x="674" y="613">Only with the sync switch on</text>
+<text x="674" y="648">Reset in: a rising edge, back to step 0</text>
+<text class="sub" x="674" y="663">Both stages suggested only, not built</text>
+
+<!-- Sync switch and run button, each from its pin to ground -->
+<path class="w sw" d="M240 700H420M240 750H420"/>
+<rect class="box" x="420" y="682" width="120" height="36" rx="4"/>
+<rect class="box" x="420" y="732" width="120" height="36" rx="4"/>
+<text class="title" x="480" y="704" text-anchor="middle">Sync switch</text>
+<text class="title" x="480" y="754" text-anchor="middle">Run button</text>
+<text class="lbl" x="312" y="693">low while on</text>
+<text class="lbl" x="312" y="743">low while pressed</text>
+<path class="w gnd" d="M540 700H570V716M560 716H580M564 721H576M568 726H572"/>
+<path class="w gnd" d="M540 750H570V766M560 766H580M564 771H576M568 776H572"/>
+<text x="594" y="704">A toggle. On: follow the clock input</text>
+<text x="594" y="754">A push button. Each press stops or starts the pattern</text>
+<text class="sub" x="594" y="769">Both to ground: the chip's pull-ups hold the pins high</text>
 </svg>
 </div>
 
@@ -238,6 +275,113 @@ mode.</p>
 With LDAC tied to ground the output changes as chip select rises.</p>
 <div class="fig" id="mcp4822"></div>
 
+<h2>Clock and reset inputs, sync switch and run button</h2>
+<p>Four inputs, each with the chip's internal pull-up switched on, so each pin rests high and
+something outside pulls it low. The firmware looks at all four once a millisecond.</p>
+
+<div class="tablewrap">
+<table>
+<tr><th>Nano pin</th><th>Chip pin</th><th>What</th><th>Wired</th><th>Pin is low</th></tr>
+<tr><td>D8</td><td>PB0 (ICP1)</td><td>Clock input jack</td>
+    <td>Through an inverting input stage</td><td>While the jack is high</td></tr>
+<tr><td>D2</td><td>PD2 (INT0)</td><td>Reset input jack</td>
+    <td>Through an inverting input stage</td><td>While the jack is high</td></tr>
+<tr><td>D3</td><td>PD3</td><td>Sync switch, a toggle</td>
+    <td>Between the pin and ground</td><td>While the switch is on</td></tr>
+<tr><td>D7</td><td>PD7</td><td>Run button, a push button</td>
+    <td>Between the pin and ground</td><td>While it is pressed</td></tr>
+</table>
+</div>
+
+<ul>
+    <li><b>Clock input.</b> Used only while the sync switch is on. A rising edge at the jack
+        is a falling edge at the pin, which Timer/Counter1's input capture flag latches
+        however short the pulse; the firmware reads and clears the flag on its next tick.
+        No interrupt is used. With the tempo pot in the middle a step begins on every edge;
+        turned down it takes every second, third or fourth edge, and turned up it fits two,
+        three or four steps to an edge.</li>
+    <li><b>Reset input.</b> A rising edge at the jack sends the pattern back to its first
+        step, which plays when the next step is due. The falling edge at the pin is latched
+        in the INT0 flag and read the same way, with the interrupt left off. Ignored while
+        the pattern is stopped.</li>
+    <li><b>Sync switch.</b> Off, the pattern runs from the internal clock at the tempo the
+        pot sets and the clock input is ignored. On, steps follow the clock input, and with
+        no clock nothing plays.</li>
+    <li><b>Run button.</b> Each press stops the pattern or starts it again from its first
+        step. The board powers on running.</li>
+</ul>
+<p>The switch and the button need no resistor and no capacitor: the pull-ups are inside the
+chip, and the firmware waits for a contact to hold still for 20 ms before it believes it.</p>
+
+<h2>Input stage for the two jacks: suggested, not built</h2>
+<p>The same circuit twice, one for the clock input and one for the reset input. <b>It has
+not been built or tested.</b> What the firmware does rely on is that the stage inverts: the
+pin is low while the jack is high.</p>
+
+<div class="fig">
+<svg viewBox="0 0 760 290" role="img" aria-labelledby="stage-t">
+<title id="stage-t">Suggested input stage: the jack tip through 100 kΩ to the base of an NPN
+transistor, a diode from ground to the base, the emitter to ground and the collector to the
+ATmega328P pin</title>
+
+<!-- Jack and base resistor -->
+<circle class="w in" cx="60" cy="170" r="5"/>
+<text x="60" y="150" text-anchor="middle">Jack tip</text>
+<text class="sub" x="60" y="196" text-anchor="middle">sleeve to ground</text>
+<path class="w in" d="M65 170H130M170 170H330"/>
+<rect class="w in" x="130" y="163" width="40" height="14"/>
+<text class="lbl" x="150" y="156" text-anchor="middle">100 kΩ</text>
+
+<!-- Clamp diode, ground to base -->
+<circle class="dot in" cx="250" cy="170" r="3.5"/>
+<path class="w" d="M250 170V204M240 204H260M250 222V250"/>
+<path class="w" d="M240 222H260L250 204Z"/>
+<text x="232" y="211" text-anchor="end">1N4148</text>
+<text class="sub" x="232" y="226" text-anchor="end">stops the base going</text>
+<text class="sub" x="232" y="240" text-anchor="end">below about −0.7 V</text>
+<path class="w gnd" d="M240 250H260M244 255H256M248 260H252"/>
+
+<!-- NPN transistor: base bar, collector up, emitter down with its arrow -->
+<circle class="w" cx="344" cy="170" r="31"/>
+<path class="w" d="M330 150V190M330 162L360 142V90M330 178L360 198V250"/>
+<polygon class="arrow" points="360,198 350.3,196.3 354.7,189.7"/>
+<text class="num" x="300" y="164">B</text>
+<text class="num" x="366" y="136">C</text>
+<text class="num" x="366" y="214">E</text>
+<text x="386" y="168">2N3904 or BC547</text>
+<text class="sub" x="386" y="183">any small NPN</text>
+<path class="w gnd" d="M350 250H370M354 255H366M358 260H362"/>
+<text class="lbl gnd" x="305" y="276" text-anchor="middle">GND</text>
+
+<!-- Collector to the pin, with the optional pull-up -->
+<path class="w in" d="M360 90H600"/>
+<circle class="dot in" cx="480" cy="90" r="3.5"/>
+<path class="w dash" d="M480 90V70M480 36V24"/>
+<rect class="w dash" x="473" y="36" width="14" height="34"/>
+<text class="pwr" x="480" y="16" text-anchor="middle">5 V</text>
+<text class="lbl" x="495" y="50">10 kΩ, optional:</text>
+<text class="lbl" x="495" y="64">a stiffer pull-up</text>
+<rect class="box" x="600" y="50" width="140" height="80" rx="4"/>
+<text class="title" x="670" y="74" text-anchor="middle">ATmega328P</text>
+<text x="608" y="94">PB0 or PD2</text>
+<text class="sub" x="670" y="114" text-anchor="middle">internal pull-up on</text>
+</svg>
+</div>
+
+<ul>
+    <li>An NPN transistor of the 2N3904 or BC547 class: emitter to ground, collector to the
+        pin (D8 for the clock, D2 for the reset).</li>
+    <li>The collector is pulled up by the chip's internal pull-up, which the firmware
+        switches on. An external 10 kΩ from the pin to 5 V is an option if a firmer high
+        level or a faster rise is wanted.</li>
+    <li>The base is fed from the jack tip through 100 kΩ, which limits the current into
+        it.</li>
+    <li>A small-signal diode (1N4148) from ground to the base, its cathode at the base,
+        clamps a negative voltage at the jack so the base is never driven far below
+        ground.</li>
+    <li>The jack sleeve goes to ground.</li>
+</ul>
+
 <h2>Check before wiring</h2>
 <ul>
     <li>The pin numbers here have been checked against Texas Instruments' SN74HC165
@@ -254,6 +398,15 @@ With LDAC tied to ground the output changes as chip select rises.</p>
         pins of each 74HC165 is normal practice.</li>
     <li>The 1 kΩ in the MISO line lets an ISP programmer, which uses D11 to D13, win against
         the chain's output. The serial bootloader does not need it.</li>
+    <li>The input stage for the clock and reset jacks is a suggestion that has not been
+        built or tested: its part values, the level at which it switches and how it stands
+        up to the voltages a modular system puts out are all still to be found on the
+        bench. Do not wire a jack straight to D8 or D2.</li>
+    <li>That the two edge flags latch with their interrupts off is taken from the
+        ATmega328P datasheet and from the emulated board, whose model of it is this
+        project's own. It has not been seen on a real chip yet.</li>
+    <li>The sync switch and the run button go from their pins to ground with nothing else:
+        no resistor, and no connection to 5 V.</li>
     <li>Do not patch the gate, clock or pitch CV into other equipment until their buffer
         stages are built: nothing protects those pins
         (<a href="ARCHITECTURE.md">ARCHITECTURE.md</a>, open items 9 and 10).</li>
@@ -326,13 +479,13 @@ drawChip("nano", {
         ["", "D11 · PB3", "MOSI: DAC SDI", "spi"],
         ["", "D10 · PB2", "SS: DAC chip select", "spi"],
         ["", "D9 · PB1", "SH/LD of all eight 74HC165s", "spi"],
-        ["", "D8", "free", "nc"],
-        ["", "D7 · PD7", "free", "nc"],
+        ["", "D8 · PB0", "ICP1: clock input, from its input stage", "in"],
+        ["", "D7 · PD7", "run button, to ground", "sw"],
         ["", "D6 · PD6", "free", "nc"],
         ["", "D5 · PD5", "clock output", "out"],
         ["", "D4 · PD4", "gate output", "out"],
-        ["", "D3 · PD3", "free", "nc"],
-        ["", "D2 · PD2", "free", "nc"],
+        ["", "D3 · PD3", "sync switch, to ground", "sw"],
+        ["", "D2 · PD2", "INT0: reset input, from its input stage", "in"],
         ["", "GND", "common ground", "gnd"],
         ["", "RST", "not connected", "nc"],
         ["", "RX0 · PD0", "the board's USB serial chip", "nc"],

@@ -50,6 +50,16 @@ void log_startup(uint8_t reset_cause, bool b_calibrated);
 void log_cal_point(uint8_t point, uint16_t cv);
 
 /**
+ * @brief  Reports that the pattern has stopped, started or changed clock
+ *         (info-level output).
+ * @param  mode  0 for stopped, 1 for running from the internal clock, 2 for
+ *               running from the external clock.
+ * @note   Not ISR-safe. Does not block; queued or dropped like
+ *         log_step_note().
+ */
+void log_transport(uint8_t mode);
+
+/**
  * @brief  Reports the step being played and the pitch of its note
  *         (debug-level output).
  * @param  step      Step index, 0 to 15.

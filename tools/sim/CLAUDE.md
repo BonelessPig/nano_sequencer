@@ -4,8 +4,8 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 
 ## Layout
 
-- `lib/`: the chip, and `pin_recorder.js` for watching an output pin. `parts/`: models of external chips. Neither may know anything about the sequencer, so they can be lifted out for another project.
-- `boards/nano_sequencer.js`: which part is on which pin, plus the panel, pot, the DAC's frames, the gate and clock recorders, serial capture, and the EEPROM's contents and the reset flags at power-on (`createBoard(config, { eeprom, resetFlags })`). `boards/cal_record.js` works the calibration record out on its own, so a scenario does not check the firmware against itself.
+- `lib/`: the chip, `pin_recorder.js` for watching an output pin, and `edge_flag.js` for a flag that latches an edge on an input pin. `parts/`: models of external chips and of things plugged in or pressed (`clock_source.js`, `switch.js`). Neither may know anything about the sequencer, so they can be lifted out for another project.
+- `boards/nano_sequencer.js`: which part is on which pin, plus the panel, pot, the DAC's frames, the gate and clock recorders, the two input jacks, the sync switch and the run button, serial capture, and the EEPROM's contents and the reset flags at power-on (`createBoard(config, { eeprom, resetFlags })`). `boards/cal_record.js` works the calibration record out on its own, so a scenario does not check the firmware against itself.
 - `scenarios/*.test.js`: what each firmware image must do, using Node's built-in test runner. No other dependencies; avr8js is pinned in `package-lock.json`.
 
 - `live/server.js` and `live/page.html`: `make live`, the board run at real speed and shown in a browser. A viewer, not a check.
@@ -30,7 +30,13 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 - Time a step from the first byte of its log line (`startCycle`), not the last: the line is sent a byte per loop pass, so its end moves with its length.
 - The release image has no log. Time its steps from the clock output, which pulses on every step, and its notes from the gate. The same measurements work on the debug image, where they are far steadier than the log (0.003 ms against 0.25 ms).
 - An output with nothing modelled on it gets a pin recorder on the board, not a listener in the scenario. It records the level at the instant the port register is written.
-- The first step after reset is a tick short, and so are its gate and clock pulse. Leave pulse 0 out of a width or period loop and assert it on its own.
+- The first step is as long as the rest, after reset and after the run button. (Until phase 6 it was a tick short and had to be asserted on its own.)
+- An input pin whose edge the firmware polls from a flag (PB0, PD2) is driven through `machine.inputCapture1.setPin()` or `machine.externalInt0.setPin()`, never the port's own `setPin()`, or the flag is not set. avr8js has no input capture event and sets an external interrupt's flag only while the interrupt is enabled; `lib/edge_flag.js` fills that in from the datasheet. A scenario built on it shows what the firmware does with the flag, not that a chip sets it.
+- The board speaks in jack levels. Each jack reaches its pin through an inverting stage, so `pulseClockIn()` is a rising edge at the jack and a falling one at the pin. `clockIn.rises` has the cycle of every jack edge, to time a step against.
+- A step begins between one and two ticks after its clock edge: taken at the next tick, applied at the one after. Assert that as a range. For a tight tolerance on a period, use a clock whose period is a whole number of milliseconds, so that every edge falls at the same point in its tick.
+- A scenario that needs to know which step played, on an image with no log, reads the voltage the DAC held as each gate rose (`stepsPlayed()` in `transport.test.js`). Use a panel with no rests and distinct notes for it.
+- `pressRunButton()` runs the chip for as long as the button is held, so it returns after the release. A press counts 20 ms after the contact settles; hold it for longer than that plus the bounce.
+- A transport scenario that should hold for both images goes in `transport.test.js`, inside the loop over the two.
 - The board sorts the log: `serial.lines` holds the step lines, which scenarios count and time, and `serial.notices` every other line (start-up, calibration, errors). A new kind of line goes to the notices unless it begins `Step `.
 - A power cycle is a second board created with the first one's `eepromBytes()`. A scenario with no log (the release image, or calibration mode in either) runs for a time with `runForMs()`, not until a line.
 - A calibration scenario that should hold for both images goes in `calibration.test.js`, inside the loop over the two.
@@ -39,4 +45,4 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 
 ## Limits
 
-The chip and parts are models. Nothing analog is modelled, parts have no setup or hold limits, and only the GPIO, ADC, USART, Timer/Counter2 (with its compare match interrupt), SPI and EEPROM models have been exercised so far. The EEPROM model keeps the four-cycle rule for starting a write but never wears or fails, and the reset flags register holds only what the scenario put there. SPI clock edges are not modelled at all, and an output pin is a logic level with no voltage, rise time or load. A scenario passing is not proof on hardware; say so when reporting.
+The chip and parts are models. Nothing analog is modelled, parts have no setup or hold limits, and only the GPIO, ADC, USART, Timer/Counter2 (with its compare match interrupt), SPI and EEPROM models have been exercised so far. The two edge flags are this project's own model, with no synchroniser, noise canceller or minimum pulse width, and a switch bounces only as scripted. The EEPROM model keeps the four-cycle rule for starting a write but never wears or fails, and the reset flags register holds only what the scenario put there. SPI clock edges are not modelled at all, and an output pin is a logic level with no voltage, rise time or load. A scenario passing is not proof on hardware; say so when reporting.

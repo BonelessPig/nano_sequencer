@@ -1,13 +1,13 @@
 # nano_sequencer roadmap
 
-Written 2026-10-10 from four research passes (existing sequencers, hardware emulation, the output-stage hardware, and Claude Code context cost) plus a working emulation spike, and updated the same day with the owner's decisions (section 2). The emulated board (`make sim`), phase 1 (the timebase), phase 2 (addressing, note mapping and the engine interface), the firmware of phase 3 (the gate and the clock output, as logic pins with no buffer stage yet), the firmware of phase 4 (the SPI driver with the shift registers moved onto it, the pitch CV through an MCP4822 DAC, and pitch calibration with the ideal table) and the firmware of phase 5 (calibration mode, the calibration record in the EEPROM, and the reset cause) are built; everything else here is still a plan.
+Written 2026-10-10 from four research passes (existing sequencers, hardware emulation, the output-stage hardware, and Claude Code context cost) plus a working emulation spike, and updated the same day with the owner's decisions (section 2). The emulated board (`make sim`), phase 1 (the timebase), phase 2 (addressing, note mapping and the engine interface), the firmware of phase 3 (the gate and the clock output, as logic pins with no buffer stage yet), the firmware of phase 4 (the SPI driver with the shift registers moved onto it, the pitch CV through an MCP4822 DAC, and pitch calibration with the ideal table) the firmware of phase 5 (calibration mode, the calibration record in the EEPROM, and the reset cause) and the firmware of phase 6 (the clock and reset inputs, the run button, the sync switch, and the external clock with a ratio) are built; everything else here is still a plan.
 
 Each claim that matters is marked **verified** (read from a datasheet or primary manual, or run on this machine), or **unverified** (from memory or a secondary source; check before relying on it). The full list of unverified items is in [section 8](#8-not-verified).
 
 ## 1. Summary
 
 - **Where it goes.** A 16-step CV/gate sequencer with one pitch output, gate, clock in and out, reset, and a set of selectable sequencing engines (plain, Metropolis-style, Klee-style, random) that all reinterpret the same 64 panel switches. Every engine is pure core logic, so it is cheap to add and fully host-testable.
-- **What limits it.** Pins and the single USART, not flash or RAM (after phase 5 the debug image uses 4974 of 30720 bytes of flash and 587 of 2048 bytes of RAM).
+- **What limits it.** Pins and the single USART, not flash or RAM (after phase 6 the debug image uses 6194 of 30720 bytes of flash and 624 of 2048 bytes of RAM).
 - **Emulation.** The real firmware image already runs under an emulator on this machine (section 5). That makes most of the roadmap testable without the board, including parts you have not bought.
 - **A separate emulation project.** The gap is real but shallow: nothing open, local and headless covers AVR plus other MCU families with a board file and waveform assertions. It is a thin layer over existing CPU cores, not a new emulator. Recommendation: build it inside this repo with a clean boundary and extract it when a second project needs it.
 - **Claude context.** Splitting CLAUDE.md into a short root file, per-folder files and skills cuts the always-loaded instructions by an estimated 55 to 60 percent, and new per-module guidance then costs nothing until that module is touched (section 6).
@@ -36,11 +36,11 @@ Taken while building phase 1, as the simplest thing that met the plan. Each is o
 | 11 | Input scan rate | **Every 8 ticks (125 Hz)**, panel and pot together, scheduled by the app. |
 | 12 | Log when the queue is full | **Drop the whole message.** The queue is 128 bytes, enough for the two longest messages. Failed reads are logged once per step, not once per scan. |
 | 13 | Steps owed after a stall | **Begin one per tick until caught up**, none skipped. |
-| 14 | Start-up | **The first tick begins step 0**, so that step is one tick short. To revisit with `transport` in phase 6. |
+| 14 | Start-up | **The first tick begins step 0.** It used to count towards step 1 as well, which made step 0 a tick short; phase 6 put that right (decision 71). |
 
 Taken while building phase 2, on the same basis. Each is contained in one core module.
 
-**To reconfirm.** Decisions 15 to 24 were accepted on 2026-10-10 as provisional, to keep the work moving, and have not been reviewed one by one. Go through them again before any of these controls gets hardware (phase 6 for reset, phase 7 for the rest), since that is when they become audible and when changing them stops being free. Remove this note once each is confirmed or changed.
+**To reconfirm.** Decisions 15 to 24 were accepted on 2026-10-10 as provisional, to keep the work moving, and have not been reviewed one by one. Go through them again before any of these controls gets hardware (phase 7), since that is when they become audible and when changing them stops being free. Reset got its input in phase 6: the owner was asked whether to keep decisions 19 and 34 and did not choose, so both were kept as they stood and are still provisional (decision 63). Remove this note once each is confirmed or changed.
 
 | # | Decision | Outcome |
 |---|---|---|
@@ -48,7 +48,7 @@ Taken while building phase 2, on the same basis. Each is contained in one core m
 | 16 | Pendulum | **Each end is played once per cycle** (0 1 2 3 2 1), not twice. Whether the A-154 does the same is not verified. |
 | 17 | Addressing state | **A count of steps played in the cycle**, not a step number. Reset and end-of-cycle are then the same in every direction. A change of direction or range mid-cycle jumps to the matching point of the new cycle and does not turn round in place (ARCHITECTURE open item 7). |
 | 18 | One-shot | **One cycle, then nothing begins; the clock keeps running.** A reset, or going back to looping, starts the pattern again on the beat. |
-| 19 | Reset | **Deferred, as on the A-154**: the pattern goes back to its start and the first step plays at the next step boundary. The clock is not moved, and holding reset repeats the first step. A reset that also restarts the clock belongs with `transport` in phase 6. |
+| 19 | Reset | **Deferred, as on the A-154**: the pattern goes back to its start and the first step plays at the next step boundary. The clock is not moved, and holding reset repeats the first step. Kept in phase 6 (decision 63): it is the run button that restarts the clock. |
 | 20 | Scales and root | **Chromatic, major, natural minor, major and minor pentatonic**, root 0 to 11 semitones. A pitch is 0 to 45 semitones above the lowest. A scale is one table row to add. **No octave control yet**: its range depends on the DAC (decision 8). |
 | 21 | Controls with no hardware | **Fixed in `app.c`**: all 16 steps, forward, looping, chromatic, root 0, never reset. They are ordinary core inputs, so giving them switches or pots later touches the app and an adapter, not the core. |
 | 22 | Choosing between engines | **Not built yet.** `engine.h` sets the two-function pattern and the shared types; `seq.c` calls the plain engine directly. The selector comes with the second engine in phase 7, as a `switch`, not a table of function pointers. |
@@ -73,7 +73,7 @@ Taken while building phase 3. Provisional like the ones above, and to reconfirm 
 | 31 | Ties | **A length of a whole step (24) or more ties consecutive notes** into one gate; a rest ends it. It falls out of the arithmetic, with no tie flag. A tie or a length for one step alone comes with the engines of phase 7 (the M185-style gate modes), through `engine_step_t`. |
 | 32 | Clock output | **One pulse per step, high for the first half** (12 pulses), rising as the step begins. It follows the clock, not the pattern: it runs through rests and after a one-shot has finished. A step being a sixteenth note, that is 4 pulses per quarter note. |
 | 33 | A step that cannot be read | **No gate.** The step still takes its turn and its clock pulse. |
-| 34 | Reset and a held note | **A reset does not cut the gate short**; the note in progress plays out. To revisit with `transport` in phase 6. |
+| 34 | Reset and a held note | **A reset does not cut the gate short**; the note in progress plays out. Kept in phase 6 (decision 63); stopping with the run button does cut it. |
 | 35 | A step begun late | **Its gate is counted from when the step was due**, so the note still ends on time, and does not open at all if that time has passed. The clock output stays low while steps are owed. |
 | 36 | Applying the outputs | **Both pins are written on every tick, before the log**: gate, then clock. Active high, low from reset. If the buffer stage inverts, the inversion goes in the two pin adapters. |
 | 37 | Ports | **Two, `gate_output_port` and `clock_output_port`**, one function each, on the pattern of the input ports, in place of the single `gate_port` section 4 names. The pins are set up in `register_init.c`. |
@@ -110,6 +110,25 @@ Taken while building phase 5. The first was the owner's choice on 2026-10-10, be
 | 58 | The start-up log line | **`Reset = 2 Cal = 1`, kept to 19 characters** so that it has gone before the first step's line is queued. It still pushes that first line back from 2.3 ms to 2.6 ms after reset. |
 | 59 | Where the mode sits in the core | **A module of its own, `cal`, beside `seq`.** The app calls `cal_tick()` first and `seq_tick()` only when it says the mode is not active, so the sequencer is untouched. The core now has two functions the app calls each tick, not one. |
 
+Taken while building phase 6. The first two were the owner's on 2026-10-10. 62 and 63 were put to the owner with a recommendation and not answered, so the recommendation was built; go through those two first. The rest are provisional like the ones above. 64 to 67 and 72 are the ones to check with a real clock patched in.
+
+| # | Decision | Outcome |
+|---|---|---|
+| 60 | Choosing the clock | **A sync switch**, the owner's idea, chosen over the first edge taking over (with or without a timeout) and over a switched jack. Off: the internal clock, with the clock input ignored even if something is plugged in. On: the external clock, from the first tick; with no edges, nothing plays. The owner may take the switch out again later. Without it the choice would be made by the edges themselves, which is a change inside `transport.c`. |
+| 61 | The tempo pot on the external clock | **A ratio to that clock**, so that the pot is never idle: its range in seven parts gives a step to every 4, 3 or 2 edges, a step an edge in the middle, and 2, 3 or 4 steps an edge. Gate length and swing were the other uses considered; a ratio keeps the knob a speed control in both positions of the switch. No hysteresis at the six boundaries. |
+| 62 | The run button | **A toggle. The board powers on running.** Stop cuts the gate at once and holds the clock output low; the pitch CV holds. Start goes back to the first step, which begins at once on the internal clock, with the clock restarted so that the step is a whole one. The alternative was a pause that carries on where it stopped. |
+| 63 | The reset input | **Deferred, as decisions 19 and 34 had it**: the first step plays at the next step boundary, which on the external clock is the next sync edge, the clock is not moved, and a held note plays out. Ignored while stopped. The alternative was an immediate restart on the internal clock. |
+| 64 | An external edge | **One edge is one step at a ratio of one**, a sixteenth note. Every divide-th edge is a sync edge, and exactly 24 × multiply pulses are given from one to the next, spaced by the time between the last two. A late edge is waited for one pulse short, so no step begins ahead of its edge. An early one gets all that is left at once, and any steps that were still owed begin on the ticks that follow: none is dropped, so the pattern cannot slip against the clock. An edge that comes in under half the last gap finds the gate and the clock output still high from the step before: its step is held back one tick, with both low, so that it has a rising edge of its own on each. The owner chose that on 2026-10-10 over leaving the two steps run together; the cost is that such a step is a millisecond later than the rest. |
+| 65 | A step with no spacing to go by | **Taken to be 20 ms long, with the multiply as one**: the first after the clock starts, and the first after a gap of 4 s or more. Its gate and clock pulse are 10 ms whatever the tempo. The 20 and the 4000 are two constants in `clock.c`. |
+| 66 | A change of clock | **Does not restart the pattern.** Going to the external clock, the step in progress is wound up within 20 ms and the next waits for an edge. Going back, the internal clock carries on from there. |
+| 67 | How an edge is seen | **A flag the MCU latches, polled once a tick, with its interrupt off**: Timer/Counter1's capture flag for the clock, with the noise canceller on, and external interrupt 0's flag for reset. So a pulse of any width is caught, a step begins 1 to 2 ms after its edge, and spacing is known to the millisecond. The capture's own timestamp is not read; phase 11 could. **Not verified on hardware** (section 8). |
+| 68 | The input stage | **Assumed to invert**: a transistor pulling the pin low while the jack is high, with the MCU's own pull-up. The firmware therefore looks for a falling edge at the pin. Not designed in detail or built; if it does not invert, it is one bit in each of the two init functions. The sync switch and the run button close to ground, also on the internal pull-ups. |
+| 69 | Debounce | **20 ms, in the core**, for the button and the switch alike, from readings taken every tick. The first reading is taken as it stands, so a switch on at power-on is on from the first tick, and a button held down at power-on is not a press. |
+| 70 | Ports | **Four, one function each**: `clock_input_port` and `reset_input_port` report and forget an edge, `run_input_port` and `sync_input_port` give a level as read. They are read on every tick, not on the 8 ms scan. |
+| 71 | The first step | **A whole step**: the tick that starts the pattern does not count towards its second step, after reset and after the run button alike. This closes decision 14 and ARCHITECTURE open item 4. |
+| 72 | Pins | **PB0 clock in, PD2 reset in, PD3 the sync switch, PD7 the run button**, as section 7 proposed, but for PD3, which was to be a run input or a spare. PD6 is the one free pin on port D. |
+| 73 | The log line | **`Transport = 2`**, sent on a change: 0 stopped, 1 the internal clock, 2 the external. Nothing is sent at power-on unless the switch is on. |
+
 ## 3. What the survey found
 
 Full feature matrix and sources are in the research notes summarised here. Bindubba is a Nonlinearcircuits 4x4 sequencer addressed by two independent clocks, not a touch-keyboard panel.
@@ -140,8 +159,8 @@ The ports-and-adapters rules stay as they are. Three additions:
 
   | Module | Purpose |
   |---|---|
-  | `clock` | Elapsed ticks to musical pulses (internal tempo or external edges) |
-  | `transport` | Stopped, running, external sync, as an explicit state machine |
+  | `clock` | Elapsed ticks to musical pulses (internal tempo or external edges). Both built; decisions 64 and 65 |
+  | `transport` | Stopped, running, external sync, as an explicit state machine (built; decisions 60 and 62) |
   | `address` | Next step: direction, first and last step, one-shot, reset |
   | `engine_*` | One per engine: plain, 8x2, Klee. Same interface |
   | `note_map` | Scale degree, root and octave to a semitone |
@@ -149,11 +168,11 @@ The ports-and-adapters rules stay as they are. Three additions:
   | `cal` | Calibration mode: the panel and the pot used to set that table (built; decisions 47 to 52) |
   | `cal_record` | The table's stored form, with a version and a checksum (built; decision 53) |
   | `gate` | Gate length, ties, ratchets, in pulses |
-  | `debounce` | Buttons |
+  | `debounce` | Buttons and switches (built; decision 69) |
   | `prng` | One LFSR shared by every random feature |
   | `errlog` | Crash record format |
 
-- **Ports are named for what the core needs**, not for the bus: `timebase_port`, `gate_output_port` and `clock_output_port` (built; decision 37), `cv_output_port` (built; decision 39), `nv_port` and `reset_cause_port` (built; decisions 55 and 57), `clock_in_port`, `led_port`, `watchdog_port`. No `spi_port`.
+- **Ports are named for what the core needs**, not for the bus: `timebase_port`, `gate_output_port` and `clock_output_port` (built; decision 37), `cv_output_port` (built; decision 39), `nv_port` and `reset_cause_port` (built; decisions 55 and 57), `clock_input_port`, `reset_input_port`, `run_input_port` and `sync_input_port` (built; decision 70), `led_port`, `watchdog_port`. No `spi_port`.
 - **`adapters/target/` gets two levels**: peripheral drivers (SPI, Timer2, EEPROM) with headers private to that folder, and device adapters above them that implement ports (the DAC adapter implements `cv_port`).
 
 ### The tick
@@ -211,12 +230,12 @@ One lesson came with it. The first shift register model latched on the falling e
 
 ### The harness (`tools/sim/`, `make sim`)
 
-In place as of 2026-10-10: `lib/machine.js` (the chip), `lib/pin_recorder.js`, `parts/hc165.js`, `parts/mcp4822.js`, `boards/nano_sequencer.js` (wiring, panel, pot, the DAC's frames, gate and clock recorders, serial capture, the EEPROM's contents) and forty-five scenarios across the two images. ARCHITECTURE.md describes it.
+In place as of 2026-10-10: `lib/machine.js` (the chip), `lib/pin_recorder.js`, `lib/edge_flag.js`, `parts/hc165.js`, `parts/mcp4822.js`, `parts/clock_source.js`, `parts/switch.js`, `boards/nano_sequencer.js` (wiring, panel, pot, the DAC's frames, gate and clock recorders, the two input jacks, the sync switch and run button, serial capture, the EEPROM's contents) and seventy-two scenarios across the two images. ARCHITECTURE.md describes it.
 
 Still to add, each when a phase needs it:
 
-- **Timers and interrupts in `lib/machine.js`**: Timer/Counter2 added in phase 1, the SPI with the shift register move, the EEPROM in phase 5. Timer1 when phase 6 needs it.
-- **More parts**: clock source and button (phase 6), 74HC595 (phase 8). The MCP4822 was added in phase 4. SPI parts hook the byte transfer, not the pins: the board hands every transfer to every part, and a part with a chip select takes it only while selected.
+- **Timers and interrupts in `lib/machine.js`**: Timer/Counter2 added in phase 1, the SPI with the shift register move, the EEPROM in phase 5, Timer/Counter1 in phase 6. Phase 6 also needed something avr8js does not have: a flag that latches an edge with its interrupt off, for the input capture and for an external interrupt. `lib/edge_flag.js` supplies it, written from the datasheet, so it cannot settle whether a real chip behaves that way (section 8).
+- **More parts**: 74HC595 (phase 8). The MCP4822 was added in phase 4, and the clock source and the switch (which is also the button) in phase 6. SPI parts hook the byte transfer, not the pins: the board hands every transfer to every part, and a part with a chip select takes it only while selected.
 - **A pin recorder**: added in phase 3, as a list of edges and of completed pulses per pin; the scenarios do their own arithmetic on them. Helpers such as `count_rises(pin, t0, t1)` can be added when a scenario wants one. The 74HC165 model still counts its own pulses.
 - **VCD dump on failure**, viewable in GTKWave or PulseView.
 - **A board file as plain data**, once there is a second board.
@@ -282,12 +301,12 @@ Each phase is one or more small commits, leaves both builds, the tests, coverage
 | 3. Gate and clock out (firmware **done**, not yet run on the board; the buffer stage is still to build) | Core `gate` (length in 1/24 step, ties), `gate_output_port`, `clock_output_port` | GPIO PD4, PD5 | Buffer IC, resistors, jacks | Sim: pulse widths and counts. Board: logic analyser or LED |
 | 4. SPI and pitch CV (firmware **done**, not yet run on the board; the DAC is still to buy and wire, and the buffer to build) | SPI driver and the 74HC165 chain on SPI (ahead of phase 3; the board needs rewiring first); `cv_output_port` and its MCP4822 adapter; `pitch_cal` with the ideal table. First point it plays an oscillator | SPI | MCP4822, op-amp buffer, 1 kΩ on MISO | Sim: exact DAC frames, DAC written before gate rises. Board: tuning by ear and meter |
 | 5. Calibration and storage (firmware **done**, not yet run on the board, which has no DAC yet) | Calibration mode on the panel switches and the tempo pot (core `cal`), `nv_port` and its non-blocking EEPROM adapter, the record with version and checksum (core `cal_record`), `reset_cause_port` | EEPROM | Multimeter | Host: record format, the mode, the adapter. Sim: EEPROM contents, and a calibration stored on one power-up played on the next. Board: measured octaves |
-| 6. Clock, reset and run in | One external edge per step, reset, `transport`, `debounce` | Timer1 capture flag and INT0 flag, polled | Two transistor input stages, button, jacks | Sim: scripted clock source. Board |
+| 6. Clock, reset and run in (firmware **done**, not yet run on the board; the input stages are still to design and build, and the button, switch and jacks to wire) | One external edge per step with a ratio set by the pot, reset, a run button and a sync switch, `transport`, `debounce` | Timer1 capture flag and INT0 flag, polled | Two transistor input stages, button, switch, jacks | Host: the clock, the transport, the debounce and the four adapters. Sim: a scripted clock source, reset pulses, a bouncing button. Board |
 | 7. Engines | 8x2 row modes (per-step time, then pulse count and gate mode), Klee (register, sums, buses, merge, invert, load), `prng` with Turing lock and gate probability, Cartesian and Euclidean | More ADC channels | Ninth 74HC165, pots | Host, mostly. Sim for gate timing |
 | 8. Step LEDs | 16 LEDs in the same SPI frame as the switch read | None | Two 74HC595s, LEDs | Sim: 595 model. Board |
 | 9. Watchdog and crash log | Watchdog kick, `errlog` ring in EEPROM, `.noinit` breadcrumb. Needs decision 3 | Watchdog | None | Sim: watchdog reset and recovery. Board |
 | 10. MIDI | `CONFIG=midi`: clock and notes out, then in | USART at 31250 baud (exact), RX interrupt | DIN sockets, optocoupler | Host: parser and generator. Sim: UART bytes |
-| 11. Later | 24 PPQN sync with interpolation, second DAC channel, slide, swing and ratchets if not already in | Timer1 timestamps | — | — |
+| 11. Later | 24 PPQN sync, and timing an edge more finely than a tick (the fitting of steps between edges was built in phase 6); second DAC channel, slide, swing and ratchets if not already in | Timer1 timestamps | — | — |
 
 Notes on ordering:
 
@@ -297,13 +316,13 @@ Notes on ordering:
 
 ### Proposed pin assignment (from phase 4)
 
-In use today: PB1 to PB5 as below (the 74HC595 not yet), PD4 and PD5, PD1 in the debug build, and ADC6. The rest is still a proposal.
+In use today: PB0 to PB5 as below (the 74HC595 not yet), PD2 to PD5, PD7, PD1 in the debug build, and ADC6. The rest is still a proposal.
 
 | Pin | Use | Pin | Use |
 |---|---|---|---|
 | PD0, PD1 | UART (log or MIDI) | PB0 (ICP1) | Clock in |
 | PD2 (INT0) | Reset in | PB1 | 74HC165 load and 74HC595 latch |
-| PD3 (INT1) | Run in or spare | PB2 (SS) | DAC chip select |
+| PD3 (INT1) | Sync switch (decision 72) | PB2 (SS) | DAC chip select |
 | PD4 | Gate out | PB3 (MOSI) | DAC and 595 data |
 | PD5 | Clock out | PB4 (MISO) | 74HC165 data, through 1 kΩ |
 | PD6 | Accent or second gate | PB5 (SCK) | SPI clock (on-board LED flickers) |
@@ -319,7 +338,9 @@ Check these before the phase that depends on them.
 
 - **Register bit positions** inside the watchdog control register, and the OCR1A address. Addresses, prescaler codes and vector numbers were read from the datasheet; bit positions were not. (Phase 9) The EEPROM ones in use (EERE, EEPE, EEMPE, and the four addresses) and the address of MCUSR with its four reset flags are now **verified** against the toolchain's `iom328p.h`, and the EEPROM ones by the emulator storing and reading back a record through them. The SPI ones in use (SPE, MSTR, SPR0, SPIF, and the three addresses) are now **verified** against the toolchain's `iom328p.h` and by the emulator running transfers at 1 MHz from them. The Timer2 ones used in phase 1 are now **verified** against the toolchain's own `iom328p.h` and by the emulator producing a 1 kHz tick from them. That header ships with the toolchain and is a quick check for the rest.
 - **`__vector_7` as the Timer2 compare A symbol**: now **verified**. It links, the vector table entry jumps to the handler, and the handler runs on the emulator.
-- **Edge flags latching with their interrupts disabled** (for polled clock and reset inputs). (Phase 6)
+- **Edge flags latching with their interrupts disabled** (for the polled clock and reset inputs). Still not verified, and now built on: the firmware of phase 6 polls ICF1 and INTF0 with their interrupts off. The datasheet's wording says each flag is set by the edge and the interrupt taken only if it is enabled, which is how these parts are generally understood to behave, but that is from memory and has not been tried. The emulator is no evidence here, because avr8js does not model it and the model in `lib/edge_flag.js` was written for this project. Also from memory: that the input capture works with nothing more set up than `clock_input_init()` does (the timer is left running to be safe), and the bit positions and addresses used, though those were checked against the toolchain's `iom328p.h` (ICNC1, ICES1, CS11, ICF1, ISC01, INTF0; TCCR1A, TCCR1B, TIMSK1, TIFR1, EICRA, EIMSK, EIFR). See ARCHITECTURE.md open item 12 for the order to check things in. (Phase 6)
+- **The input stage for the two jacks**: not designed. The firmware assumes it inverts. The MCU's pull-up is 20 to 50 kΩ from memory of the datasheet. (Phase 6)
+- **The clock, reset, run button and sync switch on the board**: nothing has been tried. The 20 ms debounce, the seven-part ratio with no hysteresis, the 1 to 2 ms from an edge to its step, and reset arriving with or just after its clock edge are the things to look at. (Phase 6)
 - **SPI mode for the 74HC165 alongside the DAC**, and one pin serving as both 165 load and 595 latch. Bench-check. (Phases 4, 8) The firmware now uses mode 0 for both the 165 and the DAC (decision 25); the first board run after rewiring is that bench check. Read a panel with a single switch on and confirm it lands on the right step and bit.
 - **The MCP4822 details the DAC adapter is built on**: the frame layout (bit 15 channel, bit 13 gain with 0 meaning 2x, bit 12 output enable with 1 meaning on, then 12 data bits), the PDIP-8 pinout in ARCHITECTURE.md, how a frame of other than 16 clocks is treated, the 4.5 µs settling time, and what the output does between power-on and the first write. Written from memory of DS20002249B, and now **verified** against it, with two things to add. A frame cut short of 16 clocks is ignored, as assumed, but one that runs over is not: the first 16 are taken and the rest ignored (the firmware never sends one; the emulated part now does the same). And from power-on until the first write the output is off, at about 500 kΩ, not at 0 V. The same reading confirmed that the part takes SPI mode 0, clocking data in on the rising edge, up to 20 MHz. The 74HC165's DIP-16 pin numbers in `docs/SCHEMATIC.html` are **verified** against TI's SCLS116H, which also gives a minimum load pulse of 16 ns at 4.5 V, against the 125 ns sent. A meter on the output is still the check of the gain and enable bits on the board. (Phase 4)
 - **The pitch CV on the board**: nothing has been measured. See ARCHITECTURE.md open item 10 for the order to check things in. (Phase 4)

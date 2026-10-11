@@ -8,12 +8,20 @@
  * the pot, run the firmware, and read back what it did. Nothing is wired to
  * Timer/Counter2; the firmware uses it for its 1 kHz tick. The chip's own
  * EEPROM holds the pitch calibration record, from address 0.
+ *
+ * Four inputs, each with the chip's pull-up holding its pin high. The clock
+ * input jack reaches PB0 and the reset input jack PD2 through a transistor
+ * each, which pulls the pin low while the jack is high. The sync switch is
+ * between PD3 and ground and the run button between PD7 and ground, so each
+ * reads low while closed.
  */
 const path = require('node:path');
 const { createAtmega328p } = require('../lib/machine');
 const { attachPinRecorder } = require('../lib/pin_recorder');
+const { attachClockSource } = require('../parts/clock_source');
 const { attachHc165Chain } = require('../parts/hc165');
 const { attachMcp4822 } = require('../parts/mcp4822');
+const { attachSwitch } = require('../parts/switch');
 
 const CLOCK_HZ = 16000000;
 const STEP_COUNT = 16;
@@ -25,6 +33,8 @@ const SHIFT_REG_LOAD_PIN = 1; // On port B
 const DAC_SELECT_PIN = 2;     // On port B
 const GATE_PIN = 4;           // On port D
 const CLOCK_OUT_PIN = 5;      // On port D
+const SYNC_SWITCH_PIN = 3;    // On port D
+const RUN_BUTTON_PIN = 7;     // On port D
 const MCUSR = 0x54;           // Reset flags register, data address
 const STEP_LINE_PREFIX = 'Step ';
 const BUILD_DIR = path.resolve(__dirname, '..', '..', '..', 'build');
@@ -71,6 +81,25 @@ function createBoard(config, options = {}) {
     const dac = attachMcp4822(machine.cpu, machine.portB, DAC_SELECT_PIN);
     const gate = attachPinRecorder(machine.cpu, machine.portD, GATE_PIN);
     const clockOut = attachPinRecorder(machine.cpu, machine.portD, CLOCK_OUT_PIN);
+
+    // The two jacks, each through its inverting input stage, and whatever
+    // is plugged into them: a clock source, and a source of reset pulses
+    const clockIn = attachClockSource(
+        machine.cpu, (high) => machine.inputCapture1.setPin(!high));
+    const resetIn = attachClockSource(
+        machine.cpu, (high) => machine.externalInt0.setPin(!high));
+
+    // The two panel controls, each closing its pin to ground
+    const syncSwitch = attachSwitch(
+        machine.cpu, (closed) => machine.portD.setPin(SYNC_SWITCH_PIN, !closed));
+    const runButton = attachSwitch(
+        machine.cpu, (closed) => machine.portD.setPin(RUN_BUTTON_PIN, !closed));
+
+    // Nothing plugged in, the switch off and the button up: every pin high
+    machine.inputCapture1.setPin(true);
+    machine.externalInt0.setPin(true);
+    machine.portD.setPin(SYNC_SWITCH_PIN, true);
+    machine.portD.setPin(RUN_BUTTON_PIN, true);
 
     // A recorder's completed pulses, in milliseconds of chip time
     function pulsesMs(recorder) {
@@ -124,6 +153,52 @@ function createBoard(config, options = {}) {
         cvIgnoredFrames: dac.ignored,
         gate,
         clockOut,
+        clockIn,
+        resetIn,
+        syncSwitch,
+        runButton,
+
+        /**
+         * Starts a clock on the clock input jack: the first rising edge
+         * now, then one every periodMs, each high for half the period.
+         */
+        startClockIn(periodMs) {
+            clockIn.start(machine.msToCycles(periodMs), machine.msToCycles(periodMs / 2));
+        },
+
+        /** Stops the clock on the clock input jack. */
+        stopClockIn() {
+            clockIn.stop();
+        },
+
+        /** One pulse on the clock input jack, high for widthMs (0: no time). */
+        pulseClockIn(widthMs = 0) {
+            clockIn.pulse(machine.msToCycles(widthMs));
+        },
+
+        /** One pulse on the reset input jack, high for widthMs (0: no time). */
+        pulseResetIn(widthMs = 0) {
+            resetIn.pulse(machine.msToCycles(widthMs));
+        },
+
+        /**
+         * Presses the run button, holds it for holdMs of chip time and lets
+         * go, the contact bouncing each way for bounceMs first (0: cleanly).
+         */
+        pressRunButton(holdMs, bounceMs = 0) {
+            const bounces = 4;
+            const flipCycles = machine.msToCycles(bounceMs / (bounces * 2));
+            const end = machine.cpu.cycles + machine.msToCycles(holdMs);
+
+            runButton.set(true, flipCycles, bounceMs > 0 ? bounces : 0);
+            machine.runUntil(() => machine.cpu.cycles >= end, holdMs + 1);
+            runButton.set(false, flipCycles, bounceMs > 0 ? bounces : 0);
+        },
+
+        /** Sets the sync switch on (the external clock) or off. */
+        setSyncSwitch(on) {
+            syncSwitch.set(on);
+        },
 
         /** Completed gate pulses: when each rose and how long it was high. */
         gatePulsesMs() {

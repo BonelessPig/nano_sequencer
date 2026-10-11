@@ -1,7 +1,7 @@
 /*
  * atmega328p_regs.ld - where each register declared in atmega328p_regs.h and
- * the per-peripheral headers beside it (USART0, Timer/Counter2, SPI, EEPROM)
- * lives.
+ * the per-peripheral headers beside it (USART0, Timer/Counter1,
+ * Timer/Counter2, SPI, EEPROM, external interrupts) lives.
  *
  * The Makefile passes this file to the linker alongside the object files. Each
  * line gives a register name its data-space address from the ATmega328P
@@ -52,6 +52,17 @@ EEARH = 0x42;
 /* ---- CPU ---- */
 MCUSR = 0x54;
 SREG  = 0x5F;
+
+/* ---- External interrupts ---- */
+EIFR  = 0x3C;
+EIMSK = 0x3D;
+EICRA = 0x69;
+
+/* ---- Timer/Counter1 ---- */
+TIFR1  = 0x36;
+TIMSK1 = 0x6F;
+TCCR1A = 0x80;
+TCCR1B = 0x81;
 
 /* ---- Timer/Counter2 ---- */
 TIMSK2 = 0x70;

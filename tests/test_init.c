@@ -1,7 +1,7 @@
 /**
  * @file   test_init.c
  * @brief  Host tests for the target platform bring-up (adapters/target/init.c).
- *         The four functions it calls are replaced by stubs defined here, so
+ *         The six functions it calls are replaced by stubs defined here, so
  *         the order of the calls and the handling of each failure can be checked.
  * @author BonelessPig
  *
@@ -22,6 +22,8 @@ static unsigned int  g_serial_call     = NOT_CALLED; // Position of the logger_i
 static unsigned int  g_register_call   = NOT_CALLED; // Position of the register_init call, from 1
 static unsigned int  g_spi_call        = NOT_CALLED; // Position of the spi_init call, from 1
 static unsigned int  g_timebase_call   = NOT_CALLED; // Position of the timebase_init call, from 1
+static unsigned int  g_clock_in_call   = NOT_CALLED; // Position of the clock_input_init call
+static unsigned int  g_reset_in_call   = NOT_CALLED; // Position of the reset_input_init call
 
 port_status_t logger_init(log_level_t level)
 {
@@ -58,6 +60,22 @@ void timebase_init(void)
 
 
 
+void clock_input_init(void)
+{
+    g_call_count++;
+    g_clock_in_call = g_call_count;
+}
+
+
+
+void reset_input_init(void)
+{
+    g_call_count++;
+    g_reset_in_call = g_call_count;
+}
+
+
+
 /**
  * @brief Sets what the two stubs that can fail return and forgets any earlier calls.
  */
@@ -71,11 +89,13 @@ static void start_stubs(port_status_t serial_status, port_status_t register_stat
     g_register_call   = NOT_CALLED;
     g_spi_call        = NOT_CALLED;
     g_timebase_call   = NOT_CALLED;
+    g_clock_in_call   = NOT_CALLED;
+    g_reset_in_call   = NOT_CALLED;
 }
 
 
 
-static void test_success_brings_up_serial_registers_spi_then_timebase(void)
+static void test_success_brings_up_serial_registers_drivers_then_timebase(void)
 {
     start_stubs(STATUS_OK, STATUS_OK);
 
@@ -84,8 +104,10 @@ static void test_success_brings_up_serial_registers_spi_then_timebase(void)
     TEST_ASSERT_EQUAL(1, g_serial_call);
     TEST_ASSERT_EQUAL(2, g_register_call);
     TEST_ASSERT_EQUAL(3, g_spi_call);
-    TEST_ASSERT_EQUAL(4, g_timebase_call);
-    TEST_ASSERT_EQUAL(4, g_call_count);
+    TEST_ASSERT_EQUAL(4, g_clock_in_call);
+    TEST_ASSERT_EQUAL(5, g_reset_in_call);
+    TEST_ASSERT_EQUAL(6, g_timebase_call);
+    TEST_ASSERT_EQUAL(6, g_call_count);
 }
 
 
@@ -108,6 +130,8 @@ static void test_serial_failure_is_returned_and_stops_the_bring_up(void)
     TEST_ASSERT_EQUAL(1, g_serial_call);
     TEST_ASSERT_EQUAL(NOT_CALLED, g_register_call);
     TEST_ASSERT_EQUAL(NOT_CALLED, g_spi_call);
+    TEST_ASSERT_EQUAL(NOT_CALLED, g_clock_in_call);
+    TEST_ASSERT_EQUAL(NOT_CALLED, g_reset_in_call);
     TEST_ASSERT_EQUAL(NOT_CALLED, g_timebase_call); // Interrupts stay off
 }
 
@@ -127,7 +151,7 @@ static void test_register_failure_is_returned(void)
 
 int main(void)
 {
-    RUN_TEST(test_success_brings_up_serial_registers_spi_then_timebase);
+    RUN_TEST(test_success_brings_up_serial_registers_drivers_then_timebase);
     RUN_TEST(test_serial_is_started_at_debug_level);
     RUN_TEST(test_serial_failure_is_returned_and_stops_the_bring_up);
     RUN_TEST(test_register_failure_is_returned);

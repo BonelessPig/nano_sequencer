@@ -80,6 +80,17 @@ void log_cal_point(uint8_t point, uint16_t cv)
 
 
 /**
+ * @brief Discards a transport message (see log_port.h).
+ * @param mode ignored
+ */
+void log_transport(uint8_t mode)
+{
+    (void)mode;
+}
+
+
+
+/**
  * @brief Discards an error message (see log_port.h).
  * @param what ignored
  * @param status ignored

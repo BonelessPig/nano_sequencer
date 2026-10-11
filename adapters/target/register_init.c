@@ -33,6 +33,15 @@ port_status_t register_init(void)
     PORTD &= (uint8_t)~(BIT_4 | BIT_5);
     DDRD  |= (BIT_4 | BIT_5);
 
+    // Inputs with their pull-ups on. The clock input (PB0) and the reset
+    // input (PD2) are each pulled low by a transistor while their jack is
+    // high; the sync switch (PD3) and the run button (PD7) close to ground.
+    // clock_input.c, reset_input.c, sync_input.c and run_input.c read them
+    DDRB  &= (uint8_t)~BIT_0;
+    PORTB |= BIT_0;
+    DDRD  &= (uint8_t)~(BIT_2 | BIT_3 | BIT_7);
+    PORTD |= (BIT_2 | BIT_3 | BIT_7);
+
     // ADC Initialization
     ADCSRA = (uint8_t)((1U << ADEN) |   // Enable ADC
                        (1U << ADPS2) |  // Set ADC prescaler to 128 for 125kHz ADC clock with 16MHz system clock

@@ -21,6 +21,8 @@
 #define SCAN_PERIOD_TICKS (8U)    // How often the app re-reads its inputs
 #define CAL_TRIM_CENTRE   (512U)  // Tempo reading that trims nothing in calibration mode
 #define CAL_CONFIRM_TICKS (250U)  // The gate is low this long after a store
+#define SETTLE_TICKS      (20U)   // Debounce time of the run button and sync switch
+#define SYNC_RAW_ONE_TO_ONE (500U) // Tempo reading that is a step to an external edge
 
 // Step n holds note value 15 - n, so the step and the note are never the same
 // number. In the chromatic scale the app plays, that is pitch 14 - n, and
@@ -202,8 +204,8 @@ static void test_steps_are_logged_at_the_tempo_and_wrap(void)
     run_ticks(2U); // Step 0 begins on tick 1 and is logged on tick 2
     TEST_ASSERT_EQUAL(1, host_event_count());
 
-    // Step n begins on tick 100 * n and is logged on the tick after
-    run_ticks(TICKS_PER_STEP - 2U);
+    // Step n begins on tick 100 * n + 1 and is logged on the tick after
+    run_ticks(TICKS_PER_STEP - 1U);
     for (uint16_t step = 1U; step < step_count; step++)
     {
         TEST_ASSERT_EQUAL(step, host_event_count()); // Not yet, on the tick it begins
@@ -234,8 +236,8 @@ static void test_fastest_tempo_logs_19_steps_a_second(void)
     start_app();
     host_set_tempo(TEMPO_RAW_MAX, STATUS_OK);
 
-    // Step 0 on tick 1, step 19 on tick 1000, each logged a tick later
-    run_ticks(1000U);
+    // Step 0 on tick 1, step 19 on tick 1001, each logged a tick later
+    run_ticks(1001U);
     TEST_ASSERT_EQUAL(19, host_event_count());
     run_ticks(1U);
     TEST_ASSERT_EQUAL(20, host_event_count());
@@ -296,18 +298,19 @@ static void test_tick_reads_the_whole_chain(void)
 
 static void test_elapsed_ticks_reach_the_core(void)
 {
-    // Ten ticks at a time, a 100-tick step begins on every tenth pass
+    // Ten ticks at a time, a 100-tick step begins on every tenth pass. The
+    // time on the pass that starts the pattern is not counted
     start_app();
     host_set_elapsed_ticks(10U);
 
     app_run_once(); // Step 0 begins
     app_run_once(); // And is logged
     TEST_ASSERT_EQUAL(1, host_event_count());
-    for (unsigned int pass = 2U; pass < 10U; pass++)
+    for (unsigned int pass = 2U; pass < 11U; pass++)
     {
         app_run_once();
     }
-    TEST_ASSERT_EQUAL(1, host_event_count()); // Step 1 begins on the tenth pass
+    TEST_ASSERT_EQUAL(1, host_event_count()); // Step 1 begins on the eleventh pass
     app_run_once();
     TEST_ASSERT_EQUAL(2, host_event_count());
     expect_event(1U, HOST_EVENT_STEP_NOTE, 1U, 13U);
@@ -333,8 +336,8 @@ static void test_gate_opens_one_tick_after_its_step_begins_and_before_the_log(vo
     TEST_ASSERT_EQUAL(1, host_event_count());
     TEST_ASSERT_EQUAL(0, host_event_count_at_gate_rise());
 
-    // The same again for step 1, which begins on tick 100
-    run_ticks(TICKS_PER_STEP - 2U);
+    // The same again for step 1, which begins on tick 101
+    run_ticks(TICKS_PER_STEP - 1U);
     TEST_ASSERT_EQUAL(1, host_gate_rise_count());
     run_ticks(1U);
     TEST_ASSERT_EQUAL(2, host_gate_rise_count());
@@ -361,8 +364,8 @@ static void test_pitch_cv_is_in_place_before_the_gate_opens(void)
     TEST_ASSERT_EQUAL(1, host_gate_rise_count());
     TEST_ASSERT_EQUAL(1167, host_cv_millivolts_at_gate_rise());
 
-    // It holds after the gate closes, until step 1 begins on tick 100
-    run_ticks(TICKS_PER_STEP - 2U);
+    // It holds after the gate closes, until step 1 begins on tick 101
+    run_ticks(TICKS_PER_STEP - 1U);
     TEST_ASSERT(!host_gate_level());
     TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
     run_ticks(1U);
@@ -436,7 +439,7 @@ static void test_cv_write_failure_is_logged_once_per_step_after_the_note(void)
     TEST_ASSERT_EQUAL(0, host_cv_millivolts());
     TEST_ASSERT(host_gate_level()); // The note still plays, at the old pitch
 
-    run_ticks(TICKS_PER_STEP - 2U);
+    run_ticks(TICKS_PER_STEP - 1U);
     TEST_ASSERT_EQUAL(2, host_event_count());
 
     // Once the writes work again, the next tick puts the pitch right
@@ -483,16 +486,16 @@ static void test_gate_is_held_for_half_a_step(void)
 {
     start_app();
 
-    // Step 0 begins on tick 1, a tick short: its gate is worked out as open
-    // on ticks 1 to 49 and applied on ticks 2 to 50
-    run_ticks(50U);
+    // Step 0 begins on tick 1: its gate is worked out as open on ticks 1 to
+    // 50 and applied on ticks 2 to 51
+    run_ticks(51U);
     TEST_ASSERT(host_gate_level());
     TEST_ASSERT(host_clock_output_level());
     run_ticks(1U);
     TEST_ASSERT(!host_gate_level());
     TEST_ASSERT(!host_clock_output_level());
 
-    // Step 1 begins on tick 100: high from tick 101 to tick 150
+    // Step 1 begins on tick 101: high from tick 102 to tick 151
     run_ticks(49U);
     TEST_ASSERT(!host_gate_level());
     run_ticks(1U);
@@ -610,7 +613,7 @@ static void test_tempo_read_failure_logs_error_and_keeps_the_tempo(void)
 
     // From the next scan on the tempo cannot be read
     host_set_tempo(0U, ERR_TIMEOUT);
-    run_ticks(TICKS_PER_STEP - 2U);
+    run_ticks(TICKS_PER_STEP - 1U);
     TEST_ASSERT_EQUAL(1, host_event_count());
 
     // Step 1 is still 100 ticks after step 0. Its note first, then the error
@@ -1039,6 +1042,144 @@ static void test_init_leaves_calibration_mode(void)
 
 
 
+static void test_the_run_button_stops_and_starts_the_pattern_and_is_logged(void)
+{
+    start_app();
+    run_ticks(10U);
+    TEST_ASSERT_EQUAL(1, host_event_count());
+    TEST_ASSERT(host_gate_level());
+
+    // The press counts on the twentieth tick and is applied on the next
+    host_set_run_button(true);
+    run_ticks(SETTLE_TICKS);
+    TEST_ASSERT(host_gate_level());
+    TEST_ASSERT_EQUAL(1, host_event_count());
+    run_ticks(1U);
+    TEST_ASSERT(!host_gate_level());
+    TEST_ASSERT(!host_clock_output_level());
+    TEST_ASSERT_EQUAL(2, host_event_count());
+    expect_event(1U, HOST_EVENT_TRANSPORT, (uint16_t)TRANSPORT_STOPPED, 0U);
+
+    // Stopped: nothing plays and nothing more is logged
+    host_set_run_button(false);
+    run_ticks(5U * TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(2, host_event_count());
+    TEST_ASSERT_EQUAL(1, host_gate_rise_count());
+    TEST_ASSERT_EQUAL(1, host_clock_output_rise_count());
+
+    // The next press starts the pattern from step 0: the transport is logged
+    // first, then the step
+    host_set_run_button(true);
+    run_ticks(SETTLE_TICKS + 1U);
+    TEST_ASSERT(host_gate_level());
+    TEST_ASSERT_EQUAL(4, host_event_count());
+    expect_event(2U, HOST_EVENT_TRANSPORT, (uint16_t)TRANSPORT_INTERNAL, 0U);
+    expect_event(3U, HOST_EVENT_STEP_NOTE, 0U, 14U);
+
+    // And step 1 follows a whole step later
+    host_set_run_button(false);
+    run_ticks(TICKS_PER_STEP - 1U);
+    TEST_ASSERT_EQUAL(4, host_event_count());
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(5, host_event_count());
+    expect_event(4U, HOST_EVENT_STEP_NOTE, 1U, 13U);
+}
+
+
+
+static void test_the_sync_switch_steps_the_pattern_from_the_clock_input(void)
+{
+    start_app();
+    host_set_tempo(SYNC_RAW_ONE_TO_ONE, STATUS_OK);
+    host_set_sync_switch(true);
+
+    // On from the first tick: the change is logged and no step begins
+    run_ticks(2U);
+    TEST_ASSERT_EQUAL(1, host_event_count());
+    expect_event(0U, HOST_EVENT_TRANSPORT, (uint16_t)TRANSPORT_EXTERNAL, 0U);
+    run_ticks(3U * TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(1, host_event_count());
+    TEST_ASSERT_EQUAL(0, host_clock_output_rise_count());
+
+    // An edge is taken on the next tick, whether or not it is a scan tick,
+    // and its step is applied on the one after
+    for (uint16_t step = 0U; step < 4U; step++)
+    {
+        host_pulse_clock_input();
+        run_ticks(1U);
+        TEST_ASSERT_EQUAL(step + 1U, host_event_count());
+        run_ticks(1U);
+        TEST_ASSERT_EQUAL(step + 2U, host_event_count());
+        expect_event((uint16_t)(step + 1U), HOST_EVENT_STEP_NOTE, step, (uint16_t)(14U - step));
+        TEST_ASSERT_EQUAL(step + 1U, host_gate_rise_count());
+
+        // One edge is one step, however long the wait for the next
+        run_ticks(35U + (step * 50U));
+        TEST_ASSERT_EQUAL(step + 2U, host_event_count());
+    }
+}
+
+
+
+static void test_the_reset_input_sends_the_pattern_back_to_its_start(void)
+{
+    start_app();
+    run_ticks(250U); // Steps 0 to 2 have begun
+    TEST_ASSERT_EQUAL(3, host_event_count());
+
+    // The pattern goes back, and the first step plays where step 3 would have
+    host_pulse_reset_input();
+    run_ticks(51U);
+    TEST_ASSERT_EQUAL(3, host_event_count());
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(4, host_event_count());
+    expect_event(3U, HOST_EVENT_STEP_NOTE, 0U, 14U);
+
+    // The edge is acted on once: step 1 follows
+    run_ticks(TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(5, host_event_count());
+    expect_event(4U, HOST_EVENT_STEP_NOTE, 1U, 13U);
+}
+
+
+
+static void test_init_starts_a_stopped_pattern_running_again(void)
+{
+    start_app();
+    run_ticks(1U);
+    host_set_run_button(true);
+    run_ticks(SETTLE_TICKS + 1U);
+    host_set_run_button(false);
+    run_ticks(TICKS_PER_STEP);
+    TEST_ASSERT(!host_gate_level());
+
+    // A fresh start: running, with no change of transport to report
+    start_app();
+    run_ticks(2U);
+    TEST_ASSERT(host_gate_level());
+    TEST_ASSERT_EQUAL(1, host_event_count());
+    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
+}
+
+
+
+static void test_calibration_mode_leaves_the_transport_alone(void)
+{
+    start_calibration(2U, CAL_TRIM_CENTRE);
+    host_set_sync_switch(true);
+    host_set_run_button(true);
+    host_pulse_clock_input();
+    host_pulse_reset_input();
+    run_ticks(3U * SETTLE_TICKS);
+
+    TEST_ASSERT_EQUAL(0, host_event_count());
+    TEST_ASSERT_EQUAL(2000, host_cv_millivolts());
+    TEST_ASSERT(host_gate_level());
+    TEST_ASSERT(!host_clock_output_level());
+}
+
+
+
 int main(void)
 {
     RUN_TEST(test_init_reports_the_reset_cause_and_no_calibration);
@@ -1088,5 +1229,10 @@ int main(void)
     RUN_TEST(test_failed_reads_are_reported_once_per_step_not_per_scan);
     RUN_TEST(test_init_resets_the_step_and_discards_pending_outputs);
     RUN_TEST(test_init_forgets_earlier_read_failures);
+    RUN_TEST(test_the_run_button_stops_and_starts_the_pattern_and_is_logged);
+    RUN_TEST(test_the_sync_switch_steps_the_pattern_from_the_clock_input);
+    RUN_TEST(test_the_reset_input_sends_the_pattern_back_to_its_start);
+    RUN_TEST(test_init_starts_a_stopped_pattern_running_again);
+    RUN_TEST(test_calibration_mode_leaves_the_transport_alone);
     return TEST_RESULT();
 }

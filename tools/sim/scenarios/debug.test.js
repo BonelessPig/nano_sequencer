@@ -17,7 +17,6 @@ const READING_150_BPM = 480;   // Exactly 100 ms a step
 const STEP_MS_150_BPM = 100;
 const READING_30_BPM = 0;      // The slowest tempo: 500 ms a step
 const STEP_MS_30_BPM = 500;
-const TICK_MS = 1;
 // A step's log line starts within this long of its tick boundary: the time
 // to queue the line, plus a panel and pot read if that tick has one
 const LOG_START_JITTER_MAX_MS = 0.5;
@@ -105,10 +104,10 @@ test('a step lasts 100 ms at 150 BPM', () => {
     board.runUntilLines(lineCount, RUN_LIMIT_MS);
 
     const periods = board.lineStartPeriodsMs();
-    // The first tick begins step 0 and counts towards step 1
-    assertNear(periods[0], STEP_MS_150_BPM - TICK_MS, LOG_START_JITTER_MAX_MS, 'first step');
-    periods.slice(1).forEach((periodMs, i) => {
-        assertNear(periodMs, STEP_MS_150_BPM, LOG_START_JITTER_MAX_MS, `step ${i + 1}`);
+    // Every step, the first included: the tick that starts the pattern
+    // does not count towards it
+    periods.forEach((periodMs, i) => {
+        assertNear(periodMs, STEP_MS_150_BPM, LOG_START_JITTER_MAX_MS, `step ${i}`);
     });
     // No drift: the whole run is as long as its steps, not that plus overhead
     const lines = board.serial.lines;

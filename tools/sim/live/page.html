@@ -2,7 +2,9 @@
 <!--
   The page served by server.js (`make live`): the emulated board's panel,
   outputs and log. It holds no emulator: every switch and the pot are posted
-  to the server, and everything shown comes back from it as events.
+  to the server, and everything shown comes back from it as events. That
+  goes for the transport and the step playing too: the server works them
+  out (see server.js) and this page only words them.
 -->
 <html lang="en">
 <head>
@@ -22,6 +24,7 @@
     --gate: #c0392b;
     --clock: #2f8f5b;
     --cv: #2c6fbb;
+    --in: #7a4fb5;
 }
 @media (prefers-color-scheme: dark) {
     :root {
@@ -35,6 +38,7 @@
         --gate: #ef6a5b;
         --clock: #58c48a;
         --cv: #6aa9ee;
+        --in: #b794f0;
     }
 }
 * { box-sizing: border-box; }
@@ -75,8 +79,12 @@ button { cursor: pointer; }
 .step.playing .led { background: var(--on); }
 #gate-led.lit { background: var(--gate); }
 #clock-led.lit { background: var(--clock); }
-#tempo { flex: 1; min-width: 200px; }
-canvas { width: 100%; height: 190px; display: block; }
+#tempo, #clock-ms { flex: 1; min-width: 200px; }
+#run.down { background: var(--on); border-color: var(--on); color: #1b1b1b; }
+#transport { font-weight: 600; }
+button:disabled { opacity: 0.5; cursor: default; }
+.note-text { margin: 10px 0 0; max-width: 75ch; }
+canvas { width: 100%; height: 240px; display: block; }
 #log { height: 180px; overflow-y: auto; margin: 0; font: 12px/1.5 ui-monospace, monospace;
        white-space: pre-wrap; }
 </style>
@@ -108,13 +116,51 @@ canvas { width: 100%; height: 190px; display: block; }
             <label for="tempo">Tempo pot</label>
             <input type="range" id="tempo" min="0" max="1023" step="1">
             <span class="num" id="tempo-reading"></span>
+            <span class="num" id="tempo-means"></span>
             <span class="num dim" id="bpm"></span>
+        </div>
+        <div class="row" style="margin-top: 10px">
+            <button id="run">Run button (D7)</button>
+            <label><input type="checkbox" id="sync"> Sync switch (D3): follow
+                the clock input</label>
+            <span id="transport"></span>
+            <span class="dim" id="transport-from"></span>
         </div>
         <div class="row" style="margin-top: 10px">
             <button id="cal-enter">Enter calibration mode</button>
             <span class="dim">Sets steps 12 to 15 to 10, 5, 10, 5 and power cycles
                 the board, which is how the mode is entered.</span>
         </div>
+    </section>
+
+    <section>
+        <h2>Input jacks</h2>
+        <div class="row">
+            <label><input type="checkbox" id="clock-on"> Clock source into the
+                clock input (D8)</label>
+            <input type="range" id="clock-ms" min="20" max="1000" step="1"
+                   aria-label="Clock source period">
+            <span class="num" id="clock-rate"></span>
+            <button id="clock-pulse">One clock pulse</button>
+        </div>
+        <div class="row" style="margin-top: 10px">
+            <button id="reset-pulse">Reset pulse (D2)</button>
+            <span class="dim">Sends the pattern back to its first step, which
+                plays when the next step is due. Ignored while stopped.</span>
+        </div>
+        <p class="dim note-text">The clock input is followed only with the sync
+            switch on: a step then begins on its edges, the tempo pot sets how
+            many edges to a step or steps to an edge, and with no edges
+            nothing plays. Each press of the run button stops the pattern or
+            starts it again from the first step. A power cycle leaves the sync
+            switch and the clock source as they are, and the board comes up
+            running.</p>
+        <p class="dim note-text">The step lit on the panel is counted from the
+            clock output, starting again at 0 after a start or a reset made
+            here. The debug image also names each step in its log, and that is
+            believed over the count. The release image has no log, so there
+            the count is all there is, and a reset that lands within a tick
+            or two of a step can leave it one out.</p>
     </section>
 
     <section id="cal-banner" hidden>
@@ -138,6 +184,8 @@ canvas { width: 100%; height: 190px; display: block; }
             <span><span class="led" id="gate-led"></span> Gate (D4)</span>
             <span><span class="led" id="clock-led"></span> Clock (D5)</span>
             <span>Pitch CV <span class="num" id="cv"></span></span>
+            <span class="dim">The last two rows of the trace mark each edge
+                arriving at the clock and reset inputs.</span>
         </div>
         <canvas id="trace"></canvas>
     </section>
@@ -201,9 +249,26 @@ const LOG_LINES_MAX = 300;
 const SOUND_BASE_HZ = 130.81;   // What 0 V plays; an octave up per volt
 const SOUND_LEVEL = 0.2;
 const SOUND_EDGE_S = 0.005;
+// What the tempo pot's reading means, as the firmware takes it: a tempo on
+// the internal clock, and one of seven ratios to the external clock
+const BPM_MIN = 30;
+const READING_PER_BPM = 4;
+const READING_PER_RATIO = 147;
+const RATIOS = [
+    ['÷4', 'a step every 4 edges'], ['÷3', 'a step every 3 edges'],
+    ['÷2', 'a step every 2 edges'], ['×1', 'a step to an edge'],
+    ['×2', '2 steps to an edge'], ['×3', '3 steps to an edge'],
+    ['×4', '4 steps to an edge'],
+];
+const TRANSPORT_STOPPED = 0;    // As the firmware numbers them in its log
+const TRANSPORT_EXTERNAL = 2;
+const TRANSPORT_NAMES = ['Stopped', 'Running on the internal clock',
+    'Running on the external clock'];
 
 const el = (id) => document.getElementById(id);
-const trace = { cv: [], gate: [], clock: [] }; // Each a list of [ms, value]
+// cv, gate and clock are each a list of [ms, value]; clockIn and resetIn
+// list the ms of each edge that arrived
+const trace = { cv: [], gate: [], clock: [], clockIn: [], resetIn: [] };
 let state = null;       // The last `state` event
 let nowMs = 0;          // Chip time
 let lastClockRiseMs = null;
@@ -262,9 +327,71 @@ function showPanel() {
         el('tempo').value = String(state.tempo);
     }
     el('tempo-reading').textContent = `${state.tempo} (${volts.toFixed(2)} V)`;
+    el('tempo-means').textContent = tempoMeaning();
+    el('sync').checked = state.sync;
+    el('run').classList.toggle('down', state.runDown);
+    el('clock-on').checked = state.clockOn;
+    el('clock-pulse').disabled = state.clockOn; // The jack is already taken
+    if (document.activeElement !== el('clock-ms')) {
+        el('clock-ms').value = String(state.clockMs);
+        showClockRate(state.clockMs);
+    }
 }
 
-function showStep(playing) {
+// What the pot does just now, from where the sync switch stands. The
+// firmware takes the switch 20 ms late, and a new ratio at its next sync edge
+function tempoMeaning() {
+    const part = Math.min(RATIOS.length - 1, Math.floor(state.tempo / READING_PER_RATIO));
+
+    if (state.calibrating) {
+        return 'trims the calibration point';
+    }
+    if (!state.sync) {
+        return `sets ${BPM_MIN + Math.floor(state.tempo / READING_PER_BPM)} BPM`;
+    }
+    return `sets ${RATIOS[part][0]}: ${RATIOS[part][1]}`;
+}
+
+function showClockRate(periodMs) {
+    const bpm = MS_PER_MINUTE / (periodMs * STEPS_PER_BEAT);
+
+    el('clock-rate').textContent = `${periodMs} ms between edges `
+        + `(${bpm.toFixed(1)} BPM at ×1)`;
+}
+
+// The transport as the server has it: from the log's last `Transport = N`
+// if there has been one since the controls last changed it, and otherwise
+// worked out from the presses of the run button and the sync switch
+function showTransport() {
+    let text = 'Calibration mode: nothing is sequenced, so these do nothing';
+    let from = '';
+
+    if (!state.calibrating) {
+        text = TRANSPORT_NAMES[state.transport];
+        if ((state.transport === TRANSPORT_EXTERNAL) && !state.clockOn) {
+            text += ', waiting for an edge: the clock source is off';
+        }
+        if (state.transportFrom === 'log') {
+            from = '(as the log says)';
+        } else if (state.config === 'release') {
+            from = '(worked out from the controls: the release image has no log)';
+        } else {
+            from = '(worked out from the controls)';
+        }
+        if (state.transport === TRANSPORT_STOPPED) {
+            // The next clock pulse is not a step on from the last
+            lastClockRiseMs = null;
+            el('bpm').textContent = '';
+        }
+    }
+    el('transport').textContent = text;
+    el('transport-from').textContent = from;
+}
+
+// No step is lit while stopped: the pattern will start again from step 0
+function showStep() {
+    const playing = (state.transport === TRANSPORT_STOPPED) ? -1 : state.step;
+
     for (let step = 0; step < STEP_COUNT; step++) {
         el(`step-${step}`).classList.toggle('playing', step === playing);
     }
@@ -291,7 +418,6 @@ function showCv(millivolts) {
 function showClock(event) {
     el('clock-led').classList.toggle('lit', event.v);
     if (event.v) {
-        showStep(event.step);
         if (lastClockRiseMs !== null) {
             const bpm = MS_PER_MINUTE / ((event.t - lastClockRiseMs) * STEPS_PER_BEAT);
 
@@ -326,6 +452,22 @@ function applyEvent(event) {
             break;
         case 'log':
             addLogLine(event.v);
+            break;
+        case 'step':
+            state.step = event.v;
+            showStep();
+            break;
+        case 'transport':
+            state.transport = event.v;
+            state.transportFrom = event.from;
+            showTransport();
+            showStep();
+            break;
+        case 'clockin':
+            trace.clockIn.push(event.t);
+            break;
+        case 'resetin':
+            trace.resetIn.push(event.t);
             break;
         default:
             break;
@@ -362,6 +504,23 @@ function drawSignal(context, points, colour, top, height, fullScale, width) {
     context.stroke();
 }
 
+// Draws one mark for each edge that arrived at an input, in the same kind
+// of band. Only the instant of the edge is known, not how long it was high
+function drawEdges(context, times, colour, top, height, width) {
+    while ((times.length > 0) && (times[0] < (nowMs - TRACE_WINDOW_MS))) {
+        times.shift();
+    }
+    context.strokeStyle = colour;
+    context.beginPath();
+    for (const ms of times) {
+        const x = width * (1 - ((nowMs - ms) / TRACE_WINDOW_MS));
+
+        context.moveTo(x, top);
+        context.lineTo(x, top + height);
+    }
+    context.stroke();
+}
+
 function drawTrace() {
     const canvas = el('trace');
     const context = canvas.getContext('2d');
@@ -370,8 +529,11 @@ function drawTrace() {
     const height = canvas.clientHeight;
     const style = getComputedStyle(document.documentElement);
     const colour = (name) => style.getPropertyValue(name).trim();
-    const cvHeight = height * 0.55;
-    const pinHeight = height * 0.12;
+    const cvHeight = height * 0.42;
+    const pinHeight = height * 0.08;
+    // The four rows under the CV: where each starts, as a part of the height
+    const rows = { gate: 0.48, clock: 0.61, clockIn: 0.74, resetIn: 0.87 };
+    const labelDrop = height * 0.06;
     const cvMax = Math.max(CV_SCALE_MIN_MV, ...trace.cv.map((point) => point[1]));
     const cvFullScale = (cvMax <= CV_SCALE_MIN_MV)
         ? CV_SCALE_MIN_MV : Math.ceil(cvMax / CV_SCALE_STEP_MV) * CV_SCALE_STEP_MV;
@@ -387,11 +549,19 @@ function drawTrace() {
     context.font = '11px system-ui, sans-serif';
     context.fillStyle = colour('--dim');
     context.fillText(`CV, 0 to ${(cvFullScale / 1000).toFixed(2)} V`, 4, 12);
-    context.fillText('Gate', 4, height * 0.72);
-    context.fillText('Clock', 4, height * 0.90);
+    context.fillText('Gate', 4, (height * rows.gate) + labelDrop);
+    context.fillText('Clock out', 4, (height * rows.clock) + labelDrop);
+    context.fillText('Clock in', 4, (height * rows.clockIn) + labelDrop);
+    context.fillText('Reset in', 4, (height * rows.resetIn) + labelDrop);
     drawSignal(context, trace.cv, colour('--cv'), 16, cvHeight - 16, cvFullScale, width);
-    drawSignal(context, trace.gate, colour('--gate'), height * 0.66, pinHeight, 1, width);
-    drawSignal(context, trace.clock, colour('--clock'), height * 0.84, pinHeight, 1, width);
+    drawSignal(context, trace.gate, colour('--gate'),
+        height * rows.gate, pinHeight, 1, width);
+    drawSignal(context, trace.clock, colour('--clock'),
+        height * rows.clock, pinHeight, 1, width);
+    drawEdges(context, trace.clockIn, colour('--in'),
+        height * rows.clockIn, pinHeight, width);
+    drawEdges(context, trace.resetIn, colour('--in'),
+        height * rows.resetIn, pinHeight, width);
     requestAnimationFrame(drawTrace);
 }
 
@@ -430,18 +600,21 @@ function applyState(newState) {
         trace.cv = [[state.ms, state.millivolts]];
         trace.gate = [[state.ms, state.gate ? 1 : 0]];
         trace.clock = [[state.ms, state.clock ? 1 : 0]];
+        trace.clockIn = [];
+        trace.resetIn = [];
         lastClockRiseMs = null;
         el('log').textContent = (state.config === 'release')
             ? '(the release image has no log)' : '';
         el('bpm').textContent = '';
         el('config').value = state.config;
         el('clock-led').classList.toggle('lit', state.clock);
-        showStep(state.step);
         showGate(state.gate);
         showCv(state.millivolts);
     }
     el('cal-banner').hidden = !state.calibrating;
     showPanel();
+    showTransport();
+    showStep();
 }
 
 function applyRun(run) {
@@ -467,6 +640,18 @@ function powerCycle() {
     post({ power: el('config').value, keepEeprom: el('keep-eeprom').checked });
 }
 
+el('run').addEventListener('click', () => post({ run: 'press' }));
+el('sync').addEventListener('change', () => post({ sync: el('sync').checked }));
+el('clock-on').addEventListener('change', () => post({ clockOn: el('clock-on').checked }));
+// The rate is posted when the slider is let go: a running clock starts
+// again at each new period, with an edge at once
+el('clock-ms').addEventListener('input', () => showClockRate(Number(el('clock-ms').value)));
+el('clock-ms').addEventListener('change', () => {
+    el('clock-ms').blur(); // So the answer from the server sets it
+    post({ clockMs: Number(el('clock-ms').value) });
+});
+el('clock-pulse').addEventListener('click', () => post({ pulse: 'clock' }));
+el('reset-pulse').addEventListener('click', () => post({ pulse: 'reset' }));
 el('power').addEventListener('click', powerCycle);
 el('sound').addEventListener('click', toggleSound);
 el('cal-enter').addEventListener('click', () => {
