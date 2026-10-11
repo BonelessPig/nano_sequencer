@@ -15,6 +15,9 @@ The only code that knows about both the core and the ports.
 - The core step is `cal_tick()` and then, unless it says calibration mode is active, `seq_tick()`. In the mode the app copies the pitch CV and the gate from the calibration outputs and leaves the rest of the sequencer outputs as init set them (no step, clock low), so the apply step needs no second path.
 - A stored calibration point is saved in the apply step of the next tick, after the three outputs: the whole record is encoded and handed to `nv_write()`, which only starts it. `nv_poll()` is called on every pass, beside `log_poll()`.
 - Start-up reads the reset cause and the calibration record once, after `platform_init()` has succeeded, and logs both in one line. A record that is not valid is not an error.
+- Start-up then sees to the crash log: it reads the forty bytes, gives the core the reset cause and the breadcrumb as it was left, starts the write of the one record the core changed, and logs the newest record if there is one. The core decides whether the start was a crash; the app does not look at the cause. Read the breadcrumb before writing it.
+- `breadcrumb_write()` marks each part of the tick as it begins (apply, gather, core) and the end of it, and start-up once. The `PLACE_*` numbers are stored in the EEPROM and printed: never renumber one, and give a new place a new number. A pass with no tick writes nothing.
+- Anything added to start-up delays the debug build's first log lines, since nothing is sent until the loop runs (roadmap decision 111).
 - Nothing in the loop may block. A port function that waits (`log_flush`) is for the path where the loop is not going to run.
 - A port's status goes to the core as a valid flag, and to the log as a status code. The core never sees a `port_status_t`.
 - No register access and no MCU headers here. `app.c` is also linked into the `test_app` host program against the fakes.

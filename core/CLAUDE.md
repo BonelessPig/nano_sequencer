@@ -12,8 +12,8 @@ Pure sequencer logic. The same source is compiled for the MCU and for a PC.
 
 ## Modules
 
-- One module, one question: `seq` (is a step due), `clock` (ticks to pulses, at a tempo or following external edges), `transport` (is the pattern running, and from which clock), `debounce` (a control's settled level), `engine_*` (which step, its note value, and whether it is tied to the next), `address` (next step in the range), `note_map` (note value to pitch), `panel` (a step's switches, and the mode switches), `gate` (is the note still held), `prng` (the next random byte), `pitch_cal` (pitch to CV value), `cal` (is this calibration mode, and what is it setting), `cal_record` (are these stored bytes a calibration table). A new one gets its own `.c`, `.h` and test program; `docs/ROADMAP.md` section 4 lists the ones planned.
-- A module includes only the modules below it. `seq` is the top of the sequencer, and nothing includes `seq.h` from inside `core/`. The app calls `seq`, and beside it `cal` and `cal_record`, which share only `pitch_cal.h` and `panel.h` with it; the sequencer knows nothing of calibration.
+- One module, one question: `seq` (is a step due), `clock` (ticks to pulses, at a tempo or following external edges), `transport` (is the pattern running, and from which clock), `debounce` (a control's settled level), `engine_*` (which step, its note value, and whether it is tied to the next), `address` (next step in the range), `note_map` (note value to pitch), `panel` (a step's switches, and the mode switches), `gate` (is the note still held), `prng` (the next random byte), `pitch_cal` (pitch to CV value), `cal` (is this calibration mode, and what is it setting), `cal_record` (are these stored bytes a calibration table), `errlog` (which crash log record is the newest, and what this start-up adds), `crc8` (the checksum of these bytes). A new one gets its own `.c`, `.h` and test program; `docs/ROADMAP.md` section 4 lists the ones planned.
+- A module includes only the modules below it. `seq` is the top of the sequencer, and nothing includes `seq.h` from inside `core/`. The app calls `seq`, and beside it `cal` and `cal_record`, which share only `pitch_cal.h` and `panel.h` with it; the sequencer knows nothing of calibration. `errlog` stands apart from both, called once at start-up, and shares only `crc8` with `cal_record`.
 - Every pointer parameter is checked for null, and a null means do nothing and return the harmless value (false, 0). The header says so.
 - An out-of-range control never fails: it wraps or falls back to a default, and the header says which. The core has no error codes.
 - Controls arrive in a `<module>_config_t` inside `seq_inputs_t` and are read when a step begins, like the panel.
@@ -46,6 +46,15 @@ Pure sequencer logic. The same source is compiled for the MCU and for a PC.
 - `cal` counts in ticks, not pulses: it has no clock, and its one time (the gate low after a store) is for a person, not for music.
 - The core still does not know what a CV value is in volts: the nominal value of an octave is an input.
 - A change to the layout of the record takes a new version number in `cal_record.c`, so that old records are refused and not misread. The checksum has a test vector worked out outside the firmware; keep one.
+
+## The crash log
+
+- `errlog` works on a copy of the stored bytes and never knows where they are kept. It changes at most one record and says which; the app writes it.
+- It decides what a crash is, from the reset cause as a plain number: the watchdog's bit (8). The app does not test the cause.
+- The place is the app's number and is stored as given; the core gives it no meaning.
+- There is no pointer to the newest record and no count of them: the records' own numbers say. Keep it so, or there are two things to keep in step across a power cut.
+- A repeat of the newest crash raises its count, and at 255 changes nothing. That is the wear limit; do not let a path past it write.
+- A change to the layout of the record takes a new version number in `errlog.c`, which is the start value of its checksum, so old records read as empty places. The test vectors were worked out outside the firmware; keep them so.
 
 ## Engines
 

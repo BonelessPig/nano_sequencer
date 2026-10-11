@@ -33,6 +33,12 @@
 // shift register load pulse relies on those.
 #define REG_IO_LOW __attribute__((io_low))
 
+// Marks a variable the startup code must leave alone: it is neither cleared
+// nor set before main runs, so it keeps its value through a reset (though not
+// through a power cycle). The toolchain's linker script has the .noinit
+// section for this.
+#define RAM_NOINIT __attribute__((section(".noinit")))
+
 // ---- I/O Ports: Data Direction, Output, and Input registers ----
 extern volatile uint8_t DDRB REG_IO_LOW;  // Data Direction Register for port B
 extern volatile uint8_t DDRC REG_IO_LOW;  // Data Direction Register for port C

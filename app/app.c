@@ -13,11 +13,13 @@
 #include "address.h"
 #include "cal.h"
 #include "cal_record.h"
+#include "errlog.h"
 #include "note_map.h"
 #include "panel.h"
 #include "pitch_cal.h"
 #include "seq.h"
 #include "transport.h"
+#include "breadcrumb_port.h"
 #include "clock_input_port.h"
 #include "clock_output_port.h"
 #include "cv_output_port.h"
@@ -49,6 +51,18 @@
 
 // Where the calibration record is kept in the non-volatile storage
 #define CAL_RECORD_ADDRESS (0U)
+
+// Where the crash log is kept there, clear of the calibration record
+#define ERRLOG_ADDRESS (16U)
+
+// The places the breadcrumb marks, so that a crash log record says where the
+// firmware was when the watchdog reset it. The numbers are stored and
+// logged: never renumber them, and give a new place a new number
+#define PLACE_STARTUP (1U) // After start-up, before the first tick
+#define PLACE_APPLY   (2U) // Applying the outputs of the tick before
+#define PLACE_GATHER  (3U) // Reading the inputs
+#define PLACE_CORE    (4U) // In the core
+#define PLACE_IDLE    (5U) // The tick finished: waiting for the next
 
 static seq_state_t   g_seq_state; // Sequencer state carried between ticks
 static seq_inputs_t  g_inputs;    // Latest snapshot of the inputs
@@ -307,15 +321,14 @@ static void reset_tick_state(void)
 
 /**
  * @brief  Loads the stored pitch calibration over the ideal table, if there
- *         is a valid record, and logs how the firmware started: what reset
- *         it, and whether a stored calibration is in use. A read that fails
- *         is logged and leaves the ideal table, as does anything that is not
- *         a record (storage never written, say).
+ *         is a valid record. A read that fails is logged and leaves the
+ *         ideal table, as does anything that is not a record (storage never
+ *         written, say).
+ * @return true if a stored calibration is now in use.
  */
-static void load_calibration(void)
+static bool load_calibration(void)
 {
     uint8_t             record[CAL_RECORD_SIZE];
-    const uint8_t       reset_cause  = reset_cause_read();
     const port_status_t status       =
         nv_read(CAL_RECORD_ADDRESS, record, (uint8_t)CAL_RECORD_SIZE);
     bool                b_calibrated = false;
@@ -329,7 +342,68 @@ static void load_calibration(void)
         log_error(LOG_ERROR_NV_READ, status);
     }
 
+    return b_calibrated;
+}
+
+
+
+/**
+ * @brief  Brings the crash log up to date with this start-up and logs its
+ *         newest record, if it has one. If the watchdog caused the reset,
+ *         the place the breadcrumb was left at goes into the log, and the
+ *         write of the one record that changed is started. A read or a
+ *         write that fails is logged, and the log is then left as it is.
+ * @param  reset_cause  What reset the processor, as reset_cause_read() gave
+ *                      it.
+ */
+static void update_crash_log(uint8_t reset_cause)
+{
+    uint8_t        records[ERRLOG_SIZE];
+    uint8_t        offset  = 0U;
+    const uint16_t address = ERRLOG_ADDRESS;
+    errlog_entry_t newest;
+    port_status_t  status  = nv_read(address, records, (uint8_t)ERRLOG_SIZE);
+
+    if (STATUS_OK != status)
+    {
+        log_error(LOG_ERROR_CRASH_READ, status);
+    }
+    else if (errlog_add(records, reset_cause, breadcrumb_read(), &offset))
+    {
+        status = nv_write((uint16_t)(address + offset), &records[offset],
+                          (uint8_t)ERRLOG_RECORD_SIZE);
+        if (STATUS_OK != status)
+        {
+            log_error(LOG_ERROR_CRASH_WRITE, status);
+        }
+    }
+    else
+    {
+        // Not a crash, or one the log has counted as often as it can
+    }
+
+    if ((STATUS_OK == status) && errlog_newest(records, &newest))
+    {
+        log_crash(newest.number, newest.place, newest.count);
+    }
+}
+
+
+
+/**
+ * @brief  The part of start-up that follows a platform brought up: reads
+ *         what reset the processor and the stored calibration and logs
+ *         both, then sees to the crash log. The breadcrumb is read for that
+ *         before it is given its first place of this run.
+ */
+static void start_up(void)
+{
+    const uint8_t reset_cause  = reset_cause_read();
+    const bool    b_calibrated = load_calibration();
+
     log_startup(reset_cause, b_calibrated);
+    update_crash_log(reset_cause);
+    breadcrumb_write(PLACE_STARTUP);
 }
 
 
@@ -342,7 +416,7 @@ port_status_t app_init(void)
 
     if (STATUS_OK == status)
     {
-        load_calibration();
+        start_up();
     }
     else
     {
@@ -364,13 +438,18 @@ void app_run_once(void)
     {
         // A tick boundary. Outputs go first so that they change at the same
         // point in every tick, however long the rest of the pass takes.
+        // Each part is marked as it begins, for the crash log
+        breadcrumb_write(PLACE_APPLY);
         apply_outputs();
 
         // Kicked only here, so that the watchdog catches a tick that has
         // stopped coming as well as a loop that has stopped going round
         watchdog_kick();
+        breadcrumb_write(PLACE_GATHER);
         gather_inputs(elapsed_ticks);
+        breadcrumb_write(PLACE_CORE);
         run_core();
+        breadcrumb_write(PLACE_IDLE);
     }
 
     log_poll();

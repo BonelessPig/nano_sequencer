@@ -170,6 +170,41 @@ static void test_error_text_matches_the_printf_format(void)
         (void)snprintf(expected, sizeof(expected),
                        "Calibration write failed, status code = %d\r\n", (int)statuses[i]);
         expect_uart(expected);
+
+        fake_uart_clear();
+        log_error(LOG_ERROR_CRASH_READ, statuses[i]);
+        (void)snprintf(expected, sizeof(expected),
+                       "Crash log read failed, status code = %d\r\n", (int)statuses[i]);
+        expect_uart(expected);
+
+        fake_uart_clear();
+        log_error(LOG_ERROR_CRASH_WRITE, statuses[i]);
+        (void)snprintf(expected, sizeof(expected),
+                       "Crash log write failed, status code = %d\r\n", (int)statuses[i]);
+        expect_uart(expected);
+    }
+}
+
+
+
+static void test_crash_text_matches_the_printf_format(void)
+{
+    static const uint8_t values[] = { 0U, 1U, 5U, 10U, 99U, 255U };
+    char                 expected[EXPECTED_CAPACITY];
+
+    (void)logger_init(LOGLVL_DEBUG);
+    for (size_t n = 0U; n < (sizeof(values) / sizeof(values[0])); n++)
+    {
+        for (size_t p = 0U; p < (sizeof(values) / sizeof(values[0])); p++)
+        {
+            const uint8_t count = values[(n + p) % (sizeof(values) / sizeof(values[0]))];
+
+            fake_uart_clear();
+            log_crash(values[n], values[p], count);
+            (void)snprintf(expected, sizeof(expected), "Crash %d Place = %d Count = %d\r\n",
+                           (int)values[n], (int)values[p], (int)count);
+            expect_uart(expected);
+        }
     }
 }
 
@@ -261,6 +296,7 @@ static void test_level_filters_messages(void)
     log_startup(1U, true);
     log_cal_point(2U, 2013U);
     log_transport(2U);
+    log_crash(3U, 5U, 2U);
     expect_uart("");
     log_error(LOG_ERROR_INIT, ERR_GENERAL);
     expect_uart("Initialization failed, status code = 1\r\n");
@@ -279,7 +315,9 @@ static void test_level_filters_messages(void)
     log_startup(1U, true);
     log_cal_point(2U, 2013U);
     log_transport(2U);
-    expect_uart("Reset = 1 Cal = 1\r\nCal point 2 = 2013\r\nTransport = 2\r\n");
+    log_crash(3U, 5U, 2U);
+    expect_uart("Reset = 1 Cal = 1\r\nCal point 2 = 2013\r\nTransport = 2\r\n"
+                "Crash 3 Place = 5 Count = 2\r\n");
 
     // FATAL is less verbose than ERROR, so errors are dropped too
     (void)logger_init(LOGLVL_FATAL);
@@ -493,6 +531,7 @@ int main(void)
     RUN_TEST(test_step_rest_text_matches_the_printf_format);
     RUN_TEST(test_error_text_matches_the_printf_format);
     RUN_TEST(test_startup_text_matches_the_printf_format);
+    RUN_TEST(test_crash_text_matches_the_printf_format);
     RUN_TEST(test_cal_point_text_matches_the_printf_format);
     RUN_TEST(test_transport_text_matches_the_printf_format);
     RUN_TEST(test_unknown_error_id_sends_nothing);

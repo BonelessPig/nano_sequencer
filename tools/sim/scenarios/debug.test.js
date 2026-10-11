@@ -21,6 +21,10 @@ const STEP_MS_30_BPM = 500;
 // A step's log line starts within this long of its tick boundary: the time
 // to queue the line, plus a panel and pot read if that tick has one
 const LOG_START_JITTER_MAX_MS = 0.5;
+// The first step's line is later than that: the start-up line is ahead of
+// it in the queue and, since start-up began reading the crash log, is still
+// being sent when the step is logged. The line waits up to this much longer
+const FIRST_LINE_HELD_MAX_MS = 1;
 // The gate and the clock output are set first in a tick, ahead of the log
 const OUTPUT_JITTER_MAX_MS = 0.02;
 const RUN_LIMIT_MS = 10000;
@@ -106,9 +110,14 @@ test('a step lasts 100 ms at 150 BPM', () => {
 
     const periods = board.lineStartPeriodsMs();
     // Every step, the first included: the tick that starts the pattern
-    // does not count towards it
+    // does not count towards it. The first reads short by however long its
+    // line was held up; the pins, which are not, time it in release.test.js
     periods.forEach((periodMs, i) => {
-        assertNear(periodMs, STEP_MS_150_BPM, LOG_START_JITTER_MAX_MS, `step ${i}`);
+        const held = (i === 0) ? FIRST_LINE_HELD_MAX_MS : 0;
+
+        assert.ok((periodMs >= STEP_MS_150_BPM - LOG_START_JITTER_MAX_MS - held)
+            && (periodMs <= STEP_MS_150_BPM + LOG_START_JITTER_MAX_MS),
+        `step ${i}: ${periodMs} ms`);
     });
     // No drift: the whole run is as long as its steps, not that plus overhead
     const lines = board.serial.lines;
@@ -139,7 +148,9 @@ test('the gate opens before its step is logged, and not for a rest', () => {
     assert.equal(rises.length, noteLines.length);
     noteLines.forEach((line, i) => {
         const leadMs = board.machine.cyclesToMs(line.startCycle - rises[i]);
-        assert.ok((leadMs > 0) && (leadMs < LOG_START_JITTER_MAX_MS),
+        const held = (i === 0) ? FIRST_LINE_HELD_MAX_MS : 0;
+
+        assert.ok((leadMs > 0) && (leadMs < LOG_START_JITTER_MAX_MS + held),
             `${line.text}: gate led the log by ${leadMs} ms`);
     });
 });
@@ -180,11 +191,11 @@ test('the gate keeps time while the log is being sent', () => {
     }
 });
 
-test('the first step is logged within 3 ms of reset', () => {
+test('the first step is logged within 3.5 ms of reset', () => {
     const board = debugBoard(READING_150_BPM);
 
     board.runUntilLines(1, RUN_LIMIT_MS);
 
     const startMs = board.machine.cyclesToMs(board.serial.lines[0].startCycle);
-    assert.ok(startMs < 3, `first line started at ${startMs} ms`);
+    assert.ok(startMs < 3.5, `first line started at ${startMs} ms`);
 });

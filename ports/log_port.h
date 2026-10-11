@@ -25,7 +25,9 @@ typedef enum
     LOG_ERROR_TEMPO_READ, // tempo_input_read() failed
     LOG_ERROR_CV_WRITE,   // cv_output_write() failed
     LOG_ERROR_NV_READ,    // nv_read() of the stored calibration failed
-    LOG_ERROR_NV_WRITE    // nv_write() of the calibration failed
+    LOG_ERROR_NV_WRITE,   // nv_write() of the calibration failed
+    LOG_ERROR_CRASH_READ, // nv_read() of the crash log failed
+    LOG_ERROR_CRASH_WRITE // nv_write() of a crash log record failed
 } log_error_id_t;
 
 /**
@@ -38,6 +40,17 @@ typedef enum
  *         log_step_note().
  */
 void log_startup(uint8_t reset_cause, bool b_calibrated);
+
+/**
+ * @brief  Reports the newest record of the crash log (info-level output).
+ * @param  number  Which record it is, 0 to 255.
+ * @param  place   Where the firmware had got to when the watchdog reset
+ *                 it, as the app numbers its places.
+ * @param  count   How many times running that happened, 1 to 255.
+ * @note   Not ISR-safe. Does not block; queued or dropped like
+ *         log_step_note().
+ */
+void log_crash(uint8_t number, uint8_t place, uint8_t count);
 
 /**
  * @brief  Reports a point of the pitch calibration being stored (info-level

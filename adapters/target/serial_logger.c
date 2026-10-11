@@ -246,6 +246,30 @@ void log_startup(uint8_t reset_cause, bool b_calibrated)
 
 
 /**
+ * @brief Logs the newest crash log record at INFO level (see log_port.h).
+ * @param number which record it is
+ * @param place where the firmware had got to
+ * @param count how many times running it happened
+ */
+void log_crash(uint8_t number, uint8_t place, uint8_t count)
+{
+    if (is_level_enabled(LOGLVL_INFO))
+    {
+        begin_message();
+        write_text("Crash ");
+        write_decimal(number);
+        write_text(" Place = ");
+        write_decimal(place);
+        write_text(" Count = ");
+        write_decimal(count);
+        write_text("\r\n");
+        end_message();
+    }
+}
+
+
+
+/**
  * @brief Logs a calibration point being stored at INFO level (see log_port.h).
  * @param point table entry
  * @param cv its new value
@@ -317,6 +341,14 @@ void log_error(log_error_id_t what, port_status_t status)
 
         case LOG_ERROR_NV_WRITE:
             p_text = "Calibration write failed, status code = ";
+            break;
+
+        case LOG_ERROR_CRASH_READ:
+            p_text = "Crash log read failed, status code = ";
+            break;
+
+        case LOG_ERROR_CRASH_WRITE:
+            p_text = "Crash log write failed, status code = ";
             break;
 
         default:

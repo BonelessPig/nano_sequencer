@@ -10,6 +10,7 @@
  */
 #include "host_ports.h"
 #include <stddef.h>
+#include "breadcrumb_port.h"
 #include "clock_input_port.h"
 #include "clock_output_port.h"
 #include "cv_output_port.h"
@@ -76,6 +77,17 @@ static uint16_t      g_nv_poll_count = 0U;
 static uint16_t      g_startup_count = 0U;
 static uint8_t       g_startup_reset_cause = 0U;
 static bool          g_b_startup_calibrated = false;
+
+static uint8_t       g_breadcrumb = 0U;
+static uint8_t       g_breadcrumb_history[HOST_BREADCRUMB_HISTORY]; // Newest first
+static uint16_t      g_breadcrumb_write_count = 0U;
+static uint8_t       g_breadcrumb_at_cv_write = 0U;
+static uint8_t       g_breadcrumb_at_run_read = 0U;
+
+static uint16_t      g_crash_count = 0U;
+static uint8_t       g_crash_number = 0U;
+static uint8_t       g_crash_place = 0U;
+static uint8_t       g_crash_repeats = 0U;
 
 static host_event_t  g_events[HOST_MAX_EVENTS];
 static uint16_t      g_event_count = 0U;
@@ -152,6 +164,19 @@ void host_reset(void)
     g_startup_reset_cause  = 0U;
     g_b_startup_calibrated = false;
 
+    g_breadcrumb             = 0U;
+    g_breadcrumb_write_count = 0U;
+    g_breadcrumb_at_cv_write = 0U;
+    g_breadcrumb_at_run_read = 0U;
+    g_crash_count            = 0U;
+    g_crash_number           = 0U;
+    g_crash_place            = 0U;
+    g_crash_repeats          = 0U;
+
+    for (uint8_t i = 0U; i < HOST_BREADCRUMB_HISTORY; i++)
+    {
+        g_breadcrumb_history[i] = 0U;
+    }
     for (uint8_t i = 0U; i < HOST_RAW_STEP_BYTES; i++)
     {
         g_raw_steps[i] = 0U;
@@ -167,6 +192,82 @@ void host_reset(void)
 void host_set_reset_cause(uint8_t cause)
 {
     g_reset_cause = cause;
+}
+
+
+
+void host_set_breadcrumb(uint8_t place)
+{
+    g_breadcrumb = place;
+}
+
+
+
+uint8_t host_breadcrumb(void)
+{
+    return g_breadcrumb;
+}
+
+
+
+uint16_t host_breadcrumb_write_count(void)
+{
+    return g_breadcrumb_write_count;
+}
+
+
+
+uint8_t host_breadcrumb_before(uint8_t age)
+{
+    uint8_t place = 0U;
+
+    if (age < HOST_BREADCRUMB_HISTORY)
+    {
+        place = g_breadcrumb_history[age];
+    }
+    return place;
+}
+
+
+
+uint8_t host_breadcrumb_at_cv_write(void)
+{
+    return g_breadcrumb_at_cv_write;
+}
+
+
+
+uint8_t host_breadcrumb_at_run_read(void)
+{
+    return g_breadcrumb_at_run_read;
+}
+
+
+
+uint16_t host_crash_count(void)
+{
+    return g_crash_count;
+}
+
+
+
+uint8_t host_crash_number(void)
+{
+    return g_crash_number;
+}
+
+
+
+uint8_t host_crash_place(void)
+{
+    return g_crash_place;
+}
+
+
+
+uint8_t host_crash_repeats(void)
+{
+    return g_crash_repeats;
 }
 
 
@@ -532,6 +633,7 @@ port_status_t cv_output_write(uint16_t millivolts)
     port_status_t status = g_cv_status;
 
     g_cv_write_count++;
+    g_breadcrumb_at_cv_write = g_breadcrumb;
 
     // Same parameter contract as the real adapter (see cv_output_port.h)
     if (millivolts > CV_OUTPUT_MILLIVOLTS_MAX)
@@ -630,7 +732,29 @@ bool reset_input_edge(void)
 
 bool run_input_read(void)
 {
+    g_breadcrumb_at_run_read = g_breadcrumb;
     return g_b_run_button;
+}
+
+
+
+void breadcrumb_write(uint8_t place)
+{
+    // The history moves up one, the oldest falling off the end
+    for (uint8_t i = (uint8_t)(HOST_BREADCRUMB_HISTORY - 1U); i > 0U; i--)
+    {
+        g_breadcrumb_history[i] = g_breadcrumb_history[i - 1U];
+    }
+    g_breadcrumb_history[0] = place;
+    g_breadcrumb_write_count++;
+    g_breadcrumb = place;
+}
+
+
+
+uint8_t breadcrumb_read(void)
+{
+    return g_breadcrumb;
 }
 
 
@@ -710,6 +834,16 @@ void log_startup(uint8_t reset_cause, bool b_calibrated)
     g_startup_count++;
     g_startup_reset_cause  = reset_cause;
     g_b_startup_calibrated = b_calibrated;
+}
+
+
+
+void log_crash(uint8_t number, uint8_t place, uint8_t count)
+{
+    g_crash_count++;
+    g_crash_number  = number;
+    g_crash_place   = place;
+    g_crash_repeats = count;
 }
 
 

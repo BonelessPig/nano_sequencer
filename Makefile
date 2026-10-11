@@ -271,7 +271,7 @@ CORE_TESTS = test_seq test_clock test_panel test_address test_note_map \
              test_engine_plain test_engine_stage test_engine_klee \
              test_engine_chance test_engine_cartesian test_engine_euclid \
              test_prng test_gate test_pitch_cal test_cal_record \
-             test_cal test_debounce test_transport
+             test_cal test_debounce test_transport test_crc8 test_errlog
 TEST_CORE := $(patsubst %,$(HOST_DIR)/%$(EXE),$(CORE_TESTS))
 
 # Tests that #include the source file they test (one each for the target
@@ -282,7 +282,7 @@ INCLUDING_TESTS = test_serial_logger test_null_logger test_register_init \
                   test_timebase test_spi test_gate_output test_clock_output \
                   test_cv_output test_eeprom test_reset_cause test_main \
                   test_clock_input test_reset_input test_run_input \
-                  test_sync_input test_watchdog
+                  test_sync_input test_watchdog test_breadcrumb
 TEST_INCLUDING := $(patsubst %,$(HOST_DIR)/%$(EXE),$(INCLUDING_TESTS))
 
 TEST_PROGRAMS = $(TEST_CORE) $(TEST_APP) $(TEST_INCLUDING)

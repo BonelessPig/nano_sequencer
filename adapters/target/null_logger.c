@@ -67,6 +67,21 @@ void log_startup(uint8_t reset_cause, bool b_calibrated)
 
 
 /**
+ * @brief Discards a crash log message (see log_port.h).
+ * @param number ignored
+ * @param place ignored
+ * @param count ignored
+ */
+void log_crash(uint8_t number, uint8_t place, uint8_t count)
+{
+    (void)number;
+    (void)place;
+    (void)count;
+}
+
+
+
+/**
  * @brief Discards a calibration point message (see log_port.h).
  * @param point ignored
  * @param cv ignored

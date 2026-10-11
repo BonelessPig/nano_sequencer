@@ -88,6 +88,9 @@
 #define WDE  3 // Watchdog System Reset Enable in WDTCSR
 #define WDCE 4 // Watchdog Change Enable in WDTCSR
 
+// A variable kept through a reset is an ordinary one here
+#define RAM_NOINIT
+
 // The interrupt handler becomes an ordinary function the test can call
 #define TIMER2_COMPA_ISR fake_timer2_compa_isr
 #define TIMER2_COMPA_ISR_ATTR

@@ -17,8 +17,9 @@
 
 #define HOST_RAW_STEP_BYTES (9U)  // Size of the scripted step-input buffer
 #define HOST_MAX_EVENTS     (64U) // Output-port calls recorded before further ones are dropped
-#define HOST_NV_BYTES       (32U) // Size of the faked non-volatile storage
+#define HOST_NV_BYTES       (64U) // Size of the faked non-volatile storage
 #define HOST_NV_ERASED      (0xFFU) // What a byte of it holds until it is written
+#define HOST_BREADCRUMB_HISTORY (8U) // breadcrumb_write() calls kept, newest last
 
 /**
  * @brief Which output-port call an event records.
@@ -47,8 +48,8 @@ typedef struct
  * @brief Clears the event record and the call counts, puts the gate and the
  *        clock output low and the pitch CV at 0, and restores the default
  *        script: every port succeeds, all step bits are 0, the tempo reading
- *        is 0, no time passes, the non-volatile storage is erased and no
- *        reset cause is recorded.
+ *        is 0, no time passes, the non-volatile storage is erased, no
+ *        reset cause is recorded and the breadcrumb is 0.
  */
 void host_reset(void);
 
@@ -90,6 +91,70 @@ void host_set_elapsed_ticks(uint8_t ticks);
  * @param cause  Reset flags to report, 0 to 15.
  */
 void host_set_reset_cause(uint8_t cause);
+
+/**
+ * @brief Sets what breadcrumb_read() returns, as if the firmware had noted
+ *        that place before it was last reset. Like the non-volatile storage,
+ *        the breadcrumb is kept when the app is initialized again.
+ * @param place  Any value.
+ */
+void host_set_breadcrumb(uint8_t place);
+
+/**
+ * @brief The place breadcrumb_write() was last given, or host_set_breadcrumb()
+ *        if that was later (0 if neither).
+ */
+uint8_t host_breadcrumb(void);
+
+/**
+ * @brief Number of times breadcrumb_write() has been called since
+ *        host_reset().
+ */
+uint16_t host_breadcrumb_write_count(void);
+
+/**
+ * @brief  Returns the place one of the most recent breadcrumb_write() calls
+ *         was given.
+ * @param  age  0 for the latest call, 1 for the one before it, and so on up
+ *              to HOST_BREADCRUMB_HISTORY - 1.
+ * @return The place, or 0 if there have not been that many calls or age is
+ *         out of range.
+ */
+uint8_t host_breadcrumb_before(uint8_t age);
+
+/**
+ * @brief The breadcrumb as it stood at the most recent cv_output_write()
+ *        call (0 if none), which is the first thing the apply step does.
+ */
+uint8_t host_breadcrumb_at_cv_write(void);
+
+/**
+ * @brief The breadcrumb as it stood at the most recent run_input_read()
+ *        call (0 if none), which is part of gathering the inputs.
+ */
+uint8_t host_breadcrumb_at_run_read(void);
+
+/**
+ * @brief Number of times log_crash() has been called since host_reset().
+ *        Like log_startup(), it is kept out of the event record.
+ */
+uint16_t host_crash_count(void);
+
+/**
+ * @brief The record number the most recent log_crash() call was given (0 if
+ *        none).
+ */
+uint8_t host_crash_number(void);
+
+/**
+ * @brief The place the most recent log_crash() call was given (0 if none).
+ */
+uint8_t host_crash_place(void);
+
+/**
+ * @brief The count the most recent log_crash() call was given (0 if none).
+ */
+uint8_t host_crash_repeats(void);
 
 /**
  * @brief Puts an edge on the external clock input: the next
