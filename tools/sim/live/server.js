@@ -19,7 +19,6 @@
  *                  { mode: 0 to 255 }           The eight mode switches, a
  *                                               bit a switch.
  *                  { tempo: 0 to 1023 }
- *                  { sync: true | false }       The sync switch.
  *                  { run: 'press' }             One press of the run button.
  *                  { pulse: 'clock' | 'reset' } One pulse on that input jack.
  *                  { clockOn: true | false }    The clock source plugged
@@ -136,7 +135,6 @@ const panel = {
     notes: START_NOTES.slice(),
     mode: 0,
     tempo: START_TEMPO_READING,
-    sync: false,
     clockOn: false,
     clockMs: START_CLOCK_MS,
     clockPattern: CLOCK_PATTERNS[0], // Steady
@@ -145,6 +143,9 @@ const clients = new Set();
 let board = null;
 let outputs = null;
 let isCalibrating = false; // Powered up with the calibration entry pattern set
+// An edge has come on the clock input since the last stop, which is what
+// the firmware goes by to choose its clock
+let hasExternalEdge = false;
 let isFirstStepDue = false; // The next step to begin is the pattern's first
 let stepEngine = ENGINE_PLAIN; // The engine that gave the last step counted
 // What else is kept of an engine's place, beside the last step counted: the
@@ -176,7 +177,7 @@ function chipMs() {
 }
 
 function runningTransport() {
-    return panel.sync ? TRANSPORT_EXTERNAL : TRANSPORT_INTERNAL;
+    return hasExternalEdge ? TRANSPORT_EXTERNAL : TRANSPORT_INTERNAL;
 }
 
 /** Starts a board from reset with the panel as it stands. */
@@ -185,9 +186,9 @@ function powerUp(config, eeprom) {
     board.setNotes(panel.notes);
     board.setModeSwitches(panel.mode);
     board.setTempoReading(panel.tempo);
-    // A toggle switch stays where it was and whatever is plugged into the
-    // clock input carries on; the run button is up
-    board.setSyncSwitch(panel.sync);
+    // Whatever is plugged into the clock input carries on; the run button
+    // is up, and the firmware starts on its own clock
+    hasExternalEdge = false;
     if (panel.clockOn) {
         board.startClockIn(panel.clockMs, panel.clockPattern);
     }
@@ -234,6 +235,7 @@ function powerUp(config, eeprom) {
  */
 function startAgain() {
     isCalibrating = board.readsCalibrationEntry();
+    hasExternalEdge = false;
     outputs.step = -1;
     outputs.stageStep = 0;
     outputs.stageSteps = 0;
@@ -408,8 +410,8 @@ function countMidiClock(t) {
 }
 
 /**
- * Gives the tempo up when the clocks have stopped coming: stopped with the
- * sync switch on, or following an external clock that has gone away.
+ * Gives the tempo up when the clocks have stopped coming: stopped after an
+ * external edge, or following an external clock that has gone away.
  */
 function addMidiClockQuiet(events) {
     const times = midiOut.clockTimes;
@@ -424,13 +426,32 @@ function addMidiClockQuiet(events) {
 /**
  * Takes the transport from a MIDI Start or Stop, which says whether the
  * pattern is running as surely as the log does. Which clock it runs from
- * is not in the message; that is the sync switch.
+ * is not in the message; that is whether an edge has come.
  */
 function followMidiTransport(transport, t, events) {
     if ((outputs.transport !== transport) || (outputs.transportFrom !== 'midi')) {
         outputs.transport = transport;
         outputs.transportFrom = 'midi';
         events.push({ t, k: 'transport', v: transport, from: 'midi' });
+    }
+}
+
+/**
+ * Takes an edge on the clock input as the firmware does: that is the clock
+ * from then until the next stop. Running, the transport changes at once;
+ * stopped, the next start shows it. An image with a log says the same a
+ * moment later. A stop is taken here when the button goes down and by the
+ * firmware 20 ms on, so a lone edge in between is forgotten there and not
+ * here until the log or the next stop puts it right.
+ */
+function takeExternalEdge(t, events) {
+    if (!isCalibrating) {
+        hasExternalEdge = true;
+        if (outputs.transport === TRANSPORT_INTERNAL) {
+            outputs.transport = TRANSPORT_EXTERNAL;
+            outputs.transportFrom = 'controls';
+            events.push({ t, k: 'transport', v: TRANSPORT_EXTERNAL, from: 'controls' });
+        }
     }
 }
 
@@ -556,8 +577,12 @@ function record(item, events) {
             startAgain();
             events.push({ t, k: 'watchdog' });
             break;
+        case 'clockin':
+            events.push({ t, k: item.kind });
+            takeExternalEdge(t, events);
+            break;
         default:
-            // An edge on the clock input or the reset input
+            // An edge on the reset input
             events.push({ t, k: item.kind });
             break;
     }
@@ -719,7 +744,9 @@ function predictRunPress() {
         outputs.transport = runningTransport();
         isFirstStepDue = true;
     } else {
+        // A stop forgets the external clock
         outputs.transport = TRANSPORT_STOPPED;
+        hasExternalEdge = false;
     }
     outputs.transportFrom = 'controls';
 }
@@ -732,16 +759,6 @@ function pressRun() {
     board.runButton.set(true);
     runUpDueMs = chipMs() + RUN_HOLD_MS;
     predictRunPress();
-}
-
-function setSync(isOn) {
-    panel.sync = isOn;
-    board.setSyncSwitch(isOn);
-    // While running, the switch chooses the clock; stopped stays stopped
-    if (!isCalibrating && (outputs.transport !== TRANSPORT_STOPPED)) {
-        outputs.transport = runningTransport();
-        outputs.transportFrom = 'controls';
-    }
 }
 
 /** Switches the clock source on or off. Switching on gives an edge at once. */
@@ -798,8 +815,6 @@ function applyCommand(command) {
     } else if (isWholeNumberUpTo(command.tempo, MAX_TEMPO_READING)) {
         panel.tempo = command.tempo;
         board.setTempoReading(panel.tempo);
-    } else if (typeof command.sync === 'boolean') {
-        setSync(command.sync);
     } else if (command.run === 'press') {
         pressRun();
     } else if ((command.pulse === 'clock') || (command.pulse === 'reset')) {

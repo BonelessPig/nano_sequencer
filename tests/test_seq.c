@@ -1226,7 +1226,7 @@ static void test_calibration_table_is_read_when_the_step_begins(void)
 
 
 
-#define SETTLE_TICKS (20U) // Debounce time of the run button and the sync switch
+#define SETTLE_TICKS (20U) // Debounce time of the run button
 
 // Tempo readings that are a ratio on the external clock
 #define TEMPO_RAW_DIVIDE_4   (0U)    // A step to every four edges
@@ -1248,6 +1248,17 @@ static unsigned int run_ticks(seq_state_t *p_state, const seq_inputs_t *p_in,
         steps += p_out->b_step_started ? 1U : 0U;
     }
     return steps;
+}
+
+/**
+ * @brief Makes the external clock the one the next start is on, as an edge
+ *        that came while the pattern was stopped does. Called straight
+ *        after seq_init(), it has the first tick start there, so that
+ *        nothing begins until an edge comes.
+ */
+static void wait_for_external(seq_state_t *p_state)
+{
+    p_state->transport.b_external = true;
 }
 
 /**
@@ -1402,7 +1413,7 @@ static void test_a_stopped_pattern_ignores_reset_and_the_external_clock(void)
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
     seq_tick(&state, &in, &out);
     press_run(&state, &in, &out);
     TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, out.transport);
@@ -1417,7 +1428,7 @@ static void test_a_stopped_pattern_ignores_reset_and_the_external_clock(void)
 
 
 
-static void test_sync_switch_makes_each_external_edge_a_step(void)
+static void test_each_external_edge_is_a_step(void)
 {
     // Each gap is more than half the one before, so no step is held back
     static const unsigned int gaps[] = { 100U, 60U, 250U, 130U, 70U };
@@ -1427,9 +1438,9 @@ static void test_sync_switch_makes_each_external_edge_a_step(void)
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
 
-    // On from the first tick: nothing begins until an edge comes
+    // External from the first tick: nothing begins until an edge comes
     (void)memset(&out, POISON_BYTE, sizeof(out));
     seq_tick(&state, &in, &out);
     TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, out.transport);
@@ -1470,7 +1481,7 @@ static void test_external_gate_and_clock_out_are_half_the_measured_step(void)
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
     (void)memset(in.raw_steps, 0x11, PANEL_STEP_BYTE_COUNT);
     run_and_trace(&state, &in, 5U, &gate, &clock_out);
 
@@ -1523,7 +1534,7 @@ static void test_tempo_reading_is_a_ratio_on_the_external_clock(void)
 
         seq_init(&state);
         in.tempo_raw     = cases[i].tempo_raw;
-        in.b_sync_switch = true;
+        wait_for_external(&state);
 
         // Two sync edges, so that the second has a spacing to multiply into
         for (unsigned int edges = 0U; edges < (2U * cases[i].divide); edges++)
@@ -1547,7 +1558,7 @@ static void test_a_multiplied_clock_fits_steps_between_the_edges(void)
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_MULTIPLY_4;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
 
     // Two edges 100 ticks apart measure the spacing; one step each so far
     edge_tick(&state, &in, &out);
@@ -1576,7 +1587,7 @@ static void test_steps_owed_after_an_early_edge_begin_one_per_tick(void)
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_MULTIPLY_4;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
     edge_tick(&state, &in, &out);
     (void)run_ticks(&state, &in, &out, 99U);
     edge_tick(&state, &in, &out); // Four steps to an edge from here: step 1
@@ -1608,7 +1619,7 @@ static void test_an_early_edge_gets_a_tick_of_low_before_its_step(void)
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
     (void)memset(in.raw_steps, 0x33, PANEL_STEP_BYTE_COUNT); // Every step a pitch
 
     // Two edges 200 ticks apart: the steps are taken to be that long, so
@@ -1658,7 +1669,7 @@ static void test_a_tied_gate_is_not_broken_by_an_edge_on_time(void)
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
     in.gate.length   = SEQ_PULSES_PER_STEP;
     (void)memset(in.raw_steps, 0x33, PANEL_STEP_BYTE_COUNT);
 
@@ -1686,7 +1697,7 @@ static void test_a_divided_clock_passes_over_edges(void)
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_DIVIDE_4;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
 
     // Edges 25 ticks apart: a step on the first and on every fourth after
     for (unsigned int tick = 0U; tick < 800U; tick++)
@@ -1711,7 +1722,7 @@ static void test_last_valid_tempo_reading_is_the_ratio_when_one_fails(void)
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_DIVIDE_4;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
     seq_tick(&state, &in, &out);
 
     in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
@@ -1722,64 +1733,92 @@ static void test_last_valid_tempo_reading_is_the_ratio_when_one_fails(void)
 
 
 
-static void test_going_to_the_external_clock_finishes_the_step_and_waits(void)
+static void test_an_edge_takes_the_pattern_over_without_a_restart(void)
 {
     seq_state_t   state;
     seq_inputs_t  in = make_counting_inputs();
     seq_outputs_t out;
 
+    // 155 BPM as a tempo: step 1 begins on tick 98 and its clock pulse and
+    // gate are over by tick 160
     seq_init(&state);
-    in.tempo_raw = TEMPO_RAW_ONE_TO_ONE; // 155 BPM as a tempo
-    TEST_ASSERT_EQUAL(2, run_ticks(&state, &in, &out, 110U));
-    TEST_ASSERT(out.b_gate); // Step 1, a pitch, just begun
-
-    in.b_sync_switch = true;
-    (void)run_ticks(&state, &in, &out, SETTLE_TICKS - 1U);
+    in.tempo_raw = TEMPO_RAW_ONE_TO_ONE;
+    TEST_ASSERT_EQUAL(2, run_ticks(&state, &in, &out, 160U));
     TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, out.transport);
-    seq_tick(&state, &in, &out);
+    TEST_ASSERT(!out.b_clock_out);
+
+    // The edge ends step 1 there and begins the next step, not the first
+    edge_tick(&state, &in, &out);
     TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, out.transport);
     TEST_ASSERT(out.b_transport_changed);
-    TEST_ASSERT(!out.b_step_started); // A change of clock is not a start
-
-    // The rest of step 1 goes by at 24 pulses to 20 ticks, and then nothing
-    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 20U));
-    TEST_ASSERT(!out.b_gate);
-    TEST_ASSERT(!out.b_clock_out);
-    TEST_ASSERT_EQUAL(SEQ_PULSES_PER_STEP - 1U, state.step_pulses);
-    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 1000U));
-
-    // The first edge begins the next step, not the first
-    edge_tick(&state, &in, &out);
     TEST_ASSERT(out.b_step_started);
     TEST_ASSERT_EQUAL(2, out.step);
+
+    // From there only an edge begins a step, however long it takes to come
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 5000U));
+    TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, out.transport);
+    TEST_ASSERT_EQUAL(SEQ_PULSES_PER_STEP - 1U, state.step_pulses);
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(3, out.step);
 }
 
 
 
-static void test_going_back_to_the_internal_clock_carries_on(void)
+static void test_an_edge_while_the_clock_output_is_high_waits_a_tick(void)
 {
     seq_state_t   state;
     seq_inputs_t  in = make_counting_inputs();
     seq_outputs_t out;
 
     seq_init(&state);
-    in.tempo_raw     = TEMPO_RAW_150_BPM;
-    in.b_sync_switch = true;
+    in.tempo_raw = TEMPO_RAW_ONE_TO_ONE;
+    TEST_ASSERT_EQUAL(2, run_ticks(&state, &in, &out, 110U));
+    TEST_ASSERT(out.b_gate); // Step 1, a pitch, just begun
+    TEST_ASSERT(out.b_clock_out);
+
+    // The tick of the edge is the gap between the two steps
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, out.transport);
+    TEST_ASSERT(!out.b_step_started);
+    TEST_ASSERT(!out.b_gate);
+    TEST_ASSERT(!out.b_clock_out);
+
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(2, out.step);
+    TEST_ASSERT(out.b_clock_out);
+}
+
+
+
+static void test_a_stop_and_a_start_go_back_to_the_internal_clock(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_150_BPM;
+    wait_for_external(&state);
     seq_tick(&state, &in, &out);
     edge_tick(&state, &in, &out); // Step 0
-    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, 200U));
+    edge_tick(&state, &in, &out); // Step 1, held back a tick
+    TEST_ASSERT_EQUAL(1, run_ticks(&state, &in, &out, 200U));
 
-    // Step 0 was waiting one pulse short of its end, so step 1 comes at once
-    in.b_sync_switch = false;
-    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, SETTLE_TICKS - 1U));
-    TEST_ASSERT(ticks_to_next_step(&state, &in, &out) <= 5U);
+    press_run(&state, &in, &out);
+    TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, out.transport);
+    (void)run_ticks(&state, &in, &out, SETTLE_TICKS);
+
+    // The start is a start: the first step, at once, and the tempo sets
+    // the pace from there
+    press_run(&state, &in, &out);
     TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, out.transport);
-    TEST_ASSERT_EQUAL(1, out.step);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(0, out.step);
     TEST_ASSERT(!state.clock.b_synced);
-
-    // And the tempo sets the pace from there
     TEST_ASSERT_EQUAL(100, ticks_to_next_step(&state, &in, &out));
-    TEST_ASSERT_EQUAL(2, out.step);
+    TEST_ASSERT_EQUAL(1, out.step);
 }
 
 
@@ -1792,7 +1831,7 @@ static void test_reset_on_the_external_clock_plays_the_first_step_at_the_next_ed
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
     for (unsigned int step = 0U; step < 3U; step++)
     {
         edge_tick(&state, &in, &out);
@@ -1826,15 +1865,19 @@ static void test_a_start_on_the_external_clock_waits_for_an_edge(void)
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
     for (unsigned int step = 0U; step < 3U; step++)
     {
         edge_tick(&state, &in, &out);
         (void)run_ticks(&state, &in, &out, 49U);
     }
 
+    // The stop forgets the external clock; an edge while stopped brings it
+    // back, and begins nothing
     press_run(&state, &in, &out);
-    (void)run_ticks(&state, &in, &out, SETTLE_TICKS);
+    edge_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, out.transport);
+    TEST_ASSERT_EQUAL(0, run_ticks(&state, &in, &out, SETTLE_TICKS));
     press_run(&state, &in, &out);
     TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, out.transport);
     TEST_ASSERT(!out.b_step_started);
@@ -2354,7 +2397,7 @@ static void test_pulses_between_sync_edges_are_24_times_the_multiply(void)
 
         seq_init(&state);
         in.tempo_raw     = cases[i].tempo_raw;
-        in.b_sync_switch = true;
+        wait_for_external(&state);
 
         // A start with an edge on it: the one pulse the step was short of
         in.b_clock_edge = true;
@@ -2386,7 +2429,7 @@ static void test_pulses_of_an_early_edge_fall_on_its_tick_not_its_steps(void)
 
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_MULTIPLY_4;
-    in.b_sync_switch = true;
+    wait_for_external(&state);
     edge_tick(&state, &in, &out);
     (void)run_ticks(&state, &in, &out, 99U);
     edge_tick(&state, &in, &out); // Four steps, 96 pulses, to an edge from here
@@ -2505,7 +2548,7 @@ static void test_a_start_after_pulses_while_stopped_is_still_a_whole_step(void)
 
 
 
-static void test_no_pulses_fall_while_stopped_with_the_sync_switch_on(void)
+static void test_pulses_while_stopped_stop_at_an_external_edge(void)
 {
     seq_state_t   state;
     seq_inputs_t  in = make_counting_inputs();
@@ -2514,40 +2557,33 @@ static void test_no_pulses_fall_while_stopped_with_the_sync_switch_on(void)
 
     // Two edges 100 ticks apart, so the clock is following when it stops
     seq_init(&state);
-    in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
-    in.b_sync_switch = true;
+    in.tempo_raw = TEMPO_RAW_ONE_TO_ONE;
+    wait_for_external(&state);
     edge_tick(&state, &in, &out);
     (void)run_ticks(&state, &in, &out, 99U);
     edge_tick(&state, &in, &out);
     (void)run_ticks(&state, &in, &out, 10U);
     press_run(&state, &in, &out);
     TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, out.transport);
-    TEST_ASSERT_EQUAL(0, out.pulses); // None on the tick of the stop either
 
-    // Edges or not, nothing falls and the clock is not touched
+    // The stop forgot the external clock, so the internal one carries on.
+    // As a tempo the reading is 155 BPM: 31 pulses every 125 ticks
+    TEST_ASSERT(!state.clock.b_synced);
+    (void)pulses_over(&state, &in, &out, 1000U - SETTLE_TICKS);
+    TEST_ASSERT_EQUAL(248, pulses_over(&state, &in, &out, 1000U));
+    TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, out.transport);
+
+    // From the first edge nothing falls, edges or not, and the clock is
+    // not touched
     clock           = state.clock;
     in.b_clock_edge = true;
     TEST_ASSERT_EQUAL(0, pulses_over(&state, &in, &out, 300U));
     in.b_clock_edge = false;
     TEST_ASSERT_EQUAL(0, pulses_over(&state, &in, &out, 300U));
-    TEST_ASSERT(state.clock.b_synced);
-    TEST_ASSERT_EQUAL(clock.phase, state.clock.phase);
-    TEST_ASSERT_EQUAL(clock.period, state.clock.period);
-    TEST_ASSERT_EQUAL(clock.sync_ticks, state.clock.sync_ticks);
-    TEST_ASSERT_EQUAL(clock.given, state.clock.given);
-    TEST_ASSERT_EQUAL(clock.edges_left, state.clock.edges_left);
-
-    // The switch is followed while stopped, once it has settled. As a tempo
-    // the reading is 155 BPM: 31 pulses every 125 ticks
-    in.b_sync_switch = false;
-    TEST_ASSERT_EQUAL(0, pulses_over(&state, &in, &out, SETTLE_TICKS - 1U));
-    TEST_ASSERT_EQUAL(248, pulses_over(&state, &in, &out, 1000U));
     TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, out.transport);
-    TEST_ASSERT(!state.clock.b_synced);
-
-    in.b_sync_switch = true;
-    (void)run_ticks(&state, &in, &out, SETTLE_TICKS);
-    TEST_ASSERT_EQUAL(0, pulses_over(&state, &in, &out, 300U));
+    TEST_ASSERT_EQUAL(clock.phase, state.clock.phase);
+    TEST_ASSERT_EQUAL(clock.b_synced, state.clock.b_synced);
+    TEST_ASSERT_EQUAL(clock.sync_ticks, state.clock.sync_ticks);
 
     // A start on the external clock is as it ever was: a pulse short of
     // the first step, which the first edge brings
@@ -2646,7 +2682,7 @@ int main(void)
     RUN_TEST(test_run_button_starts_again_from_the_first_step);
     RUN_TEST(test_time_on_the_tick_of_a_start_is_not_counted);
     RUN_TEST(test_a_stopped_pattern_ignores_reset_and_the_external_clock);
-    RUN_TEST(test_sync_switch_makes_each_external_edge_a_step);
+    RUN_TEST(test_each_external_edge_is_a_step);
     RUN_TEST(test_external_gate_and_clock_out_are_half_the_measured_step);
     RUN_TEST(test_tempo_reading_is_a_ratio_on_the_external_clock);
     RUN_TEST(test_a_multiplied_clock_fits_steps_between_the_edges);
@@ -2655,8 +2691,9 @@ int main(void)
     RUN_TEST(test_a_tied_gate_is_not_broken_by_an_edge_on_time);
     RUN_TEST(test_a_divided_clock_passes_over_edges);
     RUN_TEST(test_last_valid_tempo_reading_is_the_ratio_when_one_fails);
-    RUN_TEST(test_going_to_the_external_clock_finishes_the_step_and_waits);
-    RUN_TEST(test_going_back_to_the_internal_clock_carries_on);
+    RUN_TEST(test_an_edge_takes_the_pattern_over_without_a_restart);
+    RUN_TEST(test_an_edge_while_the_clock_output_is_high_waits_a_tick);
+    RUN_TEST(test_a_stop_and_a_start_go_back_to_the_internal_clock);
     RUN_TEST(test_reset_on_the_external_clock_plays_the_first_step_at_the_next_edge);
     RUN_TEST(test_a_start_on_the_external_clock_waits_for_an_edge);
     RUN_TEST(test_mode_switches_choose_the_engine);
@@ -2677,7 +2714,7 @@ int main(void)
     RUN_TEST(test_pulses_of_an_early_edge_fall_on_its_tick_not_its_steps);
     RUN_TEST(test_pulses_carry_on_at_the_tempo_while_stopped);
     RUN_TEST(test_a_start_after_pulses_while_stopped_is_still_a_whole_step);
-    RUN_TEST(test_no_pulses_fall_while_stopped_with_the_sync_switch_on);
+    RUN_TEST(test_pulses_while_stopped_stop_at_an_external_edge);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();
 }

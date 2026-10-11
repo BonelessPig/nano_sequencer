@@ -298,7 +298,7 @@ INCLUDING_TESTS = test_serial_logger test_null_logger test_register_init \
                   test_timebase test_spi test_gate_output test_clock_output \
                   test_cv_output test_eeprom test_reset_cause test_main \
                   test_clock_input test_reset_input test_run_input \
-                  test_sync_input test_watchdog test_breadcrumb \
+                  test_watchdog test_breadcrumb \
                   test_midi_output test_null_midi_output
 TEST_INCLUDING := $(patsubst %,$(HOST_DIR)/%$(EXE),$(INCLUDING_TESTS))
 

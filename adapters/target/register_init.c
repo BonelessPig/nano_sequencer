@@ -35,8 +35,9 @@ port_status_t register_init(void)
 
     // Inputs with their pull-ups on. The clock input (PB0) and the reset
     // input (PD2) are each pulled low by a transistor while their jack is
-    // high; the sync switch (PD3) and the run button (PD7) close to ground.
-    // clock_input.c, reset_input.c, sync_input.c and run_input.c read them
+    // high; the run button (PD7) closes to ground. clock_input.c,
+    // reset_input.c and run_input.c read them. PD3 has nothing on it, and
+    // is held by its pull-up so that it does not float
     DDRB  &= (uint8_t)~BIT_0;
     PORTB |= BIT_0;
     DDRD  &= (uint8_t)~(BIT_2 | BIT_3 | BIT_7);

@@ -16,11 +16,11 @@
  * log, from address 16. The chip's watchdog is running; stopTick() is how a
  * scenario makes it bite.
  *
- * Four inputs, each with the chip's pull-up holding its pin high. The clock
+ * Three inputs, each with the chip's pull-up holding its pin high. The clock
  * input jack reaches PB0 and the reset input jack PD2 through a transistor
- * each, which pulls the pin low while the jack is high. The sync switch is
- * between PD3 and ground and the run button between PD7 and ground, so each
- * reads low while closed.
+ * each, which pulls the pin low while the jack is high. The run button is
+ * between PD7 and ground, so it reads low while closed. PD3 has nothing on
+ * it.
  */
 const path = require('node:path');
 const { createAtmega328p } = require('../lib/machine');
@@ -46,7 +46,6 @@ const SHIFT_REG_LOAD_PIN = 1; // On port B
 const DAC_SELECT_PIN = 2;     // On port B
 const GATE_PIN = 4;           // On port D
 const CLOCK_OUT_PIN = 5;      // On port D
-const SYNC_SWITCH_PIN = 3;    // On port D
 const RUN_BUTTON_PIN = 7;     // On port D
 const MCUSR = 0x54;           // Reset flags register, data address
 const SREG = 0x5F;            // Status register, data address
@@ -134,16 +133,13 @@ function createBoard(config, options = {}) {
     const resetIn = attachClockSource(
         machine.cpu, (high) => machine.externalInt0.setPin(!high));
 
-    // The two panel controls, each closing its pin to ground
-    const syncSwitch = attachSwitch(
-        machine.cpu, (closed) => machine.portD.setPin(SYNC_SWITCH_PIN, !closed));
+    // The run button closes its pin to ground
     const runButton = attachSwitch(
         machine.cpu, (closed) => machine.portD.setPin(RUN_BUTTON_PIN, !closed));
 
-    // Nothing plugged in, the switch off and the button up: every pin high
+    // Nothing plugged in and the button up: every pin high
     machine.inputCapture1.setPin(true);
     machine.externalInt0.setPin(true);
-    machine.portD.setPin(SYNC_SWITCH_PIN, true);
     machine.portD.setPin(RUN_BUTTON_PIN, true);
 
     // A recorder's completed pulses, in milliseconds of chip time
@@ -221,7 +217,6 @@ function createBoard(config, options = {}) {
         clockOut,
         clockIn,
         resetIn,
-        syncSwitch,
         runButton,
         // The cycle of each reset since power-on, which only the watchdog
         // causes
@@ -295,9 +290,23 @@ function createBoard(config, options = {}) {
             runButton.set(false, flipCycles, bounceMs > 0 ? bounces : 0);
         },
 
-        /** Sets the sync switch on (the external clock) or off. */
-        setSyncSwitch(on) {
-            syncSwitch.set(on);
+        /**
+         * Puts the pattern on the external clock, waiting for an edge: a
+         * stop, one clock edge while it is stopped, and a start. What was
+         * recorded before the start is forgotten, so that a scenario
+         * begins with a board that has played nothing.
+         */
+        startOnExternalClock() {
+            this.runForMs(5);
+            this.pressRunButton(60);
+            this.pulseClockIn(2);
+            this.runForMs(60);
+            for (const list of [gate.edges, clockOut.edges, dac.writes, dac.ignored,
+                chain.reads, spiSent, leds.latches, clockIn.rises, resetIn.rises,
+                serial.lines, serial.notices, midi.bytes, midi.messages]) {
+                list.length = 0;
+            }
+            this.pressRunButton(60);
         },
 
         /**

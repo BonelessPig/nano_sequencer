@@ -24,8 +24,10 @@ const BYTE_CYCLES = (CPU_HZ / MIDI_BAUD) * BITS_PER_BYTE; // 5120: 320 us
 const BYTE_MS = 0.32;
 // A byte waiting in the queue goes on the loop pass that finds the last one
 // gone, so two are this much further apart at most while nothing else is
-// going on: 0.003 ms measured, and 0.024 ms across a tick boundary
-const BYTE_GAP_SPARE_MS = 0.03;
+// going on: 0.003 ms measured. Across a tick boundary it waits for what is
+// left of the tick's work, which depends on where in it the last byte ended:
+// 0.033 ms measured, and it moves with anything that changes a tick's length
+const BYTE_GAP_SPARE_MS = 0.06;
 const START = 0xFA;
 const STOP = 0xFC;
 const CLOCK = 0xF8;
@@ -85,13 +87,15 @@ function voltageNote(millivolts) {
         + Math.round((millivolts * SEMITONES_PER_OCTAVE) / MILLIVOLTS_PER_OCTAVE);
 }
 
-function midiBoard(panel, reading, syncOn = false, modeSwitches = 0) {
+function midiBoard(panel, reading, external = false, modeSwitches = 0) {
     const board = createBoard('midi');
 
     board.setNotes(panel);
     board.setModeSwitches(modeSwitches);
     board.setTempoReading(reading);
-    board.setSyncSwitch(syncOn);
+    if (external) {
+        board.startOnExternalClock();
+    }
     return board;
 }
 
@@ -398,7 +402,7 @@ test('midi: the run button sends Stop and Start, and the clock carries on betwee
     assertBetween(ms(board, lastOff.cycle - cut.cycle), BYTE_MS, NOTE_AFTER_GATE_MAX_MS,
         'ms from the gate cut to Note Off');
 
-    // Stopped, with the sync switch off: no step and no note, and the
+    // Stopped, with no external edge since: no step and no note, and the
     // clock goes on at the tempo as if nothing had happened
     const stepsBefore = board.clockOut.rises().length;
     const messagesBefore = board.midi.messages.length;
@@ -505,11 +509,9 @@ test('midi: a tie to another pitch sends the new Note On, then the old Note Off'
 test('midi: on the external clock Start goes at once and the clocks wait for an edge', () => {
     const board = midiBoard(PANEL, READING_ONE_TO_ONE, true);
 
-    // No clock plugged in: Start, and then nothing however long
+    // Started with no clock coming: Start, and then nothing however long
     board.runForMs(400);
     assert.deepEqual(board.midi.messages.map((message) => message.type), ['start']);
-    assertBetween(ms(board, board.midi.messages[0].cycle), 2 * TICK_MS, 3 * TICK_MS,
-        'ms from reset to Start');
 
     const edges = 6;
 
@@ -567,7 +569,7 @@ test('midi: an external clock multiplied by four gets 24 clocks to an edge', () 
     assertWellFormed(board);
 });
 
-test('midi: stopped with the sync switch on sends no clocks, whatever comes in', () => {
+test('midi: stopped after an external edge sends no clocks, whatever comes in', () => {
     const board = midiBoard(PANEL, READING_ONE_TO_ONE, true);
 
     board.runForMs(10);

@@ -34,7 +34,6 @@
 #include "reset_input_port.h"
 #include "run_input_port.h"
 #include "step_input_port.h"
-#include "sync_input_port.h"
 #include "pot_input_port.h"
 #include "timebase_port.h"
 #include "watchdog_port.h"
@@ -207,7 +206,6 @@ static void gather_inputs(uint8_t elapsed_ticks)
     g_inputs.b_clock_edge  = clock_input_edge();
     g_inputs.b_reset       = reset_input_edge();
     g_inputs.b_run_button  = run_input_read();
-    g_inputs.b_sync_switch = sync_input_read();
     g_midi_room            = midi_output_room();
 
     if (elapsed_ticks >= g_ticks_until_scan)
@@ -325,7 +323,6 @@ static void reset_tick_state(void)
     g_inputs.b_reset       = false;
     g_inputs.b_clock_edge  = false;
     g_inputs.b_run_button  = false;
-    g_inputs.b_sync_switch = false;
     set_fixed_controls();
 
     g_outputs.b_step_started = false;

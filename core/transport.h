@@ -7,13 +7,18 @@
  *         and for a PC.
  * @author BonelessPig
  *
- * Two controls decide it. The run button turns running on and off, one
- * change per press. The sync switch chooses the clock while running: off is
- * the internal clock, on is the external one. Both are debounced here (see
- * debounce.h), so they are given as read.
+ * The run button turns running on and off, one change per press. It is
+ * debounced here (see debounce.h), so it is given as read.
  *
- * The pattern is running after transport_init(). A button that is already
- * held down then is not a press; a switch that is already on is on.
+ * The clock chooses itself. An edge on the external clock takes the pattern
+ * over, and it stays on the external clock from then on, edges or none. A
+ * stop forgets the external clock, so the start after it is on the internal
+ * one; an edge that comes while the pattern is stopped brings the external
+ * clock back, so a start with a clock running waits for its next edge. The
+ * transport never changes clock by itself for want of edges.
+ *
+ * The pattern is running after transport_init(), on the internal clock. A
+ * button that is already held down then is not a press.
  *
  * @copyright Copyright (c) 2026
  *
@@ -38,12 +43,13 @@ typedef enum
  */
 typedef struct
 {
-    debounce_state_t run_button;  // Settles the run button
-    debounce_state_t sync_switch; // Settles the sync switch
-    bool             b_pressed;   // The run button's settled level last tick
-    bool             b_run;       // true while the pattern is running
-    bool             b_starting;  // true until the start has been reported
-    transport_mode_t mode;        // The mode reported last tick
+    debounce_state_t run_button; // Settles the run button
+    bool             b_pressed;  // The run button's settled level last tick
+    bool             b_run;      // true while the pattern is running
+    bool             b_starting; // true until the start has been reported
+    bool             b_external; // true once an external edge has come, until
+                                 // the next stop
+    transport_mode_t mode;       // The mode reported last tick
 } transport_state_t;
 
 /**
@@ -52,7 +58,8 @@ typedef struct
 typedef struct
 {
     bool    b_run_button;  // true while the run button is held down
-    bool    b_sync_switch; // true while the sync switch is on
+    bool    b_clock_edge;  // true if an edge arrived on the external clock
+                           // since the previous tick
     uint8_t elapsed_ticks; // Ticks (milliseconds) since the previous tick
 } transport_inputs_t;
 
@@ -68,24 +75,26 @@ typedef struct
     bool b_changed;        // true on a tick whose mode is not the last one's.
                            // The first tick is compared with
                            // TRANSPORT_INTERNAL
-    bool b_external;       // The sync switch's settled level on this tick:
-                           // true while it is on. Given on every tick,
+    bool b_external;       // true if the external clock is the one in use, or
+                           // the one a start would use: an edge has come
+                           // since the last stop. Given on every tick,
                            // stopped or running
 } transport_outputs_t;
 
 /**
- * @brief  Puts the transport into its power-on condition: running, with the
- *         start still to be reported.
+ * @brief  Puts the transport into its power-on condition: running, on the
+ *         internal clock, with the start still to be reported.
  * @param  p_state  State to initialize. Ignored if null.
  */
 void transport_init(transport_state_t *p_state);
 
 /**
- * @brief  Runs one tick: settles the two controls and works out the mode.
- *         The sync switch's settled level is given as well, since the mode
- *         does not say where the switch is while the pattern is stopped.
- *         Reads *p_state and *p_in, writes *p_state and *p_out, and has no
- *         other effect.
+ * @brief  Runs one tick: settles the run button, notes an external edge and
+ *         works out the mode. A press that stops the pattern forgets the
+ *         external clock; an edge on the same tick brings it straight back.
+ *         Which clock is in use is given as well, since the mode does not
+ *         say while the pattern is stopped. Reads *p_state and *p_in, writes
+ *         *p_state and *p_out, and has no other effect.
  * @param  p_state  State from transport_init() or the previous tick; updated.
  * @param  p_in     The controls for this tick.
  * @param  p_out    Receives the outputs; every field is written.

@@ -1,5 +1,5 @@
 'use strict';
-// The clock input, the reset input, the run button and the sync switch on
+// The clock input, the reset input and the run button on
 // the emulated board, for all three firmware images. The release and midi
 // images have no log, so steps are timed from the clock output and told
 // apart by the voltage the DAC holds as each gate rises; the debug image's
@@ -37,7 +37,7 @@ const PORTB = 0x25;
 const DDRD = 0x2A;
 const PORTD = 0x2B;
 const CLOCK_IN_PIN = 0x01;       // PB0
-const PORT_D_INPUTS = 0x8C;      // PD2 (reset), PD3 (sync), PD7 (run)
+const PORT_D_INPUTS = 0x8C;      // PD2 (reset), PD3 (unused), PD7 (run)
 
 function assertNear(actual, expected, tolerance, what) {
     assert.ok(Math.abs(actual - expected) <= tolerance,
@@ -48,12 +48,16 @@ function noteMillivolts(noteValue) {
     return Math.round(((noteValue - 1) * MILLIVOLTS_PER_OCTAVE) / SEMITONES_PER_OCTAVE);
 }
 
-function boardWith(config, reading, syncOn) {
+// A board on the internal clock as it powers on, or with external true one
+// on the external clock that is waiting for its first edge
+function boardWith(config, reading, external) {
     const board = createBoard(config);
 
     board.setNotes(PANEL);
     board.setTempoReading(reading);
-    board.setSyncSwitch(syncOn);
+    if (external) {
+        board.startOnExternalClock();
+    }
     return board;
 }
 
@@ -74,7 +78,7 @@ function nowMs(board) {
 }
 
 for (const config of CONFIGS) {
-    test(`${config}: sets up the four inputs with pull-ups and both edge flags`, () => {
+    test(`${config}: sets up the inputs' pull-ups and both edge flags`, () => {
         const board = boardWith(config, READING_150_BPM, false);
         const data = board.machine.cpu.data;
 
@@ -92,22 +96,23 @@ for (const config of CONFIGS) {
         assert.equal(data[EIMSK], 0x00);
     });
 
-    test(`${config}: with the sync switch off the clock input is ignored`, () => {
-        const board = boardWith(config, READING_150_BPM, false);
+    test(`${config}: a clock edge takes the pattern over, with no restart`, () => {
+        const board = boardWith(config, READING_ONE_TO_ONE, false);
 
-        board.runForMs(30);
-        board.startClockIn(37);
-        board.runUntilClockOutPulses(6, RUN_LIMIT_MS);
+        board.runForMs(130);          // Into step 1, at the pot's tempo
+        board.startClockIn(80);
+        board.runUntilClockOutPulses(7, RUN_LIMIT_MS);
 
+        // From then on a step an edge, carrying on from where it was
         const pulses = board.clockOutPulsesMs();
-        for (let i = 1; i < pulses.length; i++) {
-            assertNear(pulses[i].riseMs - pulses[i - 1].riseMs, STEP_MS,
+        for (let i = 4; i < pulses.length; i++) {
+            assertNear(pulses[i].riseMs - pulses[i - 1].riseMs, 80,
                 EDGE_JITTER_MAX_MS, `period ${i}`);
         }
         assert.deepEqual(stepsPlayed(board).slice(0, 5), [0, 1, 2, 3, 4]);
     });
 
-    test(`${config}: with the sync switch on a step begins on each clock edge`, () => {
+    test(`${config}: on the external clock a step begins on each clock edge`, () => {
         const board = boardWith(config, READING_ONE_TO_ONE, true);
 
         // Nothing until the clock comes
@@ -345,33 +350,25 @@ for (const config of CONFIGS) {
         }
     });
 
-    test(`${config}: the sync switch mid-pattern waits for an edge, and back carries on`, () => {
-        const board = boardWith(config, READING_150_BPM, false);
+    test(`${config}: a stop and a start go back to the internal clock`, () => {
+        const board = boardWith(config, READING_150_BPM, true);
 
-        board.runForMs(130);          // 30 ms into step 1
-        board.setSyncSwitch(true);
-        board.runForMs(60);
-
-        // The step in progress is wound up and nothing more begins
-        assert.equal(board.gate.edges[board.gate.edges.length - 1].high, false);
-        assert.equal(board.clockOut.edges[board.clockOut.edges.length - 1].high, false);
-        const waiting = board.clockOut.rises().length;
-        board.runForMs(400);
-        assert.equal(board.clockOut.rises().length, waiting);
-
-        // An edge begins the next step, not the first
+        // One edge, one step, and nothing more however long the wait
         board.pulseClockIn(2);
         board.runForMs(50);
-        assert.deepEqual(stepsPlayed(board), [0, 1, 2]);
+        board.runForMs(400);
+        assert.equal(board.clockOut.rises().length, 1);
 
-        // Back on the internal clock the pattern carries on at the tempo
-        board.setSyncSwitch(false);
-        board.runUntilClockOutPulses(waiting + 4, RUN_LIMIT_MS);
+        // The start is from the first step, at the tempo
+        board.pressRunButton(60);
+        board.runForMs(60);
+        board.pressRunButton(60);
+        board.runUntilClockOutPulses(5, RUN_LIMIT_MS);
         const rises = riseMs(board, board.clockOut);
 
-        assert.deepEqual(stepsPlayed(board).slice(0, 5), [0, 1, 2, 3, 4]);
-        assertNear(rises[waiting + 3] - rises[waiting + 2], STEP_MS,
-            EDGE_JITTER_MAX_MS, 'a step at the tempo');
+        assert.deepEqual(stepsPlayed(board).slice(0, 5), [0, 0, 1, 2, 3]);
+        assertNear(rises[4] - rises[3], STEP_MS, EDGE_JITTER_MAX_MS,
+            'a step at the tempo');
     });
 }
 
@@ -383,7 +380,7 @@ test('debug: each change of transport is logged, with its number', () => {
     board.runForMs(100);
     board.pressRunButton(60);
     board.runForMs(50);
-    board.setSyncSwitch(true);
+    board.pulseClockIn(2);
     board.runForMs(100);
 
     const notices = board.serial.notices.map((line) => line.text);
@@ -411,12 +408,12 @@ test('debug: a start is logged ahead of its first step', () => {
     assert.ok(started.cycle < firstStep.startCycle);
 });
 
-test('debug: the sync switch on at power-on is logged and no step is', () => {
+test('debug: a start on the external clock is logged and no step is', () => {
     const board = boardWith('debug', READING_ONE_TO_ONE, true);
 
     board.runForMs(300);
 
-    assert.deepEqual(board.serial.notices.map((line) => line.text).slice(1), ['Transport = 2']);
+    assert.deepEqual(board.serial.notices.map((line) => line.text), ['Transport = 2']);
     assert.equal(board.serial.lines.length, 0);
     assert.equal(STEP_COUNT, PANEL.length);
 });

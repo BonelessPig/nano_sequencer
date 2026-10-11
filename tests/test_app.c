@@ -22,7 +22,7 @@
 #define SCAN_PERIOD_TICKS (8U)    // How often the app re-reads its inputs
 #define CAL_TRIM_CENTRE   (512U)  // Tempo reading that trims nothing in calibration mode
 #define CAL_CONFIRM_TICKS (250U)  // The gate is low this long after a store
-#define SETTLE_TICKS      (20U)   // Debounce time of the run button and sync switch
+#define SETTLE_TICKS      (20U)   // Debounce time of the run button
 #define SYNC_RAW_ONE_TO_ONE (500U) // Tempo reading that is a step to an external edge
 #define CRASH_LOG_ADDRESS    (16U)   // Where the app keeps the crash log
 #define CRASH_RECORD_BYTES   (5U)
@@ -1444,23 +1444,30 @@ static void test_the_run_button_stops_and_starts_the_pattern_and_is_logged(void)
 
 
 
-static void test_the_sync_switch_steps_the_pattern_from_the_clock_input(void)
+static void test_an_external_edge_takes_the_pattern_over_from_the_clock_input(void)
 {
     start_app();
     host_set_tempo(SYNC_RAW_ONE_TO_ONE, STATUS_OK);
-    host_set_sync_switch(true);
 
-    // On from the first tick: the change is logged and no step begins
-    run_ticks(2U);
+    // The internal clock to begin with: step 0, and its clock pulse over
+    run_ticks(60U);
     TEST_ASSERT_EQUAL(1, host_event_count());
-    expect_event(0U, HOST_EVENT_TRANSPORT, (uint16_t)TRANSPORT_EXTERNAL, 0U);
-    run_ticks(3U * TICKS_PER_STEP);
-    TEST_ASSERT_EQUAL(1, host_event_count());
-    TEST_ASSERT_EQUAL(0, host_clock_output_rise_count());
+    TEST_ASSERT(!host_clock_output_level());
 
     // An edge is taken on the next tick, whether or not it is a scan tick,
-    // and its step is applied on the one after
-    for (uint16_t step = 0U; step < 4U; step++)
+    // and applied on the one after: the change of clock is logged, and the
+    // next step begins there
+    host_pulse_clock_input();
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(1, host_event_count());
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(3, host_event_count());
+    expect_event(1U, HOST_EVENT_TRANSPORT, (uint16_t)TRANSPORT_EXTERNAL, 0U);
+    expect_event(2U, HOST_EVENT_STEP_NOTE, 1U, 13U);
+    TEST_ASSERT_EQUAL(2, host_gate_rise_count());
+    run_ticks(35U);
+
+    for (uint16_t step = 2U; step < 5U; step++)
     {
         host_pulse_clock_input();
         run_ticks(1U);
@@ -1523,7 +1530,6 @@ static void test_init_starts_a_stopped_pattern_running_again(void)
 static void test_calibration_mode_leaves_the_transport_alone(void)
 {
     start_calibration(2U, CAL_TRIM_CENTRE);
-    host_set_sync_switch(true);
     host_set_run_button(true);
     host_pulse_clock_input();
     host_pulse_reset_input();
@@ -1810,25 +1816,38 @@ static void test_midi_stop_and_start_follow_the_run_button_and_the_clock_carries
 
 static void test_midi_clock_on_the_external_clock_waits_for_the_first_edge(void)
 {
-    static const uint8_t first[] = { MIDI_START };
-    static const uint8_t both[]  = { MIDI_START, MIDI_CLOCK, 0x90U, 38U, 100U };
+    static const uint8_t after_start[] = { MIDI_CLOCK, 0x90U, 38U, 100U };
+    uint16_t             bytes;
 
+    // Stopped, and then an edge: the next start is on the external clock,
+    // and from the edge no clock is sent
     start_app();
     host_set_tempo(SYNC_RAW_ONE_TO_ONE, STATUS_OK);
-    host_set_sync_switch(true);
+    run_ticks(10U);
+    host_set_run_button(true);
+    run_ticks(SETTLE_TICKS + 1U);
+    host_set_run_button(false);
+    host_pulse_clock_input();
+    run_ticks(3U * TICKS_PER_STEP);
+    bytes = host_midi_byte_count();
+    run_ticks(3U * TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(bytes, host_midi_byte_count());
 
     // Started, with no edge yet: Start and nothing after it
+    host_set_run_button(true);
+    run_ticks(SETTLE_TICKS + 1U);
+    host_set_run_button(false);
     run_ticks(3U * TICKS_PER_STEP);
-    TEST_ASSERT_EQUAL(sizeof(first), host_midi_byte_count());
-    TEST_ASSERT_EQUAL(first[0], host_midi_byte(0U));
+    TEST_ASSERT_EQUAL(bytes + 1U, host_midi_byte_count());
+    TEST_ASSERT_EQUAL(MIDI_START, host_midi_byte(bytes));
 
     // The edge that begins step 0 brings the first clock with it
     host_pulse_clock_input();
     run_ticks(2U);
-    TEST_ASSERT_EQUAL(sizeof(both), host_midi_byte_count());
-    for (uint16_t i = 0U; i < sizeof(both); i++)
+    TEST_ASSERT_EQUAL(bytes + 1U + sizeof(after_start), host_midi_byte_count());
+    for (uint16_t i = 0U; i < sizeof(after_start); i++)
     {
-        TEST_ASSERT_EQUAL(both[i], host_midi_byte(i));
+        TEST_ASSERT_EQUAL(after_start[i], host_midi_byte((uint16_t)(bytes + 1U + i)));
     }
 }
 
@@ -1936,7 +1955,7 @@ int main(void)
     RUN_TEST(test_init_resets_the_step_and_discards_pending_outputs);
     RUN_TEST(test_init_forgets_earlier_read_failures);
     RUN_TEST(test_the_run_button_stops_and_starts_the_pattern_and_is_logged);
-    RUN_TEST(test_the_sync_switch_steps_the_pattern_from_the_clock_input);
+    RUN_TEST(test_an_external_edge_takes_the_pattern_over_from_the_clock_input);
     RUN_TEST(test_the_reset_input_sends_the_pattern_back_to_its_start);
     RUN_TEST(test_init_starts_a_stopped_pattern_running_again);
     RUN_TEST(test_calibration_mode_leaves_the_transport_alone);

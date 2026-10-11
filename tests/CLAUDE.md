@@ -25,6 +25,7 @@ Host test programs, built and run on the PC by `make test`. Test code is outside
 
 - The first step is a whole step. A pattern started on call 1 begins step n on call 1 + n × (ticks per step); in `test_app`, each is applied and logged one tick later.
 - A press of the run button is 20 ticks of the button held, and it counts on the twentieth. The debounce takes its first reading as it stands and the transport starts as if the button were held, so run at least one tick with the button up before a press, or it is not one.
+- A pattern starts on the internal clock, and an edge takes it over. For one that waits on the external clock from its first tick, `test_seq.c` sets the transport's latch in the state straight after `seq_init()` (`wait_for_external()`), which is what an edge while stopped leaves; `test_app.c` has to get there with a stop, an edge and a start.
 - An external edge is one tick with the edge flag set. Clear the flag again before the next tick, as the port does.
 - In `test_app`, MIDI bytes are written one tick after the core works them out, like every output, and clocks keep coming while the pattern is stopped. Find a message by searching for it, or compare with the clocks filtered out (`expect_midi_without_clocks()`), never by a remembered index.
 

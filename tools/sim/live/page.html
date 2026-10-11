@@ -385,8 +385,6 @@ canvas { width: 100%; height: 240px; display: block; }
         </div>
         <div class="row spaced">
             <button id="run">Run button (D7)</button>
-            <label><input type="checkbox" id="sync"> Sync switch (D3): follow
-                the clock input</label>
             <span id="transport"></span>
             <span class="dim" id="transport-from"></span>
         </div>
@@ -428,22 +426,25 @@ canvas { width: 100%; height: 240px; display: block; }
             <summary>What the inputs do</summary>
             <div class="scroll"><table class="key">
                 <tr><th>Clock input (D8)</th>
-                    <td>Followed only with the sync switch on. A step then
-                        begins on its edges, and with no edges nothing
-                        plays.</td></tr>
-                <tr><th>Tempo pot, sync on</th>
+                    <td>Its first edge takes the pattern over from the
+                        internal clock. A step then begins on its edges,
+                        and with no edges nothing plays, until the pattern
+                        is stopped.</td></tr>
+                <tr><th>Tempo pot, on the external clock</th>
                     <td>Sets how many edges to a step or steps to an edge,
                         ÷4 to ×4.</td></tr>
                 <tr><th>Run button (D7)</th>
                     <td>Each press stops the pattern, or starts it again
-                        from the first step.</td></tr>
+                        from the first step. A stop forgets the external
+                        clock: the start is on the internal one unless an
+                        edge has come in between.</td></tr>
                 <tr><th>Reset input (D2)</th>
                     <td>Sends the pattern back to its first step, which
                         plays when the next step is due. Ignored while
                         stopped.</td></tr>
                 <tr><th>Power cycle</th>
-                    <td>Leaves the sync switch and the clock source as they
-                        are. The board comes up running. Choosing an image
+                    <td>Leaves the clock source as it is. The board comes
+                        up running, on the internal clock. Choosing an image
                         is a power cycle with that image.</td></tr>
             </table></div>
         </details>
@@ -541,9 +542,9 @@ canvas { width: 100%; height: 240px; display: block; }
                     <td>A line.</td></tr>
                 <tr><th>Clock</th>
                     <td>24 to a quarter note, which is six to a step. Stopped
-                        with the sync switch off it carries on at the pot's
-                        tempo. There is none while stopped with the switch
-                        on, nor while waiting for an external edge.</td>
+                        it carries on at the pot's tempo until an external
+                        edge comes. There is none from then on, nor while
+                        waiting for an external edge.</td>
                     <td>No line. The count since the last Start, and the
                         tempo over the last quarter note of them, given
                         once there have been seven. With none for a second
@@ -1200,7 +1201,6 @@ function showPanel() {
     }
     el('tempo-reading').textContent = `${state.tempo} (${volts.toFixed(2)} V)`;
     el('tempo-means').textContent = tempoMeaning();
-    el('sync').checked = state.sync;
     el('run').classList.toggle('down', state.runDown);
     el('clock-on').checked = state.clockOn;
     el('clock-pulse').disabled = state.clockOn; // The jack is already taken
@@ -1211,15 +1211,15 @@ function showPanel() {
     }
 }
 
-// What the pot does just now, from where the sync switch stands. The
-// firmware takes the switch 20 ms late, and a new ratio at its next sync edge
+// What the pot does just now, from the clock the pattern is on. The
+// firmware takes a new ratio at its next sync edge
 function tempoMeaning() {
     const part = Math.min(RATIOS.length - 1, Math.floor(state.tempo / READING_PER_RATIO));
 
     if (state.calibrating) {
         return 'trims the calibration point';
     }
-    if (!state.sync) {
+    if (state.transport !== TRANSPORT_EXTERNAL) {
         return `sets ${BPM_MIN + Math.floor(state.tempo / READING_PER_BPM)} BPM`;
     }
     return `sets ${RATIOS[part][0]}: ${RATIOS[part][1]}`;
@@ -1245,7 +1245,7 @@ function showClockRate(periodMs) {
 
 // The transport as the server has it: from the log's last `Transport = N`
 // if there has been one since the controls last changed it, and otherwise
-// worked out from the presses of the run button and the sync switch
+// worked out from the presses of the run button and the clock edges
 function showTransport() {
     let text = 'Calibration mode: nothing is sequenced, so these do nothing';
     let from = '';
@@ -1504,6 +1504,7 @@ function applyEvent(event) {
         case 'transport':
             state.transport = event.v;
             state.transportFrom = event.from;
+            el('tempo-means').textContent = tempoMeaning();
             showTransport();
             showStep();
             break;
@@ -1706,7 +1707,6 @@ function powerCycle() {
 }
 
 el('run').addEventListener('click', () => post({ run: 'press' }));
-el('sync').addEventListener('change', () => post({ sync: el('sync').checked }));
 el('clock-on').addEventListener('change', () => post({ clockOn: el('clock-on').checked }));
 // The rate is posted when the slider is let go: a running clock starts
 // again at each new period, with an edge at once

@@ -84,7 +84,6 @@ typedef struct
     bool              b_clock_edge;  // true if an edge arrived on the external clock
                                      // since the previous tick
     bool              b_run_button;  // true while the run button is held down, as read
-    bool              b_sync_switch; // true while the sync switch is on, as read
 } seq_inputs_t;
 
 /**
@@ -120,8 +119,8 @@ typedef struct
     uint8_t pulses;         // Clock pulses that fell on this tick, 96 to
                             // the quarter note: those of the pattern's
                             // clock while it runs, and of the internal
-                            // clock while it is stopped with the sync
-                            // switch off. Given on every tick
+                            // clock while it is stopped with no external
+                            // edge since the stop. Given on every tick
 } seq_outputs_t;
 
 /**
@@ -140,11 +139,12 @@ void seq_init(seq_state_t *p_state);
  *         *p_state and *p_in, writes *p_state and *p_out, and has no other
  *         effect.
  *
- *         The run button and the sync switch decide whether the pattern
- *         runs and from which clock (see transport.h); both are debounced
- *         here and are given as read. The pattern is running after
- *         seq_init(), and each press of the button stops it or starts it
- *         again.
+ *         The run button decides whether the pattern runs, and the edges of
+ *         the external clock which clock it runs from (see transport.h).
+ *         The button is debounced here and is given as read. The pattern is
+ *         running after seq_init(), on the internal clock, and each press
+ *         of the button stops it or starts it again. An edge takes it to
+ *         the external clock, where it stays until it is stopped.
  *
  *         A start is the first tick after seq_init() and each tick on which
  *         the button starts the pattern again. It goes back to the first
@@ -155,8 +155,9 @@ void seq_init(seq_state_t *p_state);
  *
  *         While the pattern is stopped nothing is due and nothing begins.
  *         The gate is closed at once and the clock output is low; the pitch
- *         CV value holds. Reset and the external clock are ignored. Only
- *         the count of clock pulses goes on, as said below.
+ *         CV value holds. Reset is ignored, and an edge of the external
+ *         clock moves nothing: it only makes that the clock the next start
+ *         is on. Only the count of clock pulses goes on, as said below.
  *
  *         On the internal clock a step lasts SEQ_PULSES_PER_STEP clock
  *         pulses, which is 15000 / BPM milliseconds.
@@ -169,10 +170,10 @@ void seq_init(seq_state_t *p_state);
  *         that the clock output is still high from the step before, its
  *         step begins one tick late, and for that tick the gate is closed
  *         and the clock output low, so that every step has a rising edge
- *         of its own on both. A change of clock does not
- *         restart the pattern: going to the external clock, the step in
- *         progress is finished quickly and the next waits for an edge; going
- *         back, the internal clock carries on from there.
+ *         of its own on both. Going to the external clock does not restart
+ *         the pattern: the step in progress ends there and the next begins
+ *         on the edge that took the clock over. The way back to the
+ *         internal clock is a stop and a start, which does.
  *
  *         Which step begins is up to the engine and the addressing
  *         controls in p_in->address (see address.h). The low three mode
@@ -238,10 +239,11 @@ void seq_init(seq_state_t *p_state);
  *         tick they fell, also when a step they bring due begins later (an
  *         early edge, a stall). On the tick of a start no time is counted,
  *         so none falls but the one an edge of the external clock gives.
- *         While the pattern is stopped with the sync switch off, the
- *         internal clock carries on at the tempo and its pulses are given;
- *         the pattern does not move, and the next start begins a whole
- *         step all the same. Stopped with the switch on, none falls.
+ *         While the pattern is stopped and no external edge has come since
+ *         the stop, the internal clock carries on at the tempo and its
+ *         pulses are given; the pattern does not move, and the next start
+ *         begins a whole step all the same. Once an edge has come, none
+ *         falls.
  *
  *         The tempo is SEQ_BPM_MIN plus the tempo reading divided by
  *         SEQ_TEMPO_RAW_PER_BPM (30 to 285 BPM over the valid range). If the

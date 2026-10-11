@@ -23,7 +23,6 @@
 #include "reset_input_port.h"
 #include "run_input_port.h"
 #include "step_input_port.h"
-#include "sync_input_port.h"
 #include "pot_input_port.h"
 #include "timebase_port.h"
 #include "watchdog_port.h"
@@ -66,7 +65,6 @@ static uint8_t       g_reset_cause = 0U;
 static bool          g_b_clock_edge = false;
 static bool          g_b_reset_edge = false;
 static bool          g_b_run_button = false;
-static bool          g_b_sync_switch = false;
 
 static uint8_t       g_nv_bytes[HOST_NV_BYTES];
 static port_status_t g_nv_read_status = STATUS_OK;
@@ -168,7 +166,6 @@ void host_reset(void)
     g_b_clock_edge         = false;
     g_b_reset_edge         = false;
     g_b_run_button         = false;
-    g_b_sync_switch        = false;
     g_nv_read_status       = STATUS_OK;
     g_nv_write_status      = STATUS_OK;
     g_nv_read_count        = 0U;
@@ -311,13 +308,6 @@ void host_pulse_reset_input(void)
 void host_set_run_button(bool b_pressed)
 {
     g_b_run_button = b_pressed;
-}
-
-
-
-void host_set_sync_switch(bool b_on)
-{
-    g_b_sync_switch = b_on;
 }
 
 
@@ -778,13 +768,6 @@ void breadcrumb_write(uint8_t place)
 uint8_t breadcrumb_read(void)
 {
     return g_breadcrumb;
-}
-
-
-
-bool sync_input_read(void)
-{
-    return g_b_sync_switch;
 }
 
 

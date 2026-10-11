@@ -178,12 +178,6 @@ void host_pulse_reset_input(void);
 void host_set_run_button(bool b_pressed);
 
 /**
- * @brief Sets what sync_input_read() returns until it is set again.
- * @param b_on  true for the sync switch on.
- */
-void host_set_sync_switch(bool b_on);
-
-/**
  * @brief Puts bytes straight into the non-volatile storage, as if written
  *        before the power last went off. Bytes that would fall outside the
  *        storage are left out.

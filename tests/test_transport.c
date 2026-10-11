@@ -19,13 +19,13 @@ static transport_inputs_t  g_in;
 static transport_outputs_t g_out;
 
 /**
- * @brief Starts a fresh transport with both controls off.
+ * @brief Starts a fresh transport with the button up and no edge.
  */
 static void start(void)
 {
     transport_init(&g_state);
     g_in.b_run_button  = false;
-    g_in.b_sync_switch = false;
+    g_in.b_clock_edge  = false;
     g_in.elapsed_ticks = 1U;
     (void)memset(&g_out, POISON_BYTE, sizeof(g_out));
 }
@@ -76,39 +76,43 @@ static void test_the_first_tick_starts_on_the_internal_clock(void)
 
 
 
-static void test_a_switch_on_at_power_on_starts_on_the_external_clock(void)
+static void test_an_edge_on_the_first_tick_starts_on_the_external_clock(void)
 {
     start();
-    g_in.b_sync_switch = true;
+    g_in.b_clock_edge = true;
     run_ticks(1U);
     TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, g_out.mode);
     TEST_ASSERT(g_out.b_started);
     TEST_ASSERT(g_out.b_changed);
+    TEST_ASSERT(g_out.b_external);
 
+    g_in.b_clock_edge = false;
     run_ticks(1U);
     TEST_ASSERT(!g_out.b_changed);
 }
 
 
 
-static void test_the_sync_switch_chooses_the_clock_once_settled(void)
+static void test_an_edge_takes_the_clock_over_and_it_stays(void)
 {
     start();
     run_ticks(1U);
+    TEST_ASSERT(!g_out.b_external);
 
-    g_in.b_sync_switch = true;
-    run_ticks(SETTLE_TICKS - 1U);
-    TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, g_out.mode);
+    // At once: an edge is not a contact, and is not debounced
+    g_in.b_clock_edge = true;
     run_ticks(1U);
     TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, g_out.mode);
     TEST_ASSERT(g_out.b_changed);
+    TEST_ASSERT(g_out.b_external);
     TEST_ASSERT(!g_out.b_started); // A change of clock is not a start
 
-    g_in.b_sync_switch = false;
-    run_ticks(SETTLE_TICKS);
-    TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, g_out.mode);
-    TEST_ASSERT(g_out.b_changed);
-    TEST_ASSERT(!g_out.b_started);
+    // However long the next edge takes to come
+    g_in.b_clock_edge = false;
+    run_ticks(10000U);
+    TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, g_out.mode);
+    TEST_ASSERT(g_out.b_external);
+    TEST_ASSERT(!g_out.b_changed);
 }
 
 
@@ -184,17 +188,39 @@ static void test_a_button_held_at_power_on_is_not_a_press(void)
 
 
 
-static void test_the_switch_does_nothing_while_stopped_and_counts_at_the_start(void)
+static void test_a_stop_forgets_the_external_clock(void)
+{
+    start();
+    g_in.b_clock_edge = true;
+    run_ticks(1U);
+    g_in.b_clock_edge = false;
+
+    press_run();
+    TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, g_out.mode);
+    TEST_ASSERT(!g_out.b_external);
+
+    press_run();
+    TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, g_out.mode);
+    TEST_ASSERT(g_out.b_started);
+    TEST_ASSERT(!g_out.b_external);
+}
+
+
+
+static void test_an_edge_while_stopped_brings_the_external_clock_back(void)
 {
     start();
     run_ticks(1U);
     press_run();
 
-    g_in.b_sync_switch = true;
-    run_ticks(SETTLE_TICKS);
+    (void)memset(&g_out, POISON_BYTE, sizeof(g_out));
+    g_in.b_clock_edge = true;
+    run_ticks(1U);
     TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, g_out.mode);
     TEST_ASSERT(!g_out.b_changed);
+    TEST_ASSERT(g_out.b_external);
 
+    g_in.b_clock_edge = false;
     press_run();
     TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, g_out.mode);
     TEST_ASSERT(g_out.b_started);
@@ -202,52 +228,18 @@ static void test_the_switch_does_nothing_while_stopped_and_counts_at_the_start(v
 
 
 
-static void test_the_settled_switch_is_given_on_every_tick(void)
-{
-    // On at power-on is on from the first tick, like the mode
-    start();
-    g_in.b_sync_switch = true;
-    run_ticks(1U);
-    TEST_ASSERT(g_out.b_external);
-
-    // A change counts once it has settled, on the tick the mode changes
-    start();
-    run_ticks(1U);
-    TEST_ASSERT(!g_out.b_external);
-    g_in.b_sync_switch = true;
-    run_ticks(SETTLE_TICKS - 1U);
-    TEST_ASSERT(!g_out.b_external);
-    (void)memset(&g_out, POISON_BYTE, sizeof(g_out));
-    run_ticks(1U);
-    TEST_ASSERT(g_out.b_external);
-    TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, g_out.mode);
-}
-
-
-
-static void test_the_settled_switch_is_given_while_stopped(void)
+static void test_an_edge_on_the_tick_of_a_stop_is_kept(void)
 {
     start();
     run_ticks(1U);
-    press_run();
-    TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, g_out.mode);
-    TEST_ASSERT(!g_out.b_external);
 
-    // The mode stays stopped; the switch is still followed, and debounced
-    g_in.b_sync_switch = true;
+    g_in.b_run_button = true;
     run_ticks(SETTLE_TICKS - 1U);
-    TEST_ASSERT(!g_out.b_external);
-    (void)memset(&g_out, POISON_BYTE, sizeof(g_out));
+    TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, g_out.mode);
+    g_in.b_clock_edge = true;
     run_ticks(1U);
     TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, g_out.mode);
     TEST_ASSERT(g_out.b_external);
-
-    g_in.b_sync_switch = false;
-    run_ticks(SETTLE_TICKS - 1U);
-    TEST_ASSERT(g_out.b_external);
-    run_ticks(1U);
-    TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, g_out.mode);
-    TEST_ASSERT(!g_out.b_external);
 }
 
 
@@ -257,12 +249,8 @@ static void test_elapsed_ticks_are_passed_to_the_debounce(void)
     start();
     run_ticks(1U);
 
-    g_in.b_sync_switch = true;
+    g_in.b_run_button  = true;
     g_in.elapsed_ticks = (uint8_t)SETTLE_TICKS;
-    run_ticks(1U);
-    TEST_ASSERT_EQUAL(TRANSPORT_EXTERNAL, g_out.mode);
-
-    g_in.b_run_button = true;
     run_ticks(1U);
     TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, g_out.mode);
 }
@@ -277,8 +265,8 @@ static void test_init_sets_the_power_on_condition(void)
     TEST_ASSERT(g_state.b_starting);
     TEST_ASSERT(g_state.b_pressed);
     TEST_ASSERT_EQUAL(TRANSPORT_INTERNAL, g_state.mode);
+    TEST_ASSERT(!g_state.b_external);
     TEST_ASSERT(!g_state.run_button.b_known);
-    TEST_ASSERT(!g_state.sync_switch.b_known);
 }
 
 
@@ -303,15 +291,15 @@ static void test_null_pointers_are_ignored(void)
 int main(void)
 {
     RUN_TEST(test_the_first_tick_starts_on_the_internal_clock);
-    RUN_TEST(test_a_switch_on_at_power_on_starts_on_the_external_clock);
-    RUN_TEST(test_the_sync_switch_chooses_the_clock_once_settled);
+    RUN_TEST(test_an_edge_on_the_first_tick_starts_on_the_external_clock);
+    RUN_TEST(test_an_edge_takes_the_clock_over_and_it_stays);
     RUN_TEST(test_a_press_stops_and_the_next_starts_again);
     RUN_TEST(test_holding_the_button_is_one_press);
     RUN_TEST(test_a_bouncing_press_is_one_press);
     RUN_TEST(test_a_button_held_at_power_on_is_not_a_press);
-    RUN_TEST(test_the_switch_does_nothing_while_stopped_and_counts_at_the_start);
-    RUN_TEST(test_the_settled_switch_is_given_on_every_tick);
-    RUN_TEST(test_the_settled_switch_is_given_while_stopped);
+    RUN_TEST(test_a_stop_forgets_the_external_clock);
+    RUN_TEST(test_an_edge_while_stopped_brings_the_external_clock_back);
+    RUN_TEST(test_an_edge_on_the_tick_of_a_stop_is_kept);
     RUN_TEST(test_elapsed_ticks_are_passed_to_the_debounce);
     RUN_TEST(test_init_sets_the_power_on_condition);
     RUN_TEST(test_null_pointers_are_ignored);

@@ -42,7 +42,7 @@ static void test_input_pins_are_cleared_and_other_bits_kept(void)
 
     TEST_ASSERT_EQUAL(0xFE, g_fake_ddrb); // PB0 (clock input) made an input
     TEST_ASSERT_EQUAL(0xFE, g_fake_ddrc); // PC0 made an input
-    // PD2 (reset input), PD3 (sync switch) and PD7 (run button) made inputs
+    // PD2 (reset input), PD3 (unused) and PD7 (run button) made inputs
     TEST_ASSERT_EQUAL(0x73, g_fake_ddrd);
 
     // In particular the UART's pins keep whatever direction they had
@@ -73,7 +73,7 @@ static void test_load_line_idles_high_and_other_levels_are_left_alone(void)
     // PB1 high: the chain in shift mode. PB0: the clock input's pull-up
     TEST_ASSERT_EQUAL(0x03, g_fake_portb);
     TEST_ASSERT_EQUAL(0x00, g_fake_portc);
-    // The pull-ups of the reset input, the sync switch and the run button
+    // The pull-ups of the reset input, the unused PD3 and the run button
     TEST_ASSERT_EQUAL(0x8C, g_fake_portd);
 
     fake_regs_reset();

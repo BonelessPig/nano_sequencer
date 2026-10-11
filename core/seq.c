@@ -358,12 +358,13 @@ static void run(seq_state_t *p_state, const seq_inputs_t *p_in, transport_mode_t
 
 /**
  * @brief  Runs one tick of a pattern that is stopped: closes the gate, and
- *         with the sync switch off keeps the internal clock going at the
- *         tempo, for its pulses alone. Nothing of the pattern moves, and a
- *         start puts the clock back to its beginning. With the switch on
- *         the clock is left alone and no pulse falls.
+ *         unless an external edge has come since the stop keeps the
+ *         internal clock going at the tempo, for its pulses alone. Nothing
+ *         of the pattern moves, and a start puts the clock back to its
+ *         beginning. Once an edge has come the clock is left alone and no
+ *         pulse falls.
  * @param  p_state        Sequencer state; the gate and the clock change.
- * @param  b_external     The sync switch's settled level.
+ * @param  b_external     true if an external edge has come since the stop.
  * @param  elapsed_ticks  Ticks to move the clock on by.
  * @return Pulses that fell.
  */
@@ -408,7 +409,7 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
         uint8_t             elapsed_ticks = p_in->elapsed_ticks;
 
         controls.b_run_button  = p_in->b_run_button;
-        controls.b_sync_switch = p_in->b_sync_switch;
+        controls.b_clock_edge  = p_in->b_clock_edge;
         controls.elapsed_ticks = p_in->elapsed_ticks;
         transport_tick(&p_state->transport, &controls, &transport);
 
