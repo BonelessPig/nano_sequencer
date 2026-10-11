@@ -67,13 +67,20 @@ Neither chip works in the other direction. They share the SPI clock, and one pin
 | 12 or more | 100 nF ceramic capacitors | One at each chip's supply pin |
 | 1 | Bulk capacitor, 10 to 100 µF | Across the 5 V rail. Not in the other documents, but sensible with 12 chips |
 
-### MIDI (roadmap phase 10, not built)
+### MIDI out (roadmap phase 10; the firmware is built, the circuit is not)
 
 | Qty | Part | For |
 |---|---|---|
-| 2 | 5-pin DIN sockets | In and out |
-| 1 | Optocoupler (the 6N138 is the usual one) | MIDI in |
-| A few | Resistors and a diode | Around the sockets and the optocoupler. Values not verified |
+| 1 | 5-pin DIN socket | MIDI out. Its shield is left unconnected |
+| 2 | 220 Ω resistors | One from +5 V to pin 4, one from D1 (TX) to pin 5; pin 2 goes to ground. From memory of the MIDI specification, not verified (roadmap section 8) |
+
+### MIDI in (roadmap phase 10, not built)
+
+| Qty | Part | For |
+|---|---|---|
+| 1 | 5-pin DIN socket | MIDI in |
+| 1 | Optocoupler (the 6N138 is the usual one) | Isolating the input |
+| A few | Resistors and a diode | Around the socket and the optocoupler. Values not verified |
 
 ## Not designed yet
 

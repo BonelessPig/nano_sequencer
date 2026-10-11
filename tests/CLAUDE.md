@@ -18,13 +18,15 @@ Host test programs, built and run on the PC by `make test`. Test code is outside
 - Where the hardware responds (the ADC clearing its start bit, the shift register chain presenting bits, the EEPROM storing a byte only if the write was armed), the fake models it, so the test only passes if the code drives it in the right order.
 - A fake register is seen before the write the code makes to it, so a model that reacts to a write catches up at the next access (`fake_shift_sync()`, `fake_eeprom_sync()`). Call the sync function in the test before checking what the model did.
 - A register whose flags are cleared by writing a one (`TIFR1`, `EIFR`) is a `fake_flag_reg_t`: the test sets bits in its `.flags`, the code reads and writes it as usual, and the model clears what the code wrote ones to and records the write. Call `fake_flags_sync()` before checking `.flags`, `.writes` or `.last_write`.
-- An adapter's own static state outlives `fake_regs_reset()`. `test_eeprom.c` polls a leftover write through before each test; do the same for any adapter that queues work.
+- An adapter's own static state outlives `fake_regs_reset()`. `test_eeprom.c` polls a leftover write through before each test; do the same for any adapter that queues work. Where the adapter's init is what empties its queue (`test_midi_output.c`), begin each test with `fake_regs_reset()` and then that init.
+- The fake `UCSR0A` sets or clears `UDRE0` on every access, the init's own write included. Mask that bit out when asserting the control value the init wrote.
 
 ## Timing in the tests
 
 - The first step is a whole step. A pattern started on call 1 begins step n on call 1 + n × (ticks per step); in `test_app`, each is applied and logged one tick later.
 - A press of the run button is 20 ticks of the button held, and it counts on the twentieth. The debounce takes its first reading as it stands and the transport starts as if the button were held, so run at least one tick with the button up before a press, or it is not one.
 - An external edge is one tick with the edge flag set. Clear the flag again before the next tick, as the port does.
+- In `test_app`, MIDI bytes are written one tick after the core works them out, like every output, and clocks keep coming while the pattern is stopped. Find a message by searching for it, or compare with the clocks filtered out (`expect_midi_without_clocks()`), never by a remembered index.
 
 ## Coverage
 

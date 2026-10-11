@@ -14,6 +14,7 @@
 #include "cal.h"
 #include "cal_record.h"
 #include "errlog.h"
+#include "midi_out.h"
 #include "note_map.h"
 #include "panel.h"
 #include "pitch_cal.h"
@@ -26,6 +27,7 @@
 #include "gate_output_port.h"
 #include "led_output_port.h"
 #include "log_port.h"
+#include "midi_output_port.h"
 #include "nv_port.h"
 #include "platform_port.h"
 #include "reset_cause_port.h"
@@ -70,6 +72,10 @@ static seq_outputs_t g_outputs;   // What the last tick computed; applied at the
 
 static cal_state_t   g_cal_state;   // Calibration mode's state carried between ticks
 static cal_outputs_t g_cal_outputs; // What it computed on the last tick
+
+static midi_out_state_t g_midi_state; // MIDI out's state carried between ticks
+static midi_out_bytes_t g_midi_bytes; // What it computed on the last tick
+static uint8_t          g_midi_room = 0U; // Bytes the MIDI output could take, as last read
 
 static port_status_t g_step_read_status  = STATUS_OK; // Status of the last step input read
 static port_status_t g_tempo_read_status = STATUS_OK; // Status of the last tempo input read
@@ -129,7 +135,8 @@ static void save_calibration(void)
  *         and the clock output are set first, on every tick, so that their
  *         edges are not held up by the log; the pitch goes ahead of the gate
  *         so that it is in place when the note starts. The step lights are
- *         given next; they show at the next input scan. Then saves the
+ *         given next; they show at the next input scan. The MIDI bytes are
+ *         queued after them, to be sent as the loop goes round. Then saves the
  *         calibration if a point of it was stored, logs the transport if it
  *         changed, and, when a step began, logs it (or the failed step
  *         read), and with it a failed tempo read and a failed write of the
@@ -142,6 +149,7 @@ static void apply_outputs(void)
     gate_output_write(g_outputs.b_gate);
     clock_output_write(g_outputs.b_clock_out);
     led_output_write(g_outputs.leds);
+    midi_output_write(g_midi_bytes.bytes, g_midi_bytes.count);
 
     if (g_cal_outputs.b_stored)
     {
@@ -188,8 +196,9 @@ static void scan_inputs(void)
 
 /**
  * @brief  Brings the input snapshot up to date for this tick: records the
- *         elapsed time, reads the transport inputs, which are read on every
- *         tick, and re-reads the panel and the tempo if a scan is due.
+ *         elapsed time, reads the transport inputs and the room the MIDI
+ *         output has, which are read on every tick, and re-reads the panel
+ *         and the tempo if a scan is due.
  * @param  elapsed_ticks  Ticks since the previous tick, 1 to 255.
  */
 static void gather_inputs(uint8_t elapsed_ticks)
@@ -199,6 +208,7 @@ static void gather_inputs(uint8_t elapsed_ticks)
     g_inputs.b_reset       = reset_input_edge();
     g_inputs.b_run_button  = run_input_read();
     g_inputs.b_sync_switch = sync_input_read();
+    g_midi_room            = midi_output_room();
 
     if (elapsed_ticks >= g_ticks_until_scan)
     {
@@ -214,9 +224,33 @@ static void gather_inputs(uint8_t elapsed_ticks)
 
 
 /**
+ * @brief  Works out the MIDI bytes for what the sequencer did on this tick,
+ *         no more of them than the MIDI output had room for when it was
+ *         last asked.
+ */
+static void run_midi_out(void)
+{
+    midi_out_inputs_t midi_in;
+
+    midi_in.b_running      = (TRANSPORT_STOPPED != g_outputs.transport);
+    midi_in.b_external     = (TRANSPORT_EXTERNAL == g_outputs.transport);
+    midi_in.b_note_started = g_outputs.b_step_started && g_outputs.b_note_valid
+                             && (!g_outputs.b_rest);
+    midi_in.semitone       = g_outputs.semitone;
+    midi_in.b_gate         = g_outputs.b_gate;
+    midi_in.pulses         = g_outputs.pulses;
+    midi_in.room           = g_midi_room;
+
+    midi_out_tick(&g_midi_state, &midi_in, &g_midi_bytes);
+}
+
+
+
+/**
  * @brief  Runs the core for this tick. Calibration goes first: if the panel
  *         asked for calibration mode at start-up, it gives the pitch CV and
- *         the gate and nothing is sequenced; otherwise the sequencer runs.
+ *         the gate and nothing is sequenced, and no MIDI is sent; otherwise
+ *         the sequencer runs, and MIDI out after it.
  */
 static void run_core(void)
 {
@@ -240,6 +274,7 @@ static void run_core(void)
     else
     {
         seq_tick(&g_seq_state, &g_inputs, &g_outputs);
+        run_midi_out();
     }
 }
 
@@ -304,6 +339,7 @@ static void reset_tick_state(void)
     g_outputs.leds           = 0U;
     g_outputs.transport           = TRANSPORT_INTERNAL;
     g_outputs.b_transport_changed = false;
+    g_outputs.pulses              = 0U;
 
     cal_init(&g_cal_state);
     g_cal_outputs.b_active = false;
@@ -311,6 +347,10 @@ static void reset_tick_state(void)
     g_cal_outputs.b_gate   = false;
     g_cal_outputs.b_stored = false;
     g_cal_outputs.point    = 0U;
+
+    midi_out_init(&g_midi_state);
+    g_midi_bytes.count = 0U;
+    g_midi_room        = 0U;
 
     g_step_read_status  = STATUS_OK;
     g_tempo_read_status = STATUS_OK;
@@ -453,5 +493,6 @@ void app_run_once(void)
     }
 
     log_poll();
+    midi_output_poll();
     nv_poll();
 }

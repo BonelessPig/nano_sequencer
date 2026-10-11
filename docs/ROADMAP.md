@@ -1,13 +1,13 @@
 # nano_sequencer roadmap
 
-Written 2026-10-10 from four research passes (existing sequencers, hardware emulation, the output-stage hardware, and Claude Code context cost) plus a working emulation spike, and updated the same day with the owner's decisions (section 2). The emulated board (`make sim`), phase 1 (the timebase), phase 2 (addressing, note mapping and the engine interface), the firmware of phase 3 (the gate and the clock output, as logic pins with no buffer stage yet), the firmware of phase 4 (the SPI driver with the shift registers moved onto it, the pitch CV through an MCP4822 DAC, and pitch calibration with the ideal table) the firmware of phase 5 (calibration mode, the calibration record in the EEPROM, and the reset cause) the firmware of phase 6 (the clock and reset inputs, the run button, the sync switch, and the external clock with a ratio) and phase 7 (the mode switches on a ninth shift register, the choice between engines, and the stage, Klee, chance, Cartesian and Euclidean engines with a shared random number generator) the firmware of phase 8 (the step lights) and the firmware of phase 9 (the watchdog and the crash log) are built; everything else here is still a plan.
+Written 2026-10-10 from four research passes (existing sequencers, hardware emulation, the output-stage hardware, and Claude Code context cost) plus a working emulation spike, and updated the same day with the owner's decisions (section 2). The emulated board (`make sim`), phase 1 (the timebase), phase 2 (addressing, note mapping and the engine interface), the firmware of phase 3 (the gate and the clock output, as logic pins with no buffer stage yet), the firmware of phase 4 (the SPI driver with the shift registers moved onto it, the pitch CV through an MCP4822 DAC, and pitch calibration with the ideal table) the firmware of phase 5 (calibration mode, the calibration record in the EEPROM, and the reset cause) the firmware of phase 6 (the clock and reset inputs, the run button, the sync switch, and the external clock with a ratio) and phase 7 (the mode switches on a ninth shift register, the choice between engines, and the stage, Klee, chance, Cartesian and Euclidean engines with a shared random number generator) the firmware of phase 8 (the step lights), the firmware of phase 9 (the watchdog and the crash log) and the firmware of the first piece of phase 10 (MIDI out: a third image that sends notes, the clock, Start and Stop) are built; everything else here is still a plan.
 
 Each claim that matters is marked **verified** (read from a datasheet or primary manual, or run on this machine), or **unverified** (from memory or a secondary source; check before relying on it). The full list of unverified items is in [section 8](#8-not-verified).
 
 ## 1. Summary
 
 - **Where it goes.** A 16-step CV/gate sequencer with one pitch output, gate, clock in and out, reset, and a set of selectable sequencing engines (plain, Metropolis-style, Klee-style, random) that all reinterpret the same 64 panel switches. Every engine is pure core logic, so it is cheap to add and fully host-testable.
-- **What limits it.** Pins and the single USART, not flash or RAM (after phase 9 the debug image uses 8916 of 30720 bytes of flash and 762 of 2048 bytes of RAM).
+- **What limits it.** Pins and the single USART, not flash or RAM (after the first piece of phase 10 the debug image uses 9644 of 30720 bytes of flash and 782 of 2048 bytes of RAM).
 - **Emulation.** The real firmware image already runs under an emulator on this machine (section 5). That makes most of the roadmap testable without the board, including parts you have not bought.
 - **A separate emulation project.** The gap is real but shallow: nothing open, local and headless covers AVR plus other MCU families with a board file and waveform assertions. It is a thin layer over existing CPU cores, not a new emulator. Recommendation: build it inside this repo with a clean boundary and extract it when a second project needs it.
 - **Claude context.** Splitting CLAUDE.md into a short root file, per-folder files and skills cuts the always-loaded instructions by an estimated 55 to 60 percent, and new per-module guidance then costs nothing until that module is touched (section 6).
@@ -202,6 +202,25 @@ The owner's, on 2026-10-11, when the parts list (`docs/PARTS.md`) was drawn up.
 |---|---|---|
 | 116 | Power | **USB for now, with a Eurorack supply a possible later step, so the analogue stages are to be designed to work from either.** That bears on three things not yet designed: the pitch CV buffer (it has to reach 0 V on a single 5 V rail, so a rail-to-rail op-amp, which also works from ±12 V), the gate and clock output level (5 V from USB; more is only possible from the Eurorack rails), and where 5 V comes from (the Nano's USB socket, or a regulator from +12 V, never both at once without something to keep them apart). Nothing in the firmware depends on it. |
 
+Taken while building the first piece of phase 10, MIDI out, on 2026-10-11. The first three were the owner's, asked and answered before the work. The rest were left to recommendation and are provisional, and none of it has been heard on hardware; 121 to 125 are the ones a receiving instrument shows. 130 says what was left out.
+
+| # | Decision | Outcome |
+|---|---|---|
+| 117 | MIDI in two pieces | **Out only in this piece; in follows as a second.** In is the larger half: a receive interrupt and a ring buffer, a parser in the core, MIDI clock and Start/Stop as a clock source, and a choice of what a received note means. |
+| 118 | The lowest pitch as a MIDI note | **Note 24, C1**, for the pitch that is 0 V (semitone 0), so the 0 to 45 semitones of decision 20 are notes 24 to 69. The alternatives offered were 36 and 48. One constant in `midi_out.c`. |
+| 119 | A stop | **A Stop is sent and the 24-a-quarter clock carries on at the tempo**, so a device slaved to it holds its tempo while the pattern is stopped. The alternative was to send nothing while stopped. |
+| 120 | The image | **A third one, `CONFIG=midi`, with the log given up in it**, there being one USART, as section 4 planned: the null logger and the MIDI adapter. Still no configuration macro: there are now two link-time pairs, the logger and the MIDI output. The generator is core code that the app calls in every image, so debug and release carry it too (728 bytes of flash and 20 of RAM each) and hand its bytes to an adapter that discards them. |
+| 121 | The messages | **Channel 1, Note On at velocity 100, Note Off as 0x80 with velocity 0, and no running status**: every message carries its status byte. Each is a constant in `midi_out.c`. |
+| 122 | A start | **A Start, then a clock at once**, the downbeat, on the internal clock, where the first step begins with the start. On the external clock the Start goes at once and the first clock waits for the first edge, the one that begins step 0, so that clocks fall on step boundaries. That was found while building: a start on the external clock leaves the step one pulse short of due, and a clock sent with the Start would have been early by however long the edge took to come. A change of clock is neither a start nor a stop and sends nothing. |
+| 123 | The clock | **One clock for every 4 of the sequencer's pulses** (96 to the quarter note down to 24), six a step. It follows the pulses the pattern is counted in, so on the external clock it follows the edges and the ratio, bunching where they bunch. |
+| 124 | The clock while stopped | **At the pot's tempo with the sync switch off; none with it on.** The external clock is ignored while stopped (decision 62), and the pot is then a ratio and not a tempo, so there is nothing to keep time by. |
+| 125 | Ties | **A tied note at another pitch sends the new Note On and then the old Note Off** (legato); **at the same pitch it sends nothing**, so a stage held (decision 79) is one long note. A rest, an unreadable step and a stop end the note with the gate. |
+| 126 | A full queue | **Nothing is dropped.** The port, `midi_output_port`, has three functions on the pattern of the log's: one gives the room the adapter has, one queues bytes, one sends a byte a pass. The core produces only whole messages that fit, at most 8 bytes a tick, and owes the rest, in a fixed order: Stop and Start, clocks, Note On, Note Off. A Note On still waiting when its gate falls is given up, never having sounded, and one waits while an earlier Note Off is owed, so at most two notes sound at once. The one thing dropped is the clocks owed from before a start, given up at it so that the first clock after a Start is its downbeat. The adapter's queue is 32 bytes, four ticks of the most the core sends. |
+| 127 | When it is sent | **Queued in the apply step, after the three outputs and the step lights and ahead of the log**, so the gate and clock edges do not move. The bytes then leave one a pass of the loop, 320 µs each, so MIDI trails the gate. Measured on the emulated board, not on hardware: a Note On starts 0.40 ms after its gate rises, and 0.73 ms after when it is behind a Start and a clock. |
+| 128 | The USART | **Set up as the logger sets it up: double speed, a divisor of 63, which is exactly 31250 baud at 16 MHz.** The receiver is enabled as well, although nothing reads it, so that both images that use the USART use every bit name in the header they share; otherwise each would be a rule 2.5 finding in the other's run, or the header would be split. PD0 is therefore the USART's input in the midi image. |
+| 129 | Calibration mode | **Nothing is sent**, not even a Start: the generator is not called in the mode, as the sequencer is not. |
+| 130 | Not built | MIDI in (decision 117); a control for the channel, the velocity or the lowest note; running status; Continue (0xFB), a start always being from the first step; Song Position; All Notes Off at start-up; a second note for a second gate. |
+
 ## 3. What the survey found
 
 Full feature matrix and sources are in the research notes summarised here. Bindubba is a Nonlinearcircuits 4x4 sequencer addressed by two independent clocks, not a touch-keyboard panel.
@@ -245,8 +264,9 @@ The ports-and-adapters rules stay as they are. Three additions:
   | `debounce` | Buttons and switches (built; decision 69) |
   | `prng` | One LFSR shared by every random feature (built; decision 92) |
   | `errlog` | The crash log's stored form: which record is the newest, and what a start-up adds (built; decisions 107 to 110) |
+  | `midi_out` | Which MIDI bytes a tick sends: the clock, Start and Stop, and the notes (built; decisions 121 to 126). Beside `seq`, like `cal`. The parser for MIDI in is still to come |
 
-- **Ports are named for what the core needs**, not for the bus: `timebase_port`, `gate_output_port` and `clock_output_port` (built; decision 37), `cv_output_port` (built; decision 39), `nv_port` and `reset_cause_port` (built; decisions 55 and 57), `clock_input_port`, `reset_input_port`, `run_input_port` and `sync_input_port` (built; decision 70), `led_output_port` (built; decision 100), `watchdog_port` (built; decision 105), `breadcrumb_port` (built; decision 112). No `spi_port`.
+- **Ports are named for what the core needs**, not for the bus: `timebase_port`, `gate_output_port` and `clock_output_port` (built; decision 37), `cv_output_port` (built; decision 39), `nv_port` and `reset_cause_port` (built; decisions 55 and 57), `clock_input_port`, `reset_input_port`, `run_input_port` and `sync_input_port` (built; decision 70), `led_output_port` (built; decision 100), `watchdog_port` (built; decision 105), `breadcrumb_port` (built; decision 112), `midi_output_port` (built; decision 126). No `spi_port`.
 - **`adapters/target/` gets two levels**: peripheral drivers (SPI, Timer2, EEPROM) with headers private to that folder, and device adapters above them that implement ports (the DAC adapter implements `cv_port`).
 
 ### The tick
@@ -268,7 +288,7 @@ Register values for the tick (Timer2, CTC, /64, compare 249 gives exactly 1000 H
 - Each ISR-shared variable is a file-static `volatile` in exactly one adapter and is reached only through a port function.
 - Registers are grouped one header per peripheral, as the USART already is, so a peripheral used by one configuration does not become a rule 2.5 finding in the other.
 - The ISR attribute comes from a macro in the register header (the `REG_IO_LOW` pattern), so a host test can include the adapter and call the ISR directly. Coverage stays at 100 %.
-- A third build configuration (`CONFIG=midi`) is another link-time choice, not a macro.
+- A third build configuration (`CONFIG=midi`) is another link-time choice, not a macro. Built with phase 10 (decision 120): a second pair of files, of which the Makefile links one.
 
 The first ISR brought one cppcheck finding, and not either of the two predicted (the reserved vector name and the attribute went unflagged): rule 8.7, advisory. It is a false positive: the handler is referenced from the vector table in the startup object, which the tool does not see, so it looks unused outside its file. It is suppressed inline with the reason. Expect the same for each further ISR.
 
@@ -304,7 +324,7 @@ One lesson came with it. The first shift register model latched on the falling e
 
 ### The harness (`tools/sim/`, `make sim`)
 
-In place as of 2026-10-10: `lib/machine.js` (the chip), `lib/pin_recorder.js`, `lib/edge_flag.js`, `parts/hc165.js`, `parts/hc595.js`, `parts/mcp4822.js`, `parts/clock_source.js`, `parts/clock_patterns.js`, `parts/switch.js`, `boards/nano_sequencer.js` (wiring, panel, pot, the DAC's frames, gate and clock recorders, the two input jacks, the sync switch and run button, the mode switches, serial capture, the EEPROM's contents) and a hundred and seventeen scenarios across the two images. ARCHITECTURE.md describes it.
+In place as of 2026-10-10: `lib/machine.js` (the chip), `lib/pin_recorder.js`, `lib/edge_flag.js`, `parts/hc165.js`, `parts/hc595.js`, `parts/mcp4822.js`, `parts/clock_source.js`, `parts/clock_patterns.js`, `parts/switch.js`, `boards/nano_sequencer.js` (wiring, panel, pot, the DAC's frames, gate and clock recorders, the two input jacks, the sync switch and run button, the mode switches, serial capture, the EEPROM's contents) and `boards/midi_messages.js`, and, as of 2026-10-11, a hundred and seventy-five scenarios across the three images. ARCHITECTURE.md describes it.
 
 Still to add, each when a phase needs it:
 
@@ -365,7 +385,7 @@ One caution from the documentation: whether a read deny also blocks `cat` throug
 
 ## 7. Phases
 
-Each phase is one or more small commits, leaves both builds, the tests, coverage and MISRA green, and updates README and ARCHITECTURE in the same piece of work. "Sim" means a scenario under `make sim`. "Board" means it needs you to flash and report.
+Each phase is one or more small commits, leaves every build, the tests, coverage and MISRA green, and updates README and ARCHITECTURE in the same piece of work. "Sim" means a scenario under `make sim`. "Board" means it needs you to flash and report.
 
 | Phase | Adds | New MCU peripherals | New parts | Verified by |
 |---|---|---|---|---|
@@ -379,7 +399,7 @@ Each phase is one or more small commits, leaves both builds, the tests, coverage
 | 7. Engines (firmware **done**, not yet run on the board, which has no ninth shift register yet) | The mode switches and the choice of engine; the stage engine (pulse count and gate mode); Klee (register, sums, merge, invert, load) with the Turing lock as its chance; `prng`; the chance engine (gate probability and shuffle); Cartesian and Euclidean. Not built: the per-step time mode, gate buses, pots for the pattern controls (decisions 90 and 96) | None | Ninth 74HC165 | Host, mostly. Sim for gate timing |
 | 8. Step LEDs (firmware **done**, not yet run on the board; the chips and LEDs are still to wire) | 16 LEDs written ahead of each switch read and latched by its load pulse; `led_output_port` | None | Two 74HC595s, LEDs, resistors | Host: the sequencer, the app and the adapter. Sim: a 595 model. Board |
 | 9. Watchdog and crash log (firmware **done**, not yet run on the board, which still has the stock bootloader) | Watchdog kick; `errlog` ring in EEPROM; `.noinit` breadcrumb; the newest record in the debug log. Needs decision 3, and on Optiboot the reset cause taken from where it leaves it (decision 115) | Watchdog | None | Host: the log, the checksum, the app and the adapter. Sim: watchdog reset and recovery, and the record it leaves. Board |
-| 10. MIDI | `CONFIG=midi`: clock and notes out, then in | USART at 31250 baud (exact), RX interrupt | DIN sockets, optocoupler | Host: parser and generator. Sim: UART bytes |
+| 10. MIDI (the first piece, out: firmware **done**, not yet run on the board; the MIDI out circuit is still to build. In is still to do) | `CONFIG=midi`: the clock, Start, Stop and notes out (core `midi_out`, `midi_output_port`, decisions 117 to 130). Then in: a receive interrupt and ring buffer, a parser in the core, MIDI clock and Start/Stop as a clock source, and what a received note means | USART at 31250 baud (exact); for in, its RX interrupt | DIN sockets and two 220 Ω resistors; for in, an optocoupler | Host: the generator, the sequencer's pulses, the app and the two adapters; the parser when it comes. Sim: UART bytes |
 | 11. Later | 24 PPQN sync, and timing an edge more finely than a tick (the fitting of steps between edges was built in phase 6); second DAC channel, slide, swing and ratchets if not already in | Timer1 timestamps | — | — |
 
 Notes on ordering:
@@ -390,7 +410,7 @@ Notes on ordering:
 
 ### Proposed pin assignment (from phase 4)
 
-In use today: PB0 to PB5 as below (the 74HC595 not yet), PD2 to PD5, PD7, PD1 in the debug build, and ADC6. The rest is still a proposal.
+In use today: PB0 to PB5 as below (the 74HC595 not yet), PD2 to PD5, PD7, PD1 in the debug build (the log) and in the midi build (MIDI out), with PD0 the USART's input in both, and ADC6. The rest is still a proposal.
 
 | Pin | Use | Pin | Use |
 |---|---|---|---|
@@ -468,7 +488,8 @@ Check these before the phase that depends on them.
 - **Fuse values, the Nano's brown-out level, and how Optiboot passes on the reset cause.** Check against the Arduino board definitions before burning anything. (Phase 9)
 - **The breadcrumb on a real chip.** That a byte in `.noinit` keeps its value through a watchdog reset is how RAM on these parts is understood to behave, and the emulator agrees, but its reset was not written to model that and the chip has not been tried. Whether a serial bootloader can read the EEPROM back, to get at the older crash records, has not been looked at either. (Phase 9)
 - **avr8js accuracy for timers and interrupts.** Phase 1 runs on its Timer2 model and gives an 8.000 ms scan period and a 100 ms step at 150 BPM. Still to do: compare one of those against the board.
-- **MIDI electrical values**, and that the opto must be disconnected to upload. (Phase 10)
+- **MIDI electrical values.** The out circuit is taken to be the usual 5 V arrangement: pin 4 of the DIN socket through 220 Ω to +5 V, pin 5 through 220 Ω from TX (PD1), pin 2 to ground, and the shield left unconnected on an out. That is from memory of the MIDI 1.0 electrical specification and is **not verified**; nothing is built. Two things about PD1 are also unverified on hardware. It feeds the board's USB serial chip as well, so in the midi image the PC's port shows noise, and uploading should still work with only an out connected. And it floats from reset until the firmware enables the USART, so what a receiver makes of the line in that time is to be looked at. For in, still to build: the optocoupler circuit's values, and that the opto must be disconnected to upload. (Phase 10)
+- **MIDI out on the board**: nothing has been tried. Its timing is calculated or from the emulated board only; see ARCHITECTURE.md open item 16. (Phase 10)
 - **Survey items read only from retailer or secondary pages**: Moog 960, ARP 1601, Buchla 245/246/248, Serge, René, Turing Machine details. The Klee, Bindubba, 0-CTRL, M185 and A-154 descriptions are from their manuals.
 - **simavr on Windows.** Not tried.
 

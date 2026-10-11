@@ -1,5 +1,5 @@
 'use strict';
-// The watchdog on the emulated board, for both firmware images. The firmware
+// The watchdog on the emulated board, for all three firmware images. The firmware
 // never stops by itself, so a scenario makes it: it switches interrupts off
 // from outside, which stops the tick the watchdog is kicked from, and the
 // watchdog has to notice.
@@ -21,7 +21,7 @@ const {
     crashRecord, NO_CRASH_RECORD, CRASH_LOG_ADDRESS, CRASH_RECORD_BYTES, CRASH_LOG_BYTES,
 } = require('../boards/crash_record');
 
-const CONFIGS = ['debug', 'release'];
+const CONFIGS = ['debug', 'release', 'midi'];
 // Sixteen notes, no rests, and the first few all different
 const PANEL = [3, 6, 9, 12, 15, 2, 5, 8, 11, 14, 1, 4, 7, 10, 13, 2];
 const READING_150_BPM = 480; // Exactly 100 ms a step

@@ -4,9 +4,9 @@ MISRA C is a secondary, automated check. BARR-C plus the rules in `README.md` is
 
 ## Running it
 
-- `make -k misra` runs all three analysis runs (`misra-debug`, `misra-release`, `misra-host`) and exits 0 only with zero findings. The exact cppcheck command lines are in the Makefile.
+- `make -k misra` runs all four analysis runs (`misra-debug`, `misra-release`, `misra-midi`, `misra-host`) and exits 0 only with zero findings. The exact cppcheck command lines are in the Makefile.
 - Pipe the output through `python tools/misra/summarize.py` for counts by folder, category and rule.
-- **cppcheck treats its inputs as one program.** The target and host adapters define the same port functions, and so do the two target loggers, so there is one run per program that is actually linked. The first two are the debug and release firmware. The host run mirrors `test_app`: it leaves out `app/main.c` (the test has its own `main`) and includes `tests/test_app.c` so cppcheck can see the host fakes being called.
+- **cppcheck treats its inputs as one program.** The target and host adapters define the same port functions, and so do the two target loggers and the two target MIDI outputs, so there is one run per program that is actually linked. The first three are the debug, release and midi firmware, each leaving out the logger and the MIDI output its build does not link. The host run mirrors `test_app`: it leaves out `app/main.c` (the test has its own `main`) and includes `tests/test_app.c` so cppcheck can see the host fakes being called.
 - Test code is outside the coding standard, so findings located in `tests/` are not reported. That is the one approved path-wide suppression.
 - `misra.json` points the addon at the MISRA headlines file in this folder, so findings come out with readable rule text and a category.
 - The headlines file is copyrighted MISRA text, so it's gitignored and never committed. If it's missing, run `tools/misra/fetch_misra_headlines.sh`. If that fails, tell me rather than writing rule text yourself.

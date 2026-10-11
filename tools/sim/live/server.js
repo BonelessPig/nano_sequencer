@@ -11,6 +11,9 @@
  *                  step lights) when a page
  *                  connects and when a control changes, and `run` every
  *                  slice with the chip time and what happened in it.
+ *                  What the midi image sent is among that: a `midi` event
+ *                  for each Start, Stop, Note On and Note Off, and one for
+ *                  a slice's clocks however many there were.
  *   POST /control  One change, as JSON:
  *                  { notes: [16 values, 0 to 15] }
  *                  { mode: 0 to 255 }           The eight mode switches, a
@@ -27,18 +30,28 @@
  *                                               CLOCK_PATTERNS.
  *                  { tick: 'stop' }             Stops the firmware's tick,
  *                                               for the watchdog to catch.
- *                  { power: 'debug' | 'release', keepEeprom: true | false },
- *                  which is a power cycle.
+ *                  { power: 'debug' | 'release' | 'midi',
+ *                    keepEeprom: true | false }, which is a power cycle.
  *
  * Unlike a scenario this is paced by the PC's clock, so no two runs are the
  * same; nothing is asserted here. The chip stops while no page is connected.
  *
  * Two things shown are worked out here, not read from the chip: the
  * transport and the step that is playing. Both follow the log where there is
- * one and what this server did to the controls where there is not; see
- * predictRunPress(), nextStep() and record(). The step is sent as -1 when
- * it cannot be worked out: the chance engine shuffling, on an image with no
- * log. Nothing here follows the firmware's random numbers.
+ * one and what this server did to the controls where there is not (the
+ * release and midi images); see predictRunPress(), nextStep() and record().
+ * The midi image's Start and Stop say whether the pattern is running, as a
+ * `Transport = N` line does, and are believed over the presses; they do not
+ * name a step. The step is sent as -1 when it cannot be worked out: the
+ * chance engine shuffling, on an image with no log. Nothing here follows
+ * the firmware's random numbers.
+ *
+ * MIDI out is not worked out: the messages are the board's, read from the
+ * bytes the chip sent. Three things are kept of them for a page to show
+ * without a row a clock: how many clocks there have been since the last
+ * Start, the tempo they are coming at, and the notes a receiver would be
+ * sounding. They are `midi` in the state and `now` in every `midi` event;
+ * see recordMidi().
  *
  * The sixteen step lights are not worked out: `leds` in the state and the
  * `led` events are what the two 74HC595s last latched, bit n for step n.
@@ -52,12 +65,14 @@
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { createBoard, STEP_COUNT, CLOCK_PATTERNS } = require('../boards/nano_sequencer');
+const {
+    createBoard, CONFIGS, STEP_COUNT, CLOCK_PATTERNS,
+} = require('../boards/nano_sequencer');
+const { midiNoteName } = require('../boards/midi_messages');
 
 const HOST = '127.0.0.1'; // This PC only
 const DEFAULT_PORT = 8165;
 const PAGE_PATH = path.join(__dirname, 'page.html');
-const CONFIGS = ['debug', 'release'];
 const SLICE_MS = 10;         // How often the chip is run on and the page told
 const MAX_SLICE_CHIP_MS = 50; // The most chip time one slice may catch up
 const SPEED_WINDOW_MS = 1000;
@@ -105,6 +120,15 @@ const TRANSPORT_INTERNAL = 1;
 const TRANSPORT_EXTERNAL = 2;
 const TRANSPORT_LINE = /^Transport = ([0-2])$/;
 const STEP_LINE = /^Step (\d+) /;
+const MIDI_CLOCKS_PER_QUARTER = 24;
+// The MIDI clock's tempo is taken over the last quarter note of clocks, and
+// not given until there has been a step's worth: clocks are sent on a 1 ms
+// tick, so one gap alone is out by up to 6%
+const MIDI_RATE_MIN_GAPS = 6;
+// With no clock for this long of chip time there is no tempo to give. The
+// slowest the firmware sends them, at 30 BPM, is one every 83 ms
+const MIDI_CLOCK_QUIET_MS = 1000;
+const MS_PER_MINUTE = 60000;
 
 // Where the controls stand. They outlast a power cycle, as the real ones do
 const panel = {
@@ -137,6 +161,12 @@ let runFreeMs = 0;         // Chip time from which it may be pressed again
 let isTickStopped = false; // The tick was stopped here and no reset has come
 let watchdogResets = 0;    // How many there have been since power-up
 let crashLog = null;       // The crash log as the board last read it
+// What is kept of MIDI out, from its messages: the clocks since the last
+// Start, the tempo they are coming at (null when it cannot be told), the
+// notes given a Note On and no Note Off yet, and the chip time of each of
+// the last 25 clocks, which the tempo is taken from. See recordMidi()
+const midiOut = { clocks: 0, bpm: null, sounding: [], clockTimes: [] };
+let midiClockMs = null;    // Chip time of the last clock in this slice, if any
 let timer = null;
 let wallStartMs = 0;  // The wall time at which the chip's time was zero
 let speed = { wallMs: 0, chipMs: 0, percent: 100 };
@@ -178,6 +208,7 @@ function powerUp(config, eeprom) {
         transport: isCalibrating ? null : runningTransport(),
         transportFrom: 'controls',
     };
+    Object.assign(midiOut, { clocks: 0, bpm: null, sounding: [], clockTimes: [] });
     isFirstStepDue = true;
     stepEngine = ENGINE_PLAIN;
     seen.mode = panel.mode;
@@ -196,7 +227,10 @@ function powerUp(config, eeprom) {
  * it chooses its mode from the panel as it stands, comes up running and
  * plays the pattern from its first step. The pins are left as the events
  * give them, and the run button where it is: one held down through a
- * start-up is not a press.
+ * start-up is not a press. What is kept of MIDI out is left as well: the
+ * Start the firmware sends as it comes up begins the count of clocks again,
+ * and a note that was sounding is still sounding at the receiver, since no
+ * Note Off was sent for it.
  */
 function startAgain() {
     isCalibrating = board.readsCalibrationEntry();
@@ -344,6 +378,108 @@ function followLog(step) {
 }
 
 /**
+ * What is kept of MIDI out, as the state and every `midi` event carry it:
+ * the clocks since the last Start, their tempo or null, and each note
+ * sounding with its name.
+ */
+function midiSummary() {
+    return {
+        clocks: midiOut.clocks,
+        bpm: midiOut.bpm,
+        sounding: midiOut.sounding.map((note) => ({ note, name: midiNoteName(note) })),
+    };
+}
+
+/** Counts a MIDI clock, and takes the tempo over the last quarter note. */
+function countMidiClock(t) {
+    const times = midiOut.clockTimes;
+
+    midiOut.clocks++;
+    midiClockMs = t;
+    times.push(t);
+    if (times.length > (MIDI_CLOCKS_PER_QUARTER + 1)) {
+        times.shift();
+    }
+    if (times.length > MIDI_RATE_MIN_GAPS) {
+        const quarterMs = ((t - times[0]) * MIDI_CLOCKS_PER_QUARTER) / (times.length - 1);
+
+        midiOut.bpm = MS_PER_MINUTE / quarterMs;
+    }
+}
+
+/**
+ * Gives the tempo up when the clocks have stopped coming: stopped with the
+ * sync switch on, or following an external clock that has gone away.
+ */
+function addMidiClockQuiet(events) {
+    const times = midiOut.clockTimes;
+
+    if ((times.length > 0) && ((chipMs() - times[times.length - 1]) > MIDI_CLOCK_QUIET_MS)) {
+        midiOut.bpm = null;
+        midiOut.clockTimes = [];
+        events.push({ t: chipMs(), k: 'midi', v: 'quiet', now: midiSummary() });
+    }
+}
+
+/**
+ * Takes the transport from a MIDI Start or Stop, which says whether the
+ * pattern is running as surely as the log does. Which clock it runs from
+ * is not in the message; that is the sync switch.
+ */
+function followMidiTransport(transport, t, events) {
+    if ((outputs.transport !== transport) || (outputs.transportFrom !== 'midi')) {
+        outputs.transport = transport;
+        outputs.transportFrom = 'midi';
+        events.push({ t, k: 'transport', v: transport, from: 'midi' });
+    }
+}
+
+/**
+ * Takes one MIDI message the midi image sent. A clock is only counted:
+ * drain() adds one event for all of a slice's. Anything else is an event of
+ * its own. A Start begins the count of clocks again, as a receiver would
+ * count its bars from it, and the notes sounding are kept as a receiver
+ * would have them: a Note On adds one, unless it is sounding already, and
+ * a Note Off takes it away.
+ */
+function recordMidi(message, t, events) {
+    const event = { t, k: 'midi', v: message.type };
+
+    switch (message.type) {
+        case 'clock':
+            countMidiClock(t);
+            return;
+        case 'start':
+            Object.assign(midiOut, { clocks: 0, bpm: null, clockTimes: [] });
+            followMidiTransport(runningTransport(), t, events);
+            break;
+        case 'stop':
+            followMidiTransport(TRANSPORT_STOPPED, t, events);
+            break;
+        case 'noteOn':
+            if (!midiOut.sounding.includes(message.note)) {
+                midiOut.sounding.push(message.note);
+            }
+            break;
+        case 'noteOff':
+            midiOut.sounding = midiOut.sounding.filter((note) => note !== message.note);
+            break;
+        default:
+            // A byte that is none of the messages the firmware should send
+            event.byte = message.value;
+            break;
+    }
+    if (message.note !== undefined) {
+        event.note = message.note;
+        event.name = midiNoteName(message.note);
+        event.vel = message.velocity;
+        event.ch = message.channel;
+    }
+    event.now = midiSummary();
+    events.push(event);
+}
+
+/**
  * Takes one thing the board recorded: brings `outputs` up to date with it
  * and adds what the page should be told to `events`.
  *
@@ -411,6 +547,9 @@ function record(item, events) {
             }
             break;
         }
+        case 'midi':
+            recordMidi(item.value, t, events);
+            break;
         case 'watchdog':
             // The controls only change between slices, so the firmware
             // started again with the panel as it stands now
@@ -429,7 +568,7 @@ function record(item, events) {
  * it happened, and empties the records so a long run does not fill memory.
  */
 function drain() {
-    const { serial } = board;
+    const { serial, midi } = board;
     const items = [];
     const events = [];
     const add = (cycle, kind, value) => items.push({ cycle, kind, value });
@@ -445,14 +584,21 @@ function drain() {
     for (const line of [...serial.lines, ...serial.notices]) {
         add(line.startCycle, 'log', line.text);
     }
+    midi.messages.forEach((message) => add(message.cycle, 'midi', message));
     // A step's clock pulse comes ahead of its log line, and stays ahead
     items.sort((a, b) => a.cycle - b.cycle);
+    midiClockMs = null;
     items.forEach((item) => record(item, events));
+    if (midiClockMs !== null) {
+        // One event for the slice's MIDI clocks, however many
+        events.push({ t: midiClockMs, k: 'midi', v: 'clock', now: midiSummary() });
+    }
+    addMidiClockQuiet(events);
 
     for (const list of [board.gate.edges, board.clockOut.edges, board.cvWrites,
         board.cvIgnoredFrames, board.panelReads, board.spiSent,
         board.ledLatches, board.clockIn.rises, board.resetIn.rises,
-        board.resets, serial.lines, serial.notices]) {
+        board.resets, serial.lines, serial.notices, midi.bytes, midi.messages]) {
         list.length = 0;
     }
     return events;
@@ -473,6 +619,7 @@ function stateMessage(isFresh) {
     return {
         ...panel, ...outputs, runDown: board.runButton.isClosed(),
         calibrating: isCalibrating, ms: chipMs(), fresh: isFresh,
+        hasLog: board.hasLog, sendsMidi: board.sendsMidi, midi: midiSummary(),
         tickStopped: isTickStopped, watchdogResets, crashLog,
     };
 }
@@ -561,7 +708,8 @@ function isNotes(value) {
  * only toggles and the release image never says which way it went: stopped
  * becomes running, from the first step, and running becomes stopped. It is
  * a prediction from the presses made here, each held long enough to count;
- * the debug image's `Transport = N` line then confirms or corrects it.
+ * the debug image's `Transport = N` line, or the midi image's Start or
+ * Stop, then confirms or corrects it.
  */
 function predictRunPress() {
     if (isCalibrating) {

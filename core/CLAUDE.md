@@ -12,8 +12,8 @@ Pure sequencer logic. The same source is compiled for the MCU and for a PC.
 
 ## Modules
 
-- One module, one question: `seq` (is a step due), `clock` (ticks to pulses, at a tempo or following external edges), `transport` (is the pattern running, and from which clock), `debounce` (a control's settled level), `engine_*` (which step, its note value, and whether it is tied to the next), `address` (next step in the range), `note_map` (note value to pitch), `panel` (a step's switches, and the mode switches), `gate` (is the note still held), `prng` (the next random byte), `pitch_cal` (pitch to CV value), `cal` (is this calibration mode, and what is it setting), `cal_record` (are these stored bytes a calibration table), `errlog` (which crash log record is the newest, and what this start-up adds), `crc8` (the checksum of these bytes). A new one gets its own `.c`, `.h` and test program; `docs/ROADMAP.md` section 4 lists the ones planned.
-- A module includes only the modules below it. `seq` is the top of the sequencer, and nothing includes `seq.h` from inside `core/`. The app calls `seq`, and beside it `cal` and `cal_record`, which share only `pitch_cal.h` and `panel.h` with it; the sequencer knows nothing of calibration. `errlog` stands apart from both, called once at start-up, and shares only `crc8` with `cal_record`.
+- One module, one question: `seq` (is a step due), `clock` (ticks to pulses, at a tempo or following external edges), `transport` (is the pattern running, and from which clock), `debounce` (a control's settled level), `engine_*` (which step, its note value, and whether it is tied to the next), `address` (next step in the range), `note_map` (note value to pitch), `panel` (a step's switches, and the mode switches), `gate` (is the note still held), `prng` (the next random byte), `pitch_cal` (pitch to CV value), `cal` (is this calibration mode, and what is it setting), `cal_record` (are these stored bytes a calibration table), `errlog` (which crash log record is the newest, and what this start-up adds), `crc8` (the checksum of these bytes), `midi_out` (which MIDI bytes this tick sends). A new one gets its own `.c`, `.h` and test program; `docs/ROADMAP.md` section 4 lists the ones planned.
+- A module includes only the modules below it. `seq` is the top of the sequencer, and nothing includes `seq.h` from inside `core/`. The app calls `seq`, and beside it `cal` and `cal_record`, which share only `pitch_cal.h` and `panel.h` with it; the sequencer knows nothing of calibration. `errlog` stands apart from both, called once at start-up, and shares only `crc8` with `cal_record`. `midi_out` stands beside `seq` too: the app calls it after `seq_tick()` with plain values taken from the sequencer's outputs, and it includes nothing else from the core.
 - Every pointer parameter is checked for null, and a null means do nothing and return the harmless value (false, 0). The header says so.
 - An out-of-range control never fails: it wraps or falls back to a default, and the header says which. The core has no error codes.
 - Controls arrive in a `<module>_config_t` inside `seq_inputs_t` and are read when a step begins, like the panel.
@@ -24,12 +24,15 @@ Pure sequencer logic. The same source is compiled for the MCU and for a PC.
 - Musical lengths are counted in clock pulses, never ticks, so they scale with the tempo. When a step begins late, what it starts is counted from when it was due (`step_pulses` after the step's 24 are taken off), not from the tick that noticed.
 - The pitch CV value changes only when a note begins, on the tick its gate opens, and holds through everything else (rests, unreadable steps, reset, a finished one-shot, a stop and a start). The core gives it as a number from 0 to 4095 and does not know what that is in volts.
 - Arithmetic wider than 8 bits has to work where `int` is 16 bits (the MCU) and where it is 32 (the PC, with `-Wconversion`). Keep intermediate results within 16 bits, say why they fit, and cast each product or sum back to its type; do not cast a narrower composite expression to a wider type (rule 10.8), give the operand the type first.
+- A saturating add on a byte written as `x > (uint8_t)(255U - y)` passes the host build and fails avr-gcc with a sign-compare error, because `int` is 16 bits there. Do the sum in a `uint16_t` and clamp it. The host build does not catch this kind of thing, so compile new core code with avr-gcc (`make`) before calling it done.
 - Every step that falls due calls `gate_begin()`, note or not: that is what ends a tied gate at a rest or at the end of a one-shot pattern. Look at the gate's level only after it.
 
 ## Transport and the external clock
 
 - `seq_tick()` runs the transport first, on every tick. A start (the first tick, and each time the run button starts the pattern) puts the clock, the engine and the gate back to their beginning and passes on no elapsed time for that tick, so the first step is a whole one. Do not let a start count its own tick.
 - Stopped means nothing is due: the gate is closed on every stopped tick, the clock output is low, the pitch CV holds, and reset and the external clock are not looked at.
+- `pulses` is given on every tick and is the one thing that moves while stopped. With the sync switch off, the stopped branch (`idle()` in `seq.c`) advances the internal clock for its pulses alone; it must never touch `step_pulses`, the engines or anything else a start does not put back. With the switch on the clock is left alone and no pulse falls.
+- `b_external` in `transport_outputs_t` is the switch's settled level. It exists because `mode` does not say where the switch is while the pattern is stopped.
 - A control that bounces (the run button, the sync switch) arrives as read, and `transport` debounces it. `debounce` counts in ticks, like `cal`: it is for a finger, not for music. Its first reading is taken as it stands; `transport` starts with the button as if held, so a button down at power-on is not a press.
 - An input that is an event (a clock edge, a reset edge) arrives as a flag that is true for one tick. The core never sees how long the pulse was.
 - The tempo reading has two meanings, and `seq.c` owns both: a tempo on the internal clock, a ratio on the external one. The ratio's parts are constants at the top of `seq.c`.
@@ -38,6 +41,16 @@ Pure sequencer logic. The same source is compiled for the MCU and for a PC.
 - `clock_advance()` ends any following, so `seq.c` needs no state of its own for a change of clock. `clock_follow()` is told how many pulses the sequencer has left before its next step, and its first sync edge gives exactly that, so the step begins on the edge. A start on the external clock leaves the step one pulse short of due for the same reason.
 - A change of clock is not a start and must not restart the pattern.
 - On the external clock a step can fall due while the clock output is still high from the step before (an edge in under half the last gap). It is held back one tick, with the gate closed and the clock output low, so that every step has a rising edge of its own. The internal clock is left alone: there it takes a stalled loop, and a late step begins at once, as before. A gate tied by its length is not broken by this, because the clock output has fallen by then.
+
+## MIDI out
+
+- An event (a start, a stop, a clock, a note starting or ending) is marked as owed in the state and sent when there is room, in a fixed order within a tick: Stop, Start, clocks, Note On, Note Off. Nothing is produced that does not fit, and only whole messages.
+- `midi_out_tick()` is two halves: mark what the tick adds to what is owed, then send what fits. Sending is a `fits()` check and then a put that does not check. A put that checked and reported would sit on the right of an `&&` (a rule 13.5 finding) or leave a "did not fit" branch that cannot be reached.
+- A one-byte message that cannot go means there is no room at all, so nothing after it can go either. Do not guard the later messages against it: the guard would be a branch no test can take. Say so in a comment where the order depends on it.
+- The module trusts the caller to give the gate as low on every stopped tick, and does not look at `b_running` to end a note.
+- "No note" is 255, which is not a note number.
+- A start places the downbeat by clock: at once on the internal clock, on the first pulse on the external one, because `seq` leaves an external start one pulse short of due. Clocks owed from before a start are given up at it, and that is the only thing dropped.
+- The channel, the velocities and the note of the lowest pitch are constants at the top of `midi_out.c`; the header gives them in words and the tests define their own.
 
 ## Calibration
 

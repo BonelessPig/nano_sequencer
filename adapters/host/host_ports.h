@@ -49,7 +49,9 @@ typedef struct
  *        clock output low and the pitch CV at 0, and restores the default
  *        script: every port succeeds, all step bits are 0, the tempo reading
  *        is 0, no time passes, the non-volatile storage is erased, no
- *        reset cause is recorded and the breadcrumb is 0.
+ *        reset cause is recorded and the breadcrumb is 0. The record of
+ *        MIDI bytes is emptied and the MIDI output has room for
+ *        HOST_MIDI_ROOM_DEFAULT bytes.
  */
 void host_reset(void);
 
@@ -345,5 +347,63 @@ bool host_clock_output_level(void);
  *        host_reset().
  */
 uint16_t host_clock_output_rise_count(void);
+
+#define HOST_MIDI_BYTES_MAX    (1024U) // MIDI bytes recorded before further ones are dropped
+#define HOST_MIDI_ROOM_DEFAULT (255U)  // What midi_output_room() gives until it is set
+
+/**
+ * @brief Sets what midi_output_room() returns until it is set again.
+ *        host_reset() puts it back to HOST_MIDI_ROOM_DEFAULT. The fake does
+ *        not hold the app to it: a write of more than the room is recorded
+ *        whole, so that a test can see it happened.
+ * @param room  Bytes to report as free, 0 to 255.
+ */
+void host_set_midi_room(uint8_t room);
+
+/**
+ * @brief Number of times midi_output_room() has been called since
+ *        host_reset().
+ */
+uint16_t host_midi_room_read_count(void);
+
+/**
+ * @brief Number of times midi_output_write() has been called since
+ *        host_reset(), calls that gave no bytes included.
+ */
+uint16_t host_midi_write_count(void);
+
+/**
+ * @brief Number of bytes midi_output_write() has been given since
+ *        host_reset() and the fake has kept: it stops at
+ *        HOST_MIDI_BYTES_MAX. They are kept out of the event record.
+ */
+uint16_t host_midi_byte_count(void);
+
+/**
+ * @brief  Returns a byte midi_output_write() was given.
+ * @param  index  0 is the oldest; must be below host_midi_byte_count().
+ * @return The byte, or 0 if index is out of range.
+ */
+uint8_t host_midi_byte(uint16_t index);
+
+/**
+ * @brief Number of times midi_output_poll() has been called since
+ *        host_reset(). The fake sends nothing: a byte is recorded when it
+ *        is written, not when it is polled.
+ */
+uint16_t host_midi_poll_count(void);
+
+/**
+ * @brief What host_midi_byte_count() was when the gate last went from low
+ *        to high: 0 if the MIDI bytes of that tick came after the gate.
+ */
+uint16_t host_midi_byte_count_at_gate_rise(void);
+
+/**
+ * @brief What host_midi_byte_count() was when the first event since
+ *        host_reset() was recorded: the bytes that were written ahead of
+ *        the log.
+ */
+uint16_t host_midi_byte_count_at_first_event(void);
 
 #endif /* HOST_PORTS_H */

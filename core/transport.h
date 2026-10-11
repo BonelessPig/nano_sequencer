@@ -68,6 +68,9 @@ typedef struct
     bool b_changed;        // true on a tick whose mode is not the last one's.
                            // The first tick is compared with
                            // TRANSPORT_INTERNAL
+    bool b_external;       // The sync switch's settled level on this tick:
+                           // true while it is on. Given on every tick,
+                           // stopped or running
 } transport_outputs_t;
 
 /**
@@ -79,6 +82,8 @@ void transport_init(transport_state_t *p_state);
 
 /**
  * @brief  Runs one tick: settles the two controls and works out the mode.
+ *         The sync switch's settled level is given as well, since the mode
+ *         does not say where the switch is while the pattern is stopped.
  *         Reads *p_state and *p_in, writes *p_state and *p_out, and has no
  *         other effect.
  * @param  p_state  State from transport_init() or the previous tick; updated.

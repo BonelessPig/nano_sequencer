@@ -16,6 +16,7 @@
 #include "cv_output_port.h"
 #include "gate_output_port.h"
 #include "led_output_port.h"
+#include "midi_output_port.h"
 #include "nv_port.h"
 #include "platform_port.h"
 #include "reset_cause_port.h"
@@ -92,6 +93,15 @@ static uint8_t       g_crash_repeats = 0U;
 static host_event_t  g_events[HOST_MAX_EVENTS];
 static uint16_t      g_event_count = 0U;
 
+static uint8_t       g_host_midi_bytes[HOST_MIDI_BYTES_MAX]; // Oldest first
+static uint16_t      g_host_midi_byte_count = 0U;
+static uint8_t       g_host_midi_room = HOST_MIDI_ROOM_DEFAULT;
+static uint16_t      g_host_midi_room_read_count = 0U;
+static uint16_t      g_host_midi_write_count = 0U;
+static uint16_t      g_host_midi_poll_count = 0U;
+static uint16_t      g_host_midi_bytes_at_gate_rise = 0U;
+static uint16_t      g_host_midi_bytes_at_first_event = 0U;
+
 
 
 /**
@@ -110,6 +120,10 @@ static bool is_nv_run_valid(uint16_t address, uint8_t count)
  */
 static void record_event(host_event_kind_t kind, uint16_t a, uint16_t b)
 {
+    if (0U == g_event_count)
+    {
+        g_host_midi_bytes_at_first_event = g_host_midi_byte_count;
+    }
     if (g_event_count < HOST_MAX_EVENTS)
     {
         g_events[g_event_count].kind = kind;
@@ -172,6 +186,14 @@ void host_reset(void)
     g_crash_number           = 0U;
     g_crash_place            = 0U;
     g_crash_repeats          = 0U;
+
+    g_host_midi_byte_count      = 0U;
+    g_host_midi_room            = HOST_MIDI_ROOM_DEFAULT;
+    g_host_midi_room_read_count = 0U;
+    g_host_midi_write_count     = 0U;
+    g_host_midi_poll_count      = 0U;
+    g_host_midi_bytes_at_gate_rise   = 0U;
+    g_host_midi_bytes_at_first_event = 0U;
 
     for (uint8_t i = 0U; i < HOST_BREADCRUMB_HISTORY; i++)
     {
@@ -683,6 +705,7 @@ void gate_output_write(bool b_high)
         g_gate_rise_count++;
         g_event_count_at_gate_rise   = g_event_count;
         g_cv_millivolts_at_gate_rise = g_cv_millivolts;
+        g_host_midi_bytes_at_gate_rise = g_host_midi_byte_count;
     }
     g_b_gate_high = b_high;
 }
@@ -893,4 +916,102 @@ void log_poll(void)
 void log_flush(void)
 {
     record_event(HOST_EVENT_FLUSH, 0U, 0U);
+}
+
+
+
+void host_set_midi_room(uint8_t room)
+{
+    g_host_midi_room = room;
+}
+
+
+
+uint16_t host_midi_room_read_count(void)
+{
+    return g_host_midi_room_read_count;
+}
+
+
+
+uint16_t host_midi_write_count(void)
+{
+    return g_host_midi_write_count;
+}
+
+
+
+uint16_t host_midi_byte_count(void)
+{
+    return g_host_midi_byte_count;
+}
+
+
+
+uint8_t host_midi_byte(uint16_t index)
+{
+    uint8_t byte = 0U;
+
+    if (index < g_host_midi_byte_count)
+    {
+        byte = g_host_midi_bytes[index];
+    }
+    return byte;
+}
+
+
+
+uint16_t host_midi_poll_count(void)
+{
+    return g_host_midi_poll_count;
+}
+
+
+
+uint16_t host_midi_byte_count_at_gate_rise(void)
+{
+    return g_host_midi_bytes_at_gate_rise;
+}
+
+
+
+uint16_t host_midi_byte_count_at_first_event(void)
+{
+    return g_host_midi_bytes_at_first_event;
+}
+
+
+
+uint8_t midi_output_room(void)
+{
+    g_host_midi_room_read_count++;
+    return g_host_midi_room;
+}
+
+
+
+void midi_output_write(const uint8_t *p_bytes, uint8_t count)
+{
+    g_host_midi_write_count++;
+
+    // Every byte is kept, the scripted room notwithstanding, so that a test
+    // can see a write of more than the room; dropped once the record is full
+    if (NULL != p_bytes)
+    {
+        for (uint8_t i = 0U; i < count; i++)
+        {
+            if (g_host_midi_byte_count < HOST_MIDI_BYTES_MAX)
+            {
+                g_host_midi_bytes[g_host_midi_byte_count] = p_bytes[i];
+                g_host_midi_byte_count++;
+            }
+        }
+    }
+}
+
+
+
+void midi_output_poll(void)
+{
+    g_host_midi_poll_count++;
 }

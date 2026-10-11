@@ -1,9 +1,9 @@
 'use strict';
 // The clock input, the reset input, the run button and the sync switch on
-// the emulated board, for both firmware images. The release image has no
-// log, so steps are timed from the clock output and told apart by the
-// voltage the DAC holds as each gate rises; the debug image's log lines are
-// checked as well.
+// the emulated board, for all three firmware images. The release and midi
+// images have no log, so steps are timed from the clock output and told
+// apart by the voltage the DAC holds as each gate rises; the debug image's
+// log lines are checked as well, and the midi image's MIDI in midi.test.js.
 //
 // The two edge inputs rest on lib/edge_flag.js, which is this project's own
 // model of a flag latching with its interrupt off. These scenarios show the
@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 
-const CONFIGS = ['debug', 'release'];
+const CONFIGS = ['debug', 'release', 'midi'];
 // Sixteen notes, no rests, and the first few all different
 const PANEL = [3, 6, 9, 12, 15, 2, 5, 8, 11, 14, 1, 4, 7, 10, 13, 2];
 const READING_150_BPM = 480;     // Internal clock: exactly 100 ms a step

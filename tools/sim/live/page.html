@@ -10,6 +10,9 @@
   crash log is the same: what the board read from the EEPROM, changed only
   by a `crash` event or a `state`. "Stop the tick" is not a part of the
   panel: it does to the chip, from outside, what the firmware never does.
+  MIDI out is the same again: the messages the midi image sent, as the
+  board read them from the chip's bytes, with the clocks counted by the
+  server and not listed. This page only words them.
 
   The panel is drawn as one that could be built: the steps in two rows of
   eight, the engine on one rotary switch that feeds the low three mode
@@ -143,8 +146,10 @@ details[open] > summary.head { margin-bottom: 8px; }
 .key code { font: 12px ui-monospace, monospace; white-space: nowrap; }
 .scroll { overflow-x: auto; }
 canvas { width: 100%; height: 240px; display: block; }
-#log { height: 180px; overflow-y: auto; margin: 0; font: 12px/1.5 ui-monospace, monospace;
-       white-space: pre-wrap; }
+#log, #midi-log { height: 180px; overflow-y: auto; margin: 0;
+                  font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+#midi-log { height: 140px; margin-top: 8px; }
+#midi-clock { font-weight: 600; }
 </style>
 </head>
 <body>
@@ -160,6 +165,7 @@ canvas { width: 100%; height: 240px; display: block; }
             <label>Image <select id="config">
                 <option value="debug">debug</option>
                 <option value="release">release</option>
+                <option value="midi">midi</option>
             </select></label>
             <label><input type="checkbox" id="keep-eeprom" checked> Keep the EEPROM</label>
             <button id="power">Power cycle</button>
@@ -192,10 +198,10 @@ canvas { width: 100%; height: 240px; display: block; }
                 <tr><th>Debug image</th>
                     <td>Its log also names each step, and that is believed
                         over the count.</td></tr>
-                <tr><th>Release image</th>
+                <tr><th>Release and midi images</th>
                     <td>No log, so the count is all there is. A reset that
                         lands within a tick or two of a step can leave it
-                        out.</td></tr>
+                        out. MIDI out names notes, not steps.</td></tr>
                 <tr><th>A switch moved</th>
                     <td>Counted from the panel read at which the chip took
                         it, so it does not put the count out.</td></tr>
@@ -330,7 +336,8 @@ canvas { width: 100%; height: 240px; display: block; }
                     <td>Each step is picked at random.</td></tr>
                 <tr><th>Outline, shuffle on</th>
                     <td>Debug image: from the log, which names the step.
-                        Release image: none, there being no log.</td></tr>
+                        Release and midi images: none, there being no
+                        log.</td></tr>
                 <tr><th>Lights</th>
                     <td>Show the step on both images.</td></tr>
             </table></div>
@@ -514,6 +521,77 @@ canvas { width: 100%; height: 240px; display: block; }
     </section>
 
     <section>
+        <h2>MIDI out (D1, 31250 baud)</h2>
+        <div class="row">
+            <span class="num" id="midi-clock"></span>
+            <span class="num" id="midi-sounding"></span>
+        </div>
+        <pre id="midi-log"></pre>
+        <details>
+            <summary>What MIDI out sends, and what is shown of it</summary>
+            <div class="scroll"><table class="key">
+                <thead><tr><th>Message</th><th>Sent</th><th>Shown</th></tr></thead>
+                <tr><th>Start</th>
+                    <td>As the pattern starts: at power-on, after a watchdog
+                        reset, and when the run button starts it.</td>
+                    <td>A line. The count of clocks begins again.</td></tr>
+                <tr><th>Stop</th>
+                    <td>As the run button stops the pattern.</td>
+                    <td>A line.</td></tr>
+                <tr><th>Clock</th>
+                    <td>24 to a quarter note, which is six to a step. Stopped
+                        with the sync switch off it carries on at the pot's
+                        tempo. There is none while stopped with the switch
+                        on, nor while waiting for an external edge.</td>
+                    <td>No line. The count since the last Start, and the
+                        tempo over the last quarter note of them, given
+                        once there have been seven. With none for a second
+                        the tempo is given up.</td></tr>
+                <tr><th>Note On</th>
+                    <td>As a gate rises: channel 1, velocity 100. The lowest
+                        pitch, 0 V, is note 24 (C1), and a volt is twelve
+                        notes.</td>
+                    <td>A line, with the note's name and number.</td></tr>
+                <tr><th>Note Off</th>
+                    <td>As the gate falls. A note tied to one of another
+                        pitch gets its Note Off after the new Note On; a
+                        note tied to the same pitch sends nothing.</td>
+                    <td>A line.</td></tr>
+                <tr><th>Anything else</th>
+                    <td>Never, as the firmware is written.</td>
+                    <td>A line giving the byte.</td></tr>
+            </table></div>
+            <div class="scroll"><table class="key">
+                <caption>The rest of what is shown</caption>
+                <tr><th>Times</th>
+                    <td>Chip time at which the message's first byte began. A
+                        byte takes 320 µs and each waits for the one ahead,
+                        so a Note On begins about 0.4 ms after its gate
+                        rises, and 0.7 ms behind a Start.</td></tr>
+                <tr><th>Sounding</th>
+                    <td>The notes given a Note On and no Note Off yet, as a
+                        receiver would have them. A watchdog reset sends no
+                        Note Off, so a note it cut short stays here until
+                        that note is next played and ended.</td></tr>
+                <tr><th>Transport</th>
+                    <td>A Start or a Stop says whether the pattern is
+                        running, and is believed over the count of presses
+                        of the run button, as the debug image's Transport
+                        line is. It does not say which clock.</td></tr>
+                <tr><th>Calibration mode</th>
+                    <td>Nothing is sent.</td></tr>
+                <tr><th>Debug and release images</th>
+                    <td>Neither sends MIDI: the debug image's serial pin
+                        carries its log and the release image's is never
+                        switched on.</td></tr>
+                <tr><th>Not emulated</th>
+                    <td>Only the bytes are. The MIDI out circuit, and what a
+                        receiver makes of the bytes, are not.</td></tr>
+            </table></div>
+        </details>
+    </section>
+
+    <section>
         <h2>Watchdog and crash log</h2>
         <div class="row">
             <button id="stop-tick">Stop the tick</button>
@@ -547,13 +625,13 @@ canvas { width: 100%; height: 240px; display: block; }
                     <td>The firmware starts as at power-on: it reads the
                         panel afresh, comes up running and plays from the
                         first step. The debug image's start-up line reads
-                        Reset = 8.</td></tr>
+                        Reset = 8, and the midi image sends Start again.</td></tr>
                 <tr><th>Crash log</th>
                     <td>Eight records in the EEPROM, used in turn. One is
                         written after each watchdog reset, about 18 ms into
                         the start-up. It is read here from the EEPROM, not
-                        from the serial log, so the release image shows it
-                        too.</td></tr>
+                        from the serial log, so the release and midi images
+                        show it too.</td></tr>
                 <tr><th>Record</th>
                     <td>Its number: 1 for the first, and round from 255 to
                         0. The newest is the one not followed by the next
@@ -623,6 +701,10 @@ canvas { width: 100%; height: 240px; display: block; }
                 <tr><th>Release image</th>
                     <td>Never</td>
                     <td>It has no log at all.</td></tr>
+                <tr><th>Midi image</th>
+                    <td>Never</td>
+                    <td>It has no log either: its serial pin carries MIDI,
+                        shown under MIDI out.</td></tr>
             </table></div>
         </details>
     </section>
@@ -763,6 +845,10 @@ const TRACE_WINDOW_MS = 4000;
 const CV_SCALE_MIN_MV = 1250;   // The trace's full scale, unless the CV is higher
 const CV_SCALE_STEP_MV = 1000;
 const LOG_LINES_MAX = 300;
+const MIDI_LINES_MAX = 200;
+const MIDI_CLOCKS_PER_QUARTER = 24;
+// How a line of the MIDI monitor names each message, padded to one width
+const MIDI_NAMES = { start: 'Start', stop: 'Stop', noteOn: 'Note On ', noteOff: 'Note Off' };
 const SOUND_BASE_HZ = 130.81;   // What 0 V plays; an octave up per volt
 const SOUND_LEVEL = 0.2;
 const SOUND_EDGE_S = 0.005;
@@ -1170,8 +1256,10 @@ function showTransport() {
         }
         if (state.transportFrom === 'log') {
             from = '(as the log says)';
-        } else if (state.config === 'release') {
-            from = '(worked out from the controls: the release image has no log)';
+        } else if (state.transportFrom === 'midi') {
+            from = '(as the MIDI Start or Stop says)';
+        } else if (!state.hasLog) {
+            from = `(worked out from the controls: the ${state.config} image has no log)`;
         } else {
             from = '(worked out from the controls)';
         }
@@ -1319,13 +1407,67 @@ function showClock(event) {
     }
 }
 
-function addLogLine(text) {
-    const log = el('log');
-    const lines = log.textContent.split('\n').slice(-LOG_LINES_MAX);
+// ---- MIDI out ----
+
+// The clocks and the notes sounding, as the server keeps them from the
+// messages: `midi` in the state, brought up to date by every `midi` event
+function showMidi() {
+    const { clocks, bpm, sounding } = state.midi;
+    const quarters = Math.floor(clocks / MIDI_CLOCKS_PER_QUARTER);
+    let clockText = `The ${state.config} image sends no MIDI`;
+    let soundingText = '';
+
+    if (state.sendsMidi && state.calibrating) {
+        clockText = 'Calibration mode: no MIDI is sent';
+    } else if (state.sendsMidi) {
+        clockText = (bpm === null)
+            ? 'Clock: no tempo to give' : `Clock: ${bpm.toFixed(1)} BPM`;
+        clockText += `, ${clocks} since Start (${quarters} quarter `
+            + `${(quarters === 1) ? 'note' : 'notes'})`;
+        soundingText = `Sounding: ${(sounding.length === 0) ? 'none'
+            : sounding.map((one) => `${one.name} (${one.note})`).join(', ')}`;
+    } else {
+        // An image with nothing on the wire that is MIDI
+    }
+    el('midi-clock').textContent = clockText;
+    el('midi-sounding').textContent = soundingText;
+}
+
+// One line of the MIDI monitor for a message that is not a clock
+function midiLine(event) {
+    const time = `${(event.t / 1000).toFixed(3).padStart(9)} s  `;
+
+    if (event.note !== undefined) {
+        return `${time}${MIDI_NAMES[event.v]}  ${event.name.padEnd(3)} (${event.note})`
+            + `  velocity ${event.vel}, channel ${event.ch}`;
+    }
+    if (MIDI_NAMES[event.v] !== undefined) {
+        return time + MIDI_NAMES[event.v];
+    }
+    return `${time}Not a message the firmware should send: byte ${event.byte}`;
+}
+
+function addLine(id, text, max) {
+    const pane = el(id);
+    const lines = (pane.textContent === '') ? [] : pane.textContent.split('\n').slice(-max);
 
     lines.push(text);
-    log.textContent = lines.join('\n');
-    log.scrollTop = log.scrollHeight;
+    pane.textContent = lines.join('\n');
+    pane.scrollTop = pane.scrollHeight;
+}
+
+// A `midi` event: a line for a message, none for a slice's clocks or for
+// the clocks having stopped, and what the server keeps for all three
+function applyMidi(event) {
+    state.midi = event.now;
+    if ((event.v !== 'clock') && (event.v !== 'quiet')) {
+        addLine('midi-log', midiLine(event), MIDI_LINES_MAX);
+    }
+    showMidi();
+}
+
+function addLogLine(text) {
+    addLine('log', text, LOG_LINES_MAX);
 }
 
 function applyEvent(event) {
@@ -1348,6 +1490,9 @@ function applyEvent(event) {
             break;
         case 'log':
             addLogLine(event.v);
+            break;
+        case 'midi':
+            applyMidi(event);
             break;
         case 'step':
             state.step = event.v;
@@ -1500,6 +1645,13 @@ function toggleSound() {
 
 // ---- The server ----
 
+// What the log pane says for an image that sends no log
+function noLogText() {
+    return state.sendsMidi
+        ? '(the midi image has no log: its serial pin carries MIDI, shown under MIDI out)'
+        : `(the ${state.config} image has no log)`;
+}
+
 function applyState(newState) {
     state = newState;
     if (state.fresh) {
@@ -1511,8 +1663,8 @@ function applyState(newState) {
         trace.clockIn = [];
         trace.resetIn = [];
         lastClockRiseMs = null;
-        el('log').textContent = (state.config === 'release')
-            ? '(the release image has no log)' : '';
+        el('log').textContent = state.hasLog ? '' : noLogText();
+        el('midi-log').textContent = '';
         el('bpm').textContent = '';
         el('config').value = state.config;
         el('clock-led').classList.toggle('lit', state.clock);
@@ -1526,6 +1678,7 @@ function applyState(newState) {
     showLeds();
     showWatchdog();
     showCrashLog();
+    showMidi();
 }
 
 function applyRun(run) {

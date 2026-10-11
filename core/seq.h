@@ -117,6 +117,11 @@ typedef struct
                             // Given on every tick
     bool    b_transport_changed; // true on a tick whose transport is not
                             // the last one's
+    uint8_t pulses;         // Clock pulses that fell on this tick, 96 to
+                            // the quarter note: those of the pattern's
+                            // clock while it runs, and of the internal
+                            // clock while it is stopped with the sync
+                            // switch off. Given on every tick
 } seq_outputs_t;
 
 /**
@@ -150,7 +155,8 @@ void seq_init(seq_state_t *p_state);
  *
  *         While the pattern is stopped nothing is due and nothing begins.
  *         The gate is closed at once and the clock output is low; the pitch
- *         CV value holds. Reset and the external clock are ignored.
+ *         CV value holds. Reset and the external clock are ignored. Only
+ *         the count of clock pulses goes on, as said below.
  *
  *         On the internal clock a step lasts SEQ_PULSES_PER_STEP clock
  *         pulses, which is 15000 / BPM milliseconds.
@@ -222,6 +228,20 @@ void seq_init(seq_state_t *p_state);
  *         it is every active stage of the register (see engine_klee.h).
  *         Nothing is lit for a step that fell due and did not begin, nor
  *         while the pattern is stopped.
+ *
+ *         The pulses that fell on the tick are given on every tick, for
+ *         whatever keeps time with the pattern (a MIDI clock). While the
+ *         pattern runs they are the ones its steps are counted in, from
+ *         whichever clock it runs from: SEQ_PULSES_PER_STEP to a step on
+ *         the internal clock, and that many times the multiply from one
+ *         sync edge to the next on the external one. They are given on the
+ *         tick they fell, also when a step they bring due begins later (an
+ *         early edge, a stall). On the tick of a start no time is counted,
+ *         so none falls but the one an edge of the external clock gives.
+ *         While the pattern is stopped with the sync switch off, the
+ *         internal clock carries on at the tempo and its pulses are given;
+ *         the pattern does not move, and the next start begins a whole
+ *         step all the same. Stopped with the switch on, none falls.
  *
  *         The tempo is SEQ_BPM_MIN plus the tempo reading divided by
  *         SEQ_TEMPO_RAW_PER_BPM (30 to 285 BPM over the valid range). If the

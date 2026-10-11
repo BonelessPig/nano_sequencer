@@ -17,6 +17,7 @@ import time
 STAGES = [
     ("build debug", ["CONFIG=debug", "all"], r"^\s*\d+\s+\d+\s+\d+\s+\d+"),
     ("build release", ["CONFIG=release", "all"], r"^\s*\d+\s+\d+\s+\d+\s+\d+"),
+    ("build midi", ["CONFIG=midi", "all"], r"^\s*\d+\s+\d+\s+\d+\s+\d+"),
     ("test", ["test"], None),
     ("coverage", ["coverage"], r"^Firmware total"),
     ("misra", ["-k", "misra"], None),

@@ -1,13 +1,14 @@
 'use strict';
 // The mode switches and the engines they choose, on the emulated board, for
-// both firmware images. The release image has no log, so steps are timed
-// from the clock output and told apart by the voltage the DAC holds as each
-// gate rises; the debug image's log lines are checked as well.
+// all three firmware images. The release and midi images have no log, so
+// steps are timed from the clock output and told apart by the voltage the
+// DAC holds as each gate rises; the debug image's log lines are checked as
+// well, and the midi image's MIDI in midi.test.js.
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { createBoard } = require('../boards/nano_sequencer');
 
-const CONFIGS = ['debug', 'release'];
+const CONFIGS = ['debug', 'release', 'midi'];
 const MODE_PLAIN = 0;
 const MODE_STAGE = 1;
 const READING_150_BPM = 480; // Exactly 100 ms a step

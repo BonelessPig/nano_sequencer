@@ -51,9 +51,10 @@ void transport_tick(transport_state_t *p_state, const transport_inputs_t *p_in,
             mode = b_sync ? TRANSPORT_EXTERNAL : TRANSPORT_INTERNAL;
         }
 
-        p_out->mode      = mode;
-        p_out->b_started = p_state->b_starting;
-        p_out->b_changed = (mode != p_state->mode);
+        p_out->mode       = mode;
+        p_out->b_started  = p_state->b_starting;
+        p_out->b_changed  = (mode != p_state->mode);
+        p_out->b_external = b_sync;
 
         p_state->b_starting = false;
         p_state->mode       = mode;

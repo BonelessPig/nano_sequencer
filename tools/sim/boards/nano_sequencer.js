@@ -7,7 +7,9 @@
  * with its chip select on PB2, two 74HC595s on the bus as well (clock on
  * SCK, data on MOSI) driving the sixteen step lights, their latch clock on
  * PB1 with the 74HC165 load line, the tempo pot on ADC channel 6, the gate
- * output on PD4, the clock output on PD5, and USART0 going to a PC. Scenarios set the panel and
+ * output on PD4, the clock output on PD5, and USART0, whose transmit pin (PD1)
+ * goes to a PC in the debug image, to the MIDI out socket in the midi image
+ * and nowhere in the release image. Scenarios set the panel and
  * the pot, run the firmware, and read back what it did. Nothing is wired to
  * Timer/Counter2; the firmware uses it for its 1 kHz tick. The chip's own
  * EEPROM holds the pitch calibration record, from address 0, and the crash
@@ -30,6 +32,7 @@ const { attachHc595Chain } = require('../parts/hc595');
 const { attachMcp4822 } = require('../parts/mcp4822');
 const { attachSwitch } = require('../parts/switch');
 const { readCrashLog, CRASH_LOG_ADDRESS, CRASH_LOG_BYTES } = require('./crash_record');
+const { createMidiParser } = require('./midi_messages');
 
 const CLOCK_HZ = 16000000;
 const STEP_COUNT = 16;
@@ -50,6 +53,13 @@ const SREG = 0x5F;            // Status register, data address
 const INTERRUPT_ENABLE = 0x80; // Its global interrupt enable bit
 const STEP_LINE_PREFIX = 'Step ';
 const BUILD_DIR = path.resolve(__dirname, '..', '..', '..', 'build');
+// The firmware images, and what each sends from the USART's transmit pin:
+// a log in text, MIDI, or nothing, the USART never being switched on
+const WIRE_LOG = 'log';
+const WIRE_MIDI = 'midi';
+const WIRE_NONE = 'none';
+const WIRES = { debug: WIRE_LOG, release: WIRE_NONE, midi: WIRE_MIDI };
+const CONFIGS = Object.keys(WIRES);
 
 // The panel that asks for calibration mode at power-on: the last four steps
 // read 10, 5, 10, 5. The lowest switch of the last step is the store switch
@@ -58,20 +68,36 @@ const CAL_STORE_SWITCH = 1;
 
 /**
  * Powers up a board running one build of the firmware.
- * @param config   'debug' or 'release': which build/<config>/output.hex to run.
+ * @param config   One of CONFIGS ('debug', 'release' or 'midi'): which
+ *                 build/<config>/output.hex to run. It also says what the
+ *                 bytes the USART sends are taken to be: the debug image's
+ *                 are sorted into the log's lines (serial.lines and
+ *                 serial.notices) and the midi image's are kept as they are
+ *                 (midi.bytes) and read into messages (midi.messages).
  * @param options  Optional. eeprom: bytes the EEPROM holds from address 0,
  *                 the rest being erased. resetFlags: what the chip's reset
  *                 flags register holds at start (1 for a power-on reset);
  *                 the emulator leaves it at 0.
  */
 function createBoard(config, options = {}) {
+    if (WIRES[config] === undefined) {
+        throw new Error(`no firmware image called "${config}"`);
+    }
     const hexPath = path.join(BUILD_DIR, config, 'output.hex');
     const machine = createAtmega328p(hexPath, CLOCK_HZ);
     const notes = new Array(STEP_COUNT).fill(0);
     let modeSwitches = 0;
     // lines holds the step lines, which most scenarios count and time;
     // notices holds every other line (start-up, calibration, errors)
+    // bytes counts everything the USART sent, whatever it was
     const serial = { bytes: 0, lines: [], notices: [] };
+    // What the midi image sent: bytes holds each byte as { value, cycle },
+    // the cycle being the one in which the firmware handed it to the USART
+    // and its start bit began, and messages the same read into MIDI
+    // messages by midi_messages.js, a message's cycle being that of its
+    // first byte. Both stay empty on the other images
+    const midi = { bytes: [], messages: [] };
+    const midiParser = createMidiParser();
     const spiSent = [];
     let partial = '';
     let partialStart = 0;
@@ -148,8 +174,12 @@ function createBoard(config, options = {}) {
             () => machine.spi.completeTransfer(received), machine.spi.transferCycles);
     };
 
-    machine.usart.onByteTransmit = (byte) => {
-        serial.bytes++;
+    function takeMidiByte(byte) {
+        midi.bytes.push({ value: byte, cycle: machine.cpu.cycles });
+        midi.messages.push(...midiParser.push(byte, machine.cpu.cycles));
+    }
+
+    function takeLogByte(byte) {
         if (partial === '') {
             partialStart = machine.cpu.cycles;
         }
@@ -165,11 +195,23 @@ function createBoard(config, options = {}) {
             list.push(line);
             partial = '';
         }
+    }
+
+    // One wire, and the image says what is on it
+    const takeByte = (WIRES[config] === WIRE_MIDI) ? takeMidiByte : takeLogByte;
+
+    machine.usart.onByteTransmit = (byte) => {
+        serial.bytes++;
+        takeByte(byte);
     };
 
     return {
         machine,
         serial,
+        midi,
+        // What this image sends from the USART: a log, MIDI, or neither
+        hasLog: WIRES[config] === WIRE_LOG,
+        sendsMidi: WIRES[config] === WIRE_MIDI,
         panelReads: chain.reads,
         spiSent,
         cvWrites: dac.writes,
@@ -363,6 +405,11 @@ function createBoard(config, options = {}) {
             machine.runUntil(() => machine.cpu.cycles >= end, ms + 1);
         },
 
+        /** Runs until this many MIDI messages have been sent whole. */
+        runUntilMidiMessages(count, limitMs) {
+            machine.runUntil(() => midi.messages.length >= count, limitMs);
+        },
+
         /** Runs until this many lines other than step lines have been sent. */
         runUntilNotices(count, limitMs) {
             machine.runUntil(() => serial.notices.length >= count, limitMs);
@@ -417,4 +464,4 @@ function createBoard(config, options = {}) {
     };
 }
 
-module.exports = { createBoard, STEP_COUNT, CLOCK_PATTERNS };
+module.exports = { createBoard, CONFIGS, STEP_COUNT, CLOCK_PATTERNS };

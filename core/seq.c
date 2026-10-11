@@ -294,7 +294,9 @@ static void start(seq_state_t *p_state, transport_mode_t mode)
  * @param  p_in           Inputs for this tick.
  * @param  mode           Which clock the pattern is running from.
  * @param  elapsed_ticks  Ticks to move the clock on by.
- * @param  p_out          Outputs, with the step fields already cleared.
+ * @param  p_out          Outputs, with the step fields already cleared; the
+ *                        pulses that fell are given, whether or not a step
+ *                        begins.
  */
 static void run(seq_state_t *p_state, const seq_inputs_t *p_in, transport_mode_t mode,
                 uint8_t elapsed_ticks, seq_outputs_t *p_out)
@@ -312,6 +314,7 @@ static void run(seq_state_t *p_state, const seq_inputs_t *p_in, transport_mode_t
     pulses               = pulses_due(p_state, p_in, mode, elapsed_ticks);
     p_state->step_pulses = (uint16_t)(p_state->step_pulses + pulses);
     gate_pulses          = pulses;
+    p_out->pulses        = pulses;
 
     if ((TRANSPORT_EXTERNAL == mode) && b_clock_was_high
         && (p_state->step_pulses >= SEQ_PULSES_PER_STEP))
@@ -349,6 +352,34 @@ static void run(seq_state_t *p_state, const seq_inputs_t *p_in, transport_mode_t
     {
         p_out->leds = p_state->leds;
     }
+}
+
+
+
+/**
+ * @brief  Runs one tick of a pattern that is stopped: closes the gate, and
+ *         with the sync switch off keeps the internal clock going at the
+ *         tempo, for its pulses alone. Nothing of the pattern moves, and a
+ *         start puts the clock back to its beginning. With the switch on
+ *         the clock is left alone and no pulse falls.
+ * @param  p_state        Sequencer state; the gate and the clock change.
+ * @param  b_external     The sync switch's settled level.
+ * @param  elapsed_ticks  Ticks to move the clock on by.
+ * @return Pulses that fell.
+ */
+static uint8_t idle(seq_state_t *p_state, bool b_external,
+                    uint8_t elapsed_ticks)
+{
+    uint8_t pulses = 0U;
+
+    gate_init(&p_state->gate);
+    if (!b_external)
+    {
+        pulses = clock_advance(&p_state->clock, tempo_bpm(p_state->last_tempo_raw),
+                               elapsed_ticks);
+    }
+
+    return pulses;
 }
 
 
@@ -405,7 +436,7 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
 
         if (TRANSPORT_STOPPED == transport.mode)
         {
-            gate_init(&p_state->gate);
+            p_out->pulses = idle(p_state, transport.b_external, elapsed_ticks);
         }
         else
         {

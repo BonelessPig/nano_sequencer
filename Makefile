@@ -6,12 +6,13 @@
 # Usage:
 #   make              Build build/debug/output.hex and print the size report
 #   make CONFIG=release   The same for the release build (see "Build configuration")
+#   make CONFIG=midi      The same for the build that sends MIDI
 #   make size         Print the size report (builds first if needed)
 #   make flash        Build if needed, then upload to the board over serial
 #   make test         Build the code for this PC and run its unit tests
 #   make coverage     Run the tests instrumented and report line/branch coverage
 #   make misra        Run cppcheck with the MISRA addon over the source
-#   make sim          Run both firmware images on an emulated board
+#   make sim          Run the firmware images on an emulated board
 #   make live         Run one image on that board at real speed, shown in a browser
 #   make check        Run all of the above checks; one line each unless one fails
 #   make clean       Delete the build/ directory
@@ -84,22 +85,35 @@ F_CPU      = 16000000UL
 
 # ---- Build configuration ----------------------------------------------------
 
-# CONFIG picks which logger is linked into the firmware. Nothing else differs:
-# every file is compiled the same way for both, so they share build/obj/.
+# CONFIG picks which logger and which MIDI output are linked into the firmware,
+# one of each. Nothing else differs: every file is compiled the same way for
+# all of them, so they share build/obj/. There is one USART, so at most one of
+# the two uses it.
 #   debug     serial_logger.c: text log over USART0 at 115200 baud (the default)
-#   release   null_logger.c: no logging, and the USART is never switched on
+#             null_midi_output.c: no MIDI
+#   release   null_logger.c: no logging
+#             null_midi_output.c: no MIDI, and the USART is never switched on
+#   midi      null_logger.c: no logging
+#             midi_output.c: MIDI out over USART0 at 31250 baud
 # Each configuration gets its own output folder, so switching between them
 # can never leave a stale image behind. CONFIG applies to `make`, `make size`
-# and `make flash`; the tests and the analysis always cover both loggers.
+# and `make flash`; the tests and the analysis always cover every one of
+# these files.
 CONFIG ?= debug
 
-LOGGERS = serial_logger null_logger
+LOGGERS      = serial_logger null_logger
+MIDI_OUTPUTS = midi_output null_midi_output
 ifeq ($(CONFIG),debug)
-    LOGGER = serial_logger
+    LOGGER      = serial_logger
+    MIDI_OUTPUT = null_midi_output
 else ifeq ($(CONFIG),release)
-    LOGGER = null_logger
+    LOGGER      = null_logger
+    MIDI_OUTPUT = null_midi_output
+else ifeq ($(CONFIG),midi)
+    LOGGER      = null_logger
+    MIDI_OUTPUT = midi_output
 else
-    $(error CONFIG must be debug or release, not "$(CONFIG)")
+    $(error CONFIG must be debug, release or midi, not "$(CONFIG)")
 endif
 
 # ---- Upload settings --------------------------------------------------------
@@ -144,11 +158,12 @@ TARGET    = $(BUILD_DIR)/$(CONFIG)/output
 SRC_DIRS     = app core adapters/target
 INCLUDE_DIRS = core ports adapters/target
 
-# SRCS: every .c file in SRC_DIRS, less the loggers this configuration does not
-# use. A new .c file in one of those folders is picked up automatically; a new
-# folder must be added to SRC_DIRS.
-UNUSED_LOGGER_SRCS := $(patsubst %,adapters/target/%.c,$(filter-out $(LOGGER),$(LOGGERS)))
-SRCS := $(filter-out $(UNUSED_LOGGER_SRCS),$(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)))
+# SRCS: every .c file in SRC_DIRS, less the logger and the MIDI output this
+# configuration does not use. A new .c file in one of those folders is picked
+# up automatically; a new folder must be added to SRC_DIRS.
+UNUSED_CHOICES     := $(filter-out $(LOGGER) $(MIDI_OUTPUT),$(LOGGERS) $(MIDI_OUTPUTS))
+UNUSED_CHOICE_SRCS := $(patsubst %,adapters/target/%.c,$(UNUSED_CHOICES))
+SRCS := $(filter-out $(UNUSED_CHOICE_SRCS),$(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)))
 
 # OBJS: the matching object file for each source, mirrored under build/obj/
 # (app/main.c -> build/obj/app/main.o).
@@ -271,7 +286,8 @@ CORE_TESTS = test_seq test_clock test_panel test_address test_note_map \
              test_engine_plain test_engine_stage test_engine_klee \
              test_engine_chance test_engine_cartesian test_engine_euclid \
              test_prng test_gate test_pitch_cal test_cal_record \
-             test_cal test_debounce test_transport test_crc8 test_errlog
+             test_cal test_debounce test_transport test_crc8 test_errlog \
+             test_midi_out
 TEST_CORE := $(patsubst %,$(HOST_DIR)/%$(EXE),$(CORE_TESTS))
 
 # Tests that #include the source file they test (one each for the target
@@ -282,7 +298,8 @@ INCLUDING_TESTS = test_serial_logger test_null_logger test_register_init \
                   test_timebase test_spi test_gate_output test_clock_output \
                   test_cv_output test_eeprom test_reset_cause test_main \
                   test_clock_input test_reset_input test_run_input \
-                  test_sync_input test_watchdog test_breadcrumb
+                  test_sync_input test_watchdog test_breadcrumb \
+                  test_midi_output test_null_midi_output
 TEST_INCLUDING := $(patsubst %,$(HOST_DIR)/%$(EXE),$(INCLUDING_TESTS))
 
 TEST_PROGRAMS = $(TEST_CORE) $(TEST_APP) $(TEST_INCLUDING)
@@ -334,16 +351,18 @@ coverage:
 # file, which is not in the repo; if it is missing, run
 # tools/misra/fetch_misra_headlines.sh first. Exits non-zero if anything is found.
 #
-# The analysis runs three times, once per program that is actually linked,
+# The analysis runs four times, once per program that is actually linked,
 # because cppcheck treats everything it is given as one program. The target and
 # host adapters each define the same port functions, as do the two target
-# loggers (only one of each is ever linked), and analysing them together would
-# report every such function as defined twice.
+# loggers and the two target MIDI outputs (only one of each is ever linked),
+# and analysing them together would report every such function as defined
+# twice.
 #
 # Each run analyses the same files that are linked together for that build:
 #   misra-debug    core, ports, all of app (including main.c), adapters/target
-#                    without null_logger.c
-#   misra-release  the same without serial_logger.c
+#                    without null_logger.c and midi_output.c
+#   misra-release  the same without serial_logger.c and midi_output.c
+#   misra-midi     the same without serial_logger.c and null_midi_output.c
 #   misra-host     core, ports, app/app.c, adapters/host, tests/test_app.c
 # The host run mirrors the test_app program. It leaves out app/main.c because
 # the test supplies its own main, and it includes the test file only so
@@ -362,21 +381,25 @@ MISRA_FLAGS      = --addon=tools/misra/misra.json --std=c99 \
                    --inline-suppr --error-exitcode=1 -DF_CPU=$(F_CPU)
 MISRA_HOST_SCOPE = -I app -I adapters/host -I tests "--suppress=*:tests/*"
 
-.PHONY: misra-debug misra-release misra-host
-misra: misra-debug misra-release misra-host
+.PHONY: misra-debug misra-release misra-midi misra-host
+misra: misra-debug misra-release misra-midi misra-host
 
-misra-debug:
-	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) -i adapters/target/null_logger.c core ports app adapters/target
+# The three firmware runs share a recipe. MISRA_SKIP names the files of
+# adapters/target that the run's build does not link.
+misra-debug:   MISRA_SKIP = null_logger midi_output
+misra-release: MISRA_SKIP = serial_logger midi_output
+misra-midi:    MISRA_SKIP = serial_logger null_midi_output
+MISRA_SKIP_FLAGS = $(patsubst %,-i adapters/target/%.c,$(MISRA_SKIP))
 
-misra-release:
-	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) -i adapters/target/serial_logger.c core ports app adapters/target
+misra-debug misra-release misra-midi:
+	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_SKIP_FLAGS) core ports app adapters/target
 
 misra-host:
 	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_HOST_SCOPE) core ports app/app.c adapters/host tests/test_app.c
 
 # ---- Emulation --------------------------------------------------------------
 #
-# `make sim` runs both firmware images, exactly as they would be flashed, on an
+# `make sim` runs the firmware images, exactly as they would be flashed, on an
 # emulated ATmega328P (the avr8js library, under Node) with the board's
 # external parts modelled in tools/sim/: the 74HC165 chain, the MCP4822 DAC,
 # the tempo pot and a serial capture, and with the chip's EEPROM to store to.
@@ -395,6 +418,7 @@ SIM_MODULES = $(SIM_DIR)/node_modules/.package-lock.json
 sim: $(SIM_MODULES)
 	$(MAKE) CONFIG=debug $(BUILD_DIR)/debug/output.hex
 	$(MAKE) CONFIG=release $(BUILD_DIR)/release/output.hex
+	$(MAKE) CONFIG=midi $(BUILD_DIR)/midi/output.hex
 	$(NODE) --test --test-reporter=spec "$(SIM_DIR)/scenarios/*.test.js"
 
 # `make live` runs one image on the same emulated board at the pace of a real
@@ -407,6 +431,7 @@ LIVE_PORT ?= 8165
 live: $(SIM_MODULES)
 	$(MAKE) CONFIG=debug $(BUILD_DIR)/debug/output.hex
 	$(MAKE) CONFIG=release $(BUILD_DIR)/release/output.hex
+	$(MAKE) CONFIG=midi $(BUILD_DIR)/midi/output.hex
 	$(NODE) $(SIM_DIR)/live/server.js $(LIVE_PORT)
 
 $(SIM_MODULES): $(SIM_DIR)/package-lock.json
@@ -414,7 +439,7 @@ $(SIM_MODULES): $(SIM_DIR)/package-lock.json
 
 # ---- Everything at once -----------------------------------------------------
 #
-# `make check` runs every check that a change must pass: both firmware builds,
+# `make check` runs every check that a change must pass: the firmware builds,
 # the host tests, coverage, the MISRA analysis and the emulated board. It
 # prints one line per stage, and the full output only of a stage that fails.
 # All stages run even if an earlier one fails; it exits non-zero if any did.

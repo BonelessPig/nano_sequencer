@@ -23,7 +23,7 @@ Read a folder's `CLAUDE.md` before adding a file to it or changing one in it.
 
 - `core/CLAUDE.md`: what keeps the core pure.
 - `ports/CLAUDE.md`: port headers and status codes.
-- `adapters/target/CLAUDE.md`: registers, the two loggers, pins, compiler quirks.
+- `adapters/target/CLAUDE.md`: registers, the two loggers and the two MIDI outputs, pins, compiler quirks.
 - `adapters/host/CLAUDE.md`: the PC fakes.
 - `app/CLAUDE.md`: the tick and `main`.
 - `tests/CLAUDE.md`: how each kind of source file is tested, and coverage.
@@ -34,11 +34,11 @@ Read a folder's `CLAUDE.md` before adding a file to it or changing one in it.
 
 Before calling a change done, all of these pass. `make check` runs them all and prints one line per stage, with the full output only of a stage that fails; use it for the final run, and a stage's own target when you need its output. The Makefile's recipes run under `cmd.exe` on Windows; from Git Bash, call it as `cmd //c "make ..."`.
 
-- `make` and `make CONFIG=release`: both firmware images build. Any warning fails the build (`-Wall -Wextra -Wconversion -Wshadow -Werror`).
+- `make`, `make CONFIG=release` and `make CONFIG=midi`: all three firmware images build. Any warning fails the build (`-Wall -Wextra -Wconversion -Wshadow -Werror`).
 - `make test`: the host test programs pass.
 - `make coverage`: 100% of lines and branches in `core/`, `app/` and `adapters/target/`. New firmware code comes with the tests that cover it. If a branch truly cannot be reached from a test, tell me rather than excluding it.
-- `make -k misra`: zero findings across the three analysis runs.
-- `make sim`: both images behave on the emulated board.
+- `make -k misra`: zero findings across the four analysis runs.
+- `make sim`: all three images behave on the emulated board.
 
 `make flash` uploads to the board. The owner runs it themselves and reports back; don't run it.
 
@@ -54,8 +54,9 @@ Before calling a change done, all of these pass. `make check` runs them all and 
 - Don't change behavior while refactoring. Report suspected bugs instead of silently fixing them.
 - To prove a refactor changed nothing, save `build/debug/output.hex` before editing, rebuild after, and `cmp` the two (and the release ones if the change could reach them). If they differ, diff the `avr-objdump -d` instruction streams with addresses stripped to see which function moved.
 - Commit and push only when asked.
+- Do the work in the main session. Don't spin off subagents, for the live view, the docs or anything else, unless I ask for them in that piece of work: each one starts cold and re-reads the project, and a run split across several used far more tokens and took far longer than doing it in one.
 - Keep `README.md` and `docs/ARCHITECTURE.md` in step with the code in the same piece of work. ARCHITECTURE.md describes what the firmware does today and carries the size figures, test counts, MISRA status and the open items list; `docs/ROADMAP.md` carries the plan and the decisions taken. Don't repeat any of those here.
-- When a change alters what the board has or does that someone could see or work (a pin, a part, a control, a mode, a log line, an output), spin off a subagent to bring the live view (`make live`, `tools/sim/live/`) up to date in the same piece of work, along with anything it needs from `tools/sim/boards/`. Tell it what changed and to read `tools/sim/CLAUDE.md` first. Check its work yourself and run `make sim` before calling the change done; the page cannot be checked from here, so say what the owner should look at in the browser.
+- When a change alters what the board has or does that someone could see or work (a pin, a part, a control, a mode, a log line, an output), bring the live view (`make live`, `tools/sim/live/`) up to date in the same piece of work, along with anything it needs from `tools/sim/boards/`. Read `tools/sim/CLAUDE.md` first. Run `make sim` before calling the change done; the page cannot be checked from here, so say what the owner should look at in the browser.
 - The owner wants the project minimal and lightweight, and as clean as possible against the standard: prefer actually resolving a finding over recording a deviation, and when there is a real trade-off, lay out the options with a recommendation and let them choose.
 
 ## Project facts
@@ -63,6 +64,6 @@ Before calling a change done, all of these pass. `make check` runs them all and 
 - Target: ATmega328P on an Arduino Nano (old bootloader), 16 MHz, avr-gcc 12.1.0, GNU Make. Developed on Windows; the Makefile also has macOS and Linux branches that have never been run.
 - No Arduino core, no avr-libc headers or functions, no variadic functions, no `printf`, no `memset`/`memcpy`. The only non-project code is the startup object and a few libgcc helpers added at link time. `-ffreestanding` makes `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` come from the compiler.
 - The compiler can emit calls to `memset` or `memcpy` for large zero-initialisers and struct copies, and nothing provides them. In firmware code, initialise fields explicitly and avoid whole-struct assignment.
-- Two build configurations, `CONFIG=debug` (default) and `CONFIG=release`, differing only in which logger is linked. There are no configuration macros; keep it that way and add per-configuration behaviour as another link-time choice. Outputs go to `build/<config>/`; objects are shared in `build/obj/`.
+- Three build configurations, `CONFIG=debug` (default), `CONFIG=release` and `CONFIG=midi`, differing only in which logger and which MIDI output are linked: the serial logger in debug, MIDI out in midi, neither in release. There are no configuration macros; keep it that way and add per-configuration behaviour as another link-time choice. Outputs go to `build/<config>/`; objects are shared in `build/obj/`.
 - Git Bash heredocs mangle backslashes in inline Python and sed scripts here. Write helper scripts to a file with the Write tool and run them, or use the Edit tool.
 - `*.sh` files must stay LF (`.gitattributes` enforces it); the repo otherwise checks out as CRLF on Windows.

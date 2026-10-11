@@ -1,14 +1,15 @@
 'use strict';
-// Pitch calibration on the emulated board, for both firmware images: the
-// record in the EEPROM, what is played from it, and calibration mode. The
-// release image has no log, so everything is checked on the DAC, the gate
-// and the EEPROM's contents; the debug image's log lines are checked as well.
+// Pitch calibration on the emulated board, for all three firmware images:
+// the record in the EEPROM, what is played from it, and calibration mode.
+// The release and midi images have no log, so everything is checked on the
+// DAC, the gate and the EEPROM's contents; the debug image's log lines are
+// checked as well.
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 const { calRecord } = require('../boards/cal_record');
 
-const CONFIGS = ['debug', 'release'];
+const CONFIGS = ['debug', 'release', 'midi'];
 const PANEL = [1, 4, 7, 10, 13, 0, 3, 6, 9, 12, 15, 2, 5, 8, 11, 14];
 const READING_150_BPM = 480;     // Exactly 100 ms a step
 const RUN_LIMIT_MS = 5000;

@@ -7,7 +7,7 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 - **Registers live in two files.** `atmega328p_regs.h` declares each register as `extern volatile`; `atmega328p_regs.ld` gives it its address and is passed to the linker as an extra input. A new register needs both. Use the plain datasheet data address (for example `0x2B`). A register missing from the `.ld` file fails at link time; a wrong address links silently, so check it against the datasheet.
 - Registers at 0x20 to 0x3F need the `REG_IO_LOW` attribute or the compiler stops using `sbi`/`cbi`, which changes the shift register load pulse.
 - Putting the address inside the attribute does not work on avr-gcc 12.1.0 (`io_low(0x2B)` fails with "IO definition needs an address"), which is why the linker file exists.
-- **A macro used by only one build configuration is a rule 2.5 finding in the other.** Definitions that only one configuration's files use go in a header only those files include. That is why the USART0 registers and bit positions are in `atmega328p_usart_regs.h` (same `.ld` file), included only by `serial_logger.c`.
+- **A macro used by only one build configuration is a rule 2.5 finding in the other.** Definitions that only one configuration's files use go in a header only those files include. That is why the USART0 registers and bit positions are in `atmega328p_usart_regs.h` (same `.ld` file), included only by `serial_logger.c` and `midi_output.c`, which are never linked together. Each of the two must use every macro in it, or the other's run reports rule 2.5: that is why the MIDI adapter enables the receiver (`RXEN0`) it does not read. A bit only one of them needs means splitting the header.
 - Group a new peripheral's registers in a header of its own on the same pattern (`atmega328p_timer2_regs.h`, `atmega328p_spi_regs.h` and the rest), with only the bit positions the code uses, and check each position against the toolchain's `avr/iom328p.h`. An unused bit position is a rule 2.5 finding, and so is an unused mask in `bits.h`.
 - A new register also goes into `tests/fake_atmega328p_regs.h` and its `fake_regs_reset()`.
 
@@ -73,17 +73,23 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 - Check a new vector's number against the datasheet and confirm with `avr-objdump -d` that the vector table entry jumps to the handler. A wrong number links silently.
 - `timebase_init()` is the last step of `platform_init()` because it sets the global interrupt enable bit. Anything that must be set up before interrupts run goes before it.
 
-## Loggers and the UART
+## Loggers, MIDI outputs and the UART
 
-- `serial_logger.c` (debug) and `null_logger.c` (release) both implement `log_port.h` and `logger.h`. The Makefile links one. A change to either interface changes both files.
+- There is one USART and two link-time pairs that could want it: the logger (`serial_logger.c` or `null_logger.c`) and the MIDI output (`midi_output.c` or `null_midi_output.c`). The Makefile links one of each, and at most one file across both pairs may touch the USART: the serial logger in debug, the MIDI output in midi, neither in release. A new configuration is a new choice from the pairs, never a macro.
+- `serial_logger.c` (debug) and `null_logger.c` (release and midi) both implement `log_port.h` and `logger.h`. A change to either interface changes both files. The same goes for `midi_output.c` (midi) and `null_midi_output.c` (debug and release), which implement `midi_output_port.h` and `midi_output.h`.
+- `null_midi_output.c` never touches a register and gives a room of 255. That is what keeps the release build off PD0 and PD1.
+- MIDI's 31250 baud is exact in double-speed mode at 16 MHz, a divisor of 63. A byte is 320 µs, so about 3 leave in a tick against up to 8 queued in one; the 32-byte queue is four worst-case ticks. `midi_output_write()` only queues and `midi_output_poll()` sends one byte per call when the transmitter is ready.
+- A port function that calls a sibling port function keeps a rule 8.7 finding alive for the one called. Both use a static helper instead (`queue_room()` behind `midi_output_room()` and `midi_output_write()`).
+- `midi_output_init()` returns nothing, since it cannot fail, and goes with the driver inits in `platform_init()`, before the watchdog.
+- PD1 floats from reset until the transmitter is enabled. That matters for the MIDI out circuit and has not been tried (`docs/ARCHITECTURE.md` open item 16).
 - The serial logger never waits for the UART. A message is written into a 128-byte queue and `log_poll()` sends one byte per call when the transmitter is ready. A message that does not fit is dropped whole, so write every message between `begin_message()` and `end_message()`. Only `log_flush()` blocks.
 - The serial rate is 115200 baud in double-speed mode, which is 2.1 % fast at 16 MHz. 250000, 500000 and 1000000 are exact.
-- The release build never enables the USART. PD0 and PD1 are not configured by `register_init.c`; leave them alone so the release build does not drive them against the board's USB serial chip.
+- The release build never enables the USART. PD0 and PD1 are not configured by `register_init.c`; leave them alone so the release build does not drive them against the board's USB serial chip. In the midi build PD1 also reaches that chip, so the PC's port shows the MIDI bytes as noise.
 
 ## Pins
 
 - The 74HC165 chain is nine chips: eight for the steps and, farthest from the MCU, one for the mode switches. Another chip goes on the far end, so the bytes already read keep their places; it costs a constant in `shift_reg_reader.c`, the port header's range and the two fakes.
-- In use: PB1 (74HC165 load), PB5 (SCK, the clock of the chain and the DAC), PB4 (MISO, the chain's data, through 1 kΩ), PB3 (MOSI, the data of the DAC and of the step lights' 74HC595s), PB2 (SS, the DAC's chip select, idle high), PD4 (gate output), PD5 (clock output), ADC channel 6 (tempo pot), PB0 (clock input), PD2 (reset input), PD3 (sync switch), PD7 (run button). Timer/Counter2 is the 1 kHz tick and drives no pin, and the EEPROM has none either. Timer/Counter1 runs only for its capture flag.
+- In use: PB1 (74HC165 load), PB5 (SCK, the clock of the chain and the DAC), PB4 (MISO, the chain's data, through 1 kΩ), PB3 (MOSI, the data of the DAC and of the step lights' 74HC595s), PB2 (SS, the DAC's chip select, idle high), PD4 (gate output), PD5 (clock output), ADC channel 6 (tempo pot), PB0 (clock input), PD2 (reset input), PD3 (sync switch), PD7 (run button), and PD1 as the USART's transmit pin: the log in the debug build, MIDI out in the midi build (PD0 is then its receive input, which nothing reads). Timer/Counter2 is the 1 kHz tick and drives no pin, and the EEPROM has none either. Timer/Counter1 runs only for its capture flag.
 - The MCP4822 is used on channel A at a gain of 2 from its internal reference (1 mV a step), with LDAC tied low. Its frame layout and pinout have been checked against the datasheet (`docs/ROADMAP.md` section 8).
 - PD6 is free. PC0 and PC1 are given a direction but are unused and free.
 - An input pin's direction and pull-up are set in `register_init.c` too. All four inputs use the MCU's own pull-ups.
