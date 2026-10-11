@@ -298,7 +298,7 @@ One lesson came with it. The first shift register model latched on the falling e
 
 ### The harness (`tools/sim/`, `make sim`)
 
-In place as of 2026-10-10: `lib/machine.js` (the chip), `lib/pin_recorder.js`, `lib/edge_flag.js`, `parts/hc165.js`, `parts/hc595.js`, `parts/mcp4822.js`, `parts/clock_source.js`, `parts/switch.js`, `boards/nano_sequencer.js` (wiring, panel, pot, the DAC's frames, gate and clock recorders, the two input jacks, the sync switch and run button, the mode switches, serial capture, the EEPROM's contents) and a hundred and twelve scenarios across the two images. ARCHITECTURE.md describes it.
+In place as of 2026-10-10: `lib/machine.js` (the chip), `lib/pin_recorder.js`, `lib/edge_flag.js`, `parts/hc165.js`, `parts/hc595.js`, `parts/mcp4822.js`, `parts/clock_source.js`, `parts/clock_patterns.js`, `parts/switch.js`, `boards/nano_sequencer.js` (wiring, panel, pot, the DAC's frames, gate and clock recorders, the two input jacks, the sync switch and run button, the mode switches, serial capture, the EEPROM's contents) and a hundred and fourteen scenarios across the two images. ARCHITECTURE.md describes it.
 
 Still to add, each when a phase needs it:
 
@@ -399,6 +399,47 @@ In use today: PB0 to PB5 as below (the 74HC595 not yet), PD2 to PD5, PD7, PD1 in
 | ADC7 | Pot or CV in | | |
 
 Where the 328P runs out, in order: one USART (log or MIDI, not both), no on-chip debug, a 10-bit ADC (fine for quantised transpose, not for pitch tracking), three timers. The smallest step up is the ATmega328PB (two USARTs, same register model); any move costs a new adapter folder and leaves the core and ports alone.
+
+### Panel hardware options
+
+Noted on 2026-10-11 while the live view was redrawn as a panel that could be built. Nothing here is built or bought. "No firmware" means the part feeds the same 74HC165 inputs the same bits as today; anything else goes core first, then a port and an adapter. The live view draws only the first row of each table.
+
+**Engine selector** (mode inputs 2 to 0, read as a number as each step begins)
+
+| Option | Parts and pins | Firmware | Verdict |
+|---|---|---|---|
+| Binary-coded rotary switch, 8 positions | One switch on the three inputs, no pins | None | **Chosen for the live view.** One move a change, and a printed name at each position. Between detents a binary switch can read as another position for a moment, and an engine seen for even one step starts the next from its beginning |
+| Gray-coded rotary switch | The same | A lookup from code to engine, in the core | The clean form of the above: only one bit moves between positions, so no third engine is ever read. Worth it if the binary one glitches on the bench |
+| One-pole 8-way rotary switch with a 74HC148 encoder, or seven diodes | One switch and a chip, no pins | None | For when a coded switch cannot be had with the shaft or the feel wanted. Choose a non-shorting switch |
+| Stepped (detented) pot on ADC7 | One pot, one ADC channel | A new port and adapter, and bands with hysteresis in the core | Frees three switch inputs for the pattern controls of open item 6, at the price of the only spare ADC-only pin and a reading that can sit on a boundary |
+| Three toggles | As wired in the model today | None | Two moves for most changes, passing through another engine on the way. What the rotary switch replaces |
+
+**Mode switches 7 to 3** (the chosen engine's own, decision 85)
+
+| Option | Parts and pins | Firmware | Verdict |
+|---|---|---|---|
+| Five toggles and a printed legend | Five toggles, no pins | None | **Chosen for the live view**, which draws the legend live. On a panel the legend is a card or a printed table of five rows, one an engine, since the names change with the engine |
+| Two 4-way coded rotary switches and one toggle | Three parts on the same five inputs | The engines' fields moved to line up as 2 + 2 + 1 bits (Klee: chance, then invert and merge as one switch of four, then load; Euclidean would need a 16-way switch or lose half its settings) | Better to work than reading two toggles as a number, but the fields do not line up today (Klee 2 + 1 + 1 + 1, chance 2 + 1, Cartesian 2 + 2, Euclidean 4) and Euclidean does not fit |
+| Two parameter pots on ADC channels | Two pots, two of PC0 to PC3 | New port and adapter; each engine reads two values 0 to 1023 and bands them | The best feel, and the Euclidean beats become one knob. Frees five inputs. A larger change: the engines' interfaces move from switch bits to values |
+| A momentary button for Klee load | One button in place of toggle 3 | Load on a press, not on any move (decision 88 chose the toggle because a level cannot mean load) | Reads better as a button; the other engines would then have a button where they want a toggle |
+| A light beside each toggle that the engine uses | Five LEDs and a third 74HC595, no pins | The core gives a mask of the switches in use | Says on the panel what the live view says by dimming. Cheap, and no engine changes |
+
+**Steps**
+
+| Option | Parts and pins | Firmware | Verdict |
+|---|---|---|---|
+| Two rows of eight | As today, laid out 2 by 8 | None | **Chosen for the live view.** The stage engine's controls sit under their stages and each half row is a row of the Cartesian grid, so one layout serves every engine |
+| Hexadecimal thumbwheel or coded rotary switch a step | Sixteen parts in place of 64 toggles, same four bits each | None if the code is true binary, not complement | Shows the note as a figure and takes far less panel. Loses the Klee and stage engines' reading of the four switches as separate things, which a row of toggles shows and a wheel hides |
+| Two-colour step lights | Sixteen more LEDs and two more 74HC595s | The core gives a second mask | Would show a stage and its control, or a Klee stage that is active against the one being read, apart. Not needed for anything built so far |
+
+**Tempo pot and the inputs**
+
+| Option | Parts and pins | Firmware | Verdict |
+|---|---|---|---|
+| The tempo pot as it is | One pot on ADC6 | None | On the external clock its travel is seven bands with no detents and no hysteresis, so the ratio can flicker at a boundary |
+| A second, stepped control for the ratio | A 7-way coded switch on three of the inputs the engine switch frees, or a detented pot on ADC7 | A second reading and a port for it | Leaves the tempo pot for one job. Decision 61 gave the pot the ratio so that it was never idle; this undoes that for a clearer panel |
+| Swing made by the sequencer | None | Phase 11 in the list above | The live view's swung clock only shows what the firmware makes of a swung master. A swing of its own is a core feature and needs a control, which could be the pot on the internal clock's second function or one of the freed inputs |
+| The clock and reset input stage | A transistor or comparator a jack | None | Not designed (ARCHITECTURE.md open item 12). The random clocks in the live view are a reminder that edges arrive at any spacing: the stage should square them up, and the firmware already takes one of any width |
 
 ## 8. Not verified
 

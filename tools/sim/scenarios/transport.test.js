@@ -194,6 +194,32 @@ for (const config of CONFIGS) {
         });
     });
 
+    test(`${config}: a swung clock gets a step on each of its uneven edges`, () => {
+        const board = boardWith(config, READING_ONE_TO_ONE, true);
+        const gapsMs = [124, 76];   // 62% and 38% of a pair of 100 ms periods
+
+        board.runForMs(10);
+        board.startClockIn(100, 'swing62');
+        board.runUntilClockOutPulses(7, RUN_LIMIT_MS);
+
+        const edges = board.clockIn.rises.map((cycle) => board.machine.cyclesToMs(cycle));
+        const rises = riseMs(board, board.clockOut);
+
+        rises.forEach((rise, i) => {
+            const delayMs = rise - edges[i];
+
+            assert.ok(delayMs > TICK_MS && delayMs < (2 * TICK_MS) + EDGE_JITTER_MAX_MS,
+                `step ${i} began ${delayMs} ms after its edge`);
+        });
+        for (let i = 1; i < rises.length; i++) {
+            assertNear(edges[i] - edges[i - 1], gapsMs[(i - 1) % 2],
+                EDGE_JITTER_MAX_MS, `edge gap ${i}`);
+            assertNear(rises[i] - rises[i - 1], gapsMs[(i - 1) % 2],
+                EDGE_JITTER_MAX_MS, `step gap ${i}`);
+        }
+        assert.deepEqual(stepsPlayed(board).slice(0, 5), [0, 1, 2, 3, 4]);
+    });
+
     test(`${config}: the tempo pot divides the external clock`, () => {
         const board = boardWith(config, READING_DIVIDE_4, true);
 

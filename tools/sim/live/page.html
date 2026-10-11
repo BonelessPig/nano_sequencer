@@ -7,6 +7,12 @@
   out (see server.js) and this page only words them. The sixteen step
   lights are not worked out anywhere: they are what the chip latched into
   the two 74HC595s, and only a `led` event or a `state` changes them.
+
+  The panel is drawn as one that could be built: the steps in two rows of
+  eight, the engine on one rotary switch that feeds the low three mode
+  inputs its position as a number, and mode switches 7 to 3 as five toggles
+  under a legend that names them for the engine chosen. What explains the
+  page is in tables, each folded away until it is opened.
 -->
 <html lang="en">
 <head>
@@ -53,18 +59,22 @@ body {
 }
 main { max-width: 980px; margin: 0 auto; display: grid; gap: 12px; }
 h1 { font-size: 18px; margin: 0; }
-h2 { font-size: 12px; margin: 0 0 8px; color: var(--dim); text-transform: uppercase;
-     letter-spacing: 0.06em; }
+h2, summary.head { font-size: 12px; margin: 0 0 8px; color: var(--dim);
+                   text-transform: uppercase; letter-spacing: 0.06em; font-weight: bold; }
 section { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
-          padding: 12px; }
+          padding: 12px; min-width: 0; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.row.spaced { margin-top: 10px; }
 .dim { color: var(--dim); }
 .num { font-variant-numeric: tabular-nums; }
 button, select { font: inherit; color: inherit; background: var(--off);
                  border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; }
 button { cursor: pointer; }
-#steps { display: grid; grid-template-columns: repeat(16, minmax(44px, 1fr)); gap: 6px;
+/* The sixteen steps as two rows of eight, whatever the engine */
+#steps { display: grid; grid-template-columns: repeat(8, minmax(44px, 1fr)); gap: 6px;
          overflow-x: auto; }
+.row-caption { grid-column: 1 / -1; font-size: 12px; }
+.row-caption:empty { display: none; }
 .step { display: grid; gap: 4px; justify-items: center; padding: 6px 2px;
         border-radius: 6px; border: 1px solid transparent; }
 .step.playing { border-color: var(--on); }
@@ -77,18 +87,34 @@ button { cursor: pointer; }
 #steps.stage .step.control .switch[data-bit="1"] { margin-top: 6px; }
 /* The Klee engine: a step's pattern switch stands apart from its value */
 #steps.klee .switch[data-bit="2"] { margin-top: 6px; }
-/* The Cartesian engine: the sixteen steps as four rows of four */
-#steps.cartesian { grid-template-columns: repeat(4, minmax(44px, 96px)); }
-#steps.cartesian .step.group { margin-left: 0; }
-.mode-group { display: inline-flex; gap: 4px; padding: 4px; border-radius: 6px;
-              border: 1px solid transparent; }
-.mode-group.engine { border-color: var(--on); }
+/* The engine's rotary switch */
+#engine-knob { width: 230px; outline-offset: 2px; }
+#engine-knob svg { display: block; width: 100%; height: auto; }
+.knob-body { fill: var(--off); stroke: var(--line); stroke-width: 1.5; cursor: pointer; }
+.knob-pointer { stroke: var(--ink); stroke-width: 3; stroke-linecap: round;
+                pointer-events: none; }
+.detent { cursor: pointer; }
+.detent text { fill: var(--dim); font-size: 12px; dominant-baseline: middle; }
+.detent circle { fill: var(--line); }
+.detent.chosen text { fill: var(--ink); font-weight: 600; }
+.detent.chosen circle { fill: var(--on); }
 #engine { font-weight: 600; }
+/* Mode switches 7 to 3: a legend over five toggles, a column a switch */
+#mode-legend, #modes-spare { display: grid; grid-template-columns: repeat(5, 56px);
+                             gap: 4px 6px; }
+.field { border: 1px solid var(--line); border-bottom: none; border-radius: 6px 6px 0 0;
+         padding: 2px 2px 4px; text-align: center; font-size: 12px; line-height: 1.25; }
+.field b { display: block; font-weight: 600; }
+.field.unused { color: var(--dim); border-style: dashed dashed none; }
+.lever-cell { display: grid; justify-items: center; gap: 2px; font-size: 11px; }
+.lever { position: relative; width: 26px; height: 40px; }
+.lever::after { content: ''; position: absolute; left: 4px; right: 4px; bottom: 3px;
+                height: 14px; border-radius: 4px; background: var(--dim); }
+.lever.on::after { bottom: auto; top: 3px; background: #1b1b1b; }
+.lever-cell.unused { opacity: 0.45; }
 #cal-banner { border-color: var(--on); }
 #cal-banner h2 { color: var(--on); }
-#cal-banner p, #cal-banner ul { margin: 0 0 6px; }
-#cal-help p, #cal-help ol { margin: 0 0 8px; max-width: 75ch; }
-#cal-help li { margin-bottom: 4px; }
+#cal-banner p, #cal-help p { margin: 0 0 6px; max-width: 75ch; }
 .led { width: 12px; height: 12px; border-radius: 50%; background: var(--off);
        border: 1px solid var(--line); display: inline-block; }
 .step .led.lit { background: var(--on); border-color: var(--on); }
@@ -98,7 +124,21 @@ button { cursor: pointer; }
 #run.down { background: var(--on); border-color: var(--on); color: #1b1b1b; }
 #transport { font-weight: 600; }
 button:disabled { opacity: 0.5; cursor: default; }
-.note-text { margin: 10px 0 0; max-width: 75ch; }
+/* What explains the page: tables, folded away until opened */
+details { margin-top: 10px; }
+details[hidden] { display: none; }
+summary { cursor: pointer; color: var(--dim); }
+summary.head { margin: 0; }
+section > details:first-child { margin-top: 0; }
+details[open] > summary.head { margin-bottom: 8px; }
+.key { border-collapse: collapse; margin: 6px 0 4px; max-width: 90ch; font-size: 13px; }
+.key caption { text-align: left; color: var(--dim); padding: 6px 0 2px; }
+.key th, .key td { text-align: left; vertical-align: top; padding: 4px 12px 4px 0;
+                   border-bottom: 1px solid var(--line); }
+.key th { font-weight: 600; white-space: nowrap; }
+.key thead th { color: var(--dim); font-weight: normal; }
+.key code { font: 12px ui-monospace, monospace; white-space: nowrap; }
+.scroll { overflow-x: auto; }
 canvas { width: 100%; height: 240px; display: block; }
 #log { height: 180px; overflow-y: auto; margin: 0; font: 12px/1.5 ui-monospace, monospace;
        white-space: pre-wrap; }
@@ -127,85 +167,223 @@ canvas { width: 100%; height: 240px; display: block; }
     <section>
         <h2>Panel</h2>
         <div id="steps"></div>
-        <p class="dim note-text">The light on each step is the board's own
-            step LED, as the chip last latched it into the two 74HC595s:
-            lit for the first half of a step, and dark while stopped and in
-            calibration mode. The outline round a step is the step counted
-            here, which the labels are worked out from; see under the input
-            jacks.</p>
-        <div class="row" style="margin-top: 10px">
-            <span>Mode switches</span>
-            <span class="mode-group" id="modes-spare"></span>
-            <span class="dim num" id="mode-means"></span>
-            <span class="mode-group engine" id="modes-engine"></span>
-            <span>2 to 0 choose the engine, as a number:
-                <span class="num" id="engine"></span></span>
-            <span class="dim num" id="place"></span>
+        <details>
+            <summary>The step lights and the outline</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Light on a step</th>
+                    <td>The board's own step LED, as the chip last latched it
+                        into the two 74HC595s. Lit for the first half of a
+                        step; dark while stopped and in calibration mode.</td></tr>
+                <tr><th>Outline round a step</th>
+                    <td>The step counted by this viewer, which the labels
+                        under the steps are worked out from. Where it and
+                        the light disagree, the light is right.</td></tr>
+            </table></div>
+            <div class="scroll"><table class="key">
+                <caption>How the outlined step is counted</caption>
+                <thead><tr><th>Case</th><th>What is counted</th></tr></thead>
+                <tr><th>Any engine</th>
+                    <td>Pulses of the clock output, one a step. Back to 0
+                        after a start or a reset made here, and after a
+                        change of engine.</td></tr>
+                <tr><th>Debug image</th>
+                    <td>Its log also names each step, and that is believed
+                        over the count.</td></tr>
+                <tr><th>Release image</th>
+                    <td>No log, so the count is all there is. A reset that
+                        lands within a tick or two of a step can leave it
+                        out.</td></tr>
+                <tr><th>A switch moved</th>
+                    <td>Counted from the panel read at which the chip took
+                        it, so it does not put the count out.</td></tr>
+                <tr><th>Stage</th>
+                    <td>The log names the stage. Which of its steps is
+                        playing is always counted, from the lengths as they
+                        stood when the stage began.</td></tr>
+                <tr><th>Klee</th>
+                    <td>How far the register has moved since its last load;
+                        back to 0 when mode switch 3 is moved.</td></tr>
+                <tr><th>Cartesian</th>
+                    <td>The two counters, as the firmware counts them, from
+                        the mode switches as each step begins.</td></tr>
+                <tr><th>Chance, shuffle on</th>
+                    <td>Nothing to count: only the log or the lights can say
+                        which step was picked.</td></tr>
+                <tr><th>Random numbers</th>
+                    <td>The firmware's are not followed here.</td></tr>
+            </table></div>
+        </details>
+
+        <div class="row spaced">
+            <div>
+                <div id="engine-knob" role="slider" tabindex="0" aria-label="Engine"
+                     aria-valuemin="0" aria-valuemax="7"></div>
+                <div>Engine <span class="num" id="engine"></span></div>
+            </div>
+            <div>
+                <div class="dim">Mode switches 7 to 3</div>
+                <div id="mode-legend"></div>
+                <div id="modes-spare"></div>
+                <div class="dim num" id="place"></div>
+            </div>
         </div>
-        <p class="dim note-text engine-help" data-engine="2" hidden>The Klee
-            engine sends a pattern of bits round a register of sixteen
-            stages, one stage a step. Each step is a stage: its highest
-            switch (8) is its pattern switch and its low three (4, 2 and 1)
-            its value, 0 to 7. The note is the sum of the values under the
-            active stages, 15 at most, and a sum of 0 is a rest. The pattern
-            switches only count at a load, which copies them into the
-            register: on the first step, and on the step after mode switch 3
-            is moved either way. The values are read on every step. The step
-            lights show the register itself: every active stage is lit, and
-            the pattern can be seen going round, turned over by invert and
-            drifting with chance. That comes from the chip and is not worked
-            out here, where the random numbers are not followed. What is
-            counted here is only how far the register has moved since it was
-            loaded, 0 to 15 and round again, given beside the mode switches;
-            no step is outlined, since none is being played.</p>
-        <p class="dim note-text engine-help" data-engine="3" hidden>The chance
-            engine plays the sixteen steps as the plain engine does, but
-            skips some, which are rests, and with shuffle on picks each step
-            at random. A shuffled step cannot be worked out here: the debug
-            image's log names it and it is outlined from that; the release
-            image has no log, so no step is outlined while shuffle is on.
-            The step lights still show it on both, since they are the
-            chip's own.</p>
-        <p class="dim note-text engine-help" data-engine="4" hidden>The
-            Cartesian engine plays the step at column x of row y of this
-            grid. Both start at 0 and go round from 3 to 0, each moving on
-            every so many steps as the mode switches say. With switches 6 to
-            3 all off that is the sixteen steps in order; other settings
-            trace other paths, some of which never reach every step.</p>
-        <p class="dim note-text engine-help" data-engine="5" hidden>The
-            Euclidean engine plays the sixteen steps in order, but a step
-            sounds only on a beat; any other is a rest. The beats are spread
-            as evenly as a bar of sixteen allows, the first on step 0. The
-            steps marked "beat" are the beats at the present setting; one of
-            them is still a rest if its own switches are all off.</p>
-        <p class="dim note-text engine-help" data-engine="1" hidden>The stage
-            engine plays
-            eight stages. Steps 0 to 7 are the stages' notes and steps 8 to 15
-            their controls, step 8 for stage 0 and so on. A control's low two
-            switches (2 and 1) are the stage's length, 1 to 4 steps; its high
-            two (8 and 4) are the gate mode: single plays the note on the
-            stage's first step only, repeat on every step, hold once for the
-            whole stage, and rest not at all. The stage counted as playing
-            is outlined with its control, which counts its steps; the light
-            is on the stage's note.</p>
-        <div class="row" style="margin-top: 10px">
+        <details>
+            <summary>The engine switch and the mode switches</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Engine switch</th>
+                    <td>One rotary switch of eight positions that puts out
+                        its position as a three-bit number, on mode inputs 2
+                        to 0 of the ninth 74HC165. The code is shown beside
+                        the engine's name. Positions 6 and 7 have no engine
+                        yet and play the plain one.</td></tr>
+                <tr><th>Mode switches 7 to 3</th>
+                    <td>Five toggles on the same chip, read on every step.
+                        They belong to the engine chosen: the legend over
+                        them names each one, or each group read together as
+                        a number, and says how it stands. Dashed means no
+                        use on this engine.</td></tr>
+                <tr><th>When they count</th>
+                    <td>The engine is taken as each step begins, and a
+                        change of engine starts the new one's pattern from
+                        its beginning.</td></tr>
+            </table></div>
+        </details>
+
+        <details class="engine-help" data-engine="0" hidden>
+            <summary>About the plain engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Steps</th>
+                    <td>Sixteen, played in order, one a step.</td></tr>
+                <tr><th>A step's switches</th>
+                    <td>Its note as a number, 0 to 15: 0 is a rest, and the
+                        figure under the switches is the pitch played, one
+                        below the number.</td></tr>
+                <tr><th>Mode switches</th><td>No use.</td></tr>
+            </table></div>
+        </details>
+        <details class="engine-help" data-engine="1" hidden>
+            <summary>About the stage engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Top row, steps 0 to 7</th>
+                    <td>The notes of eight stages.</td></tr>
+                <tr><th>Bottom row, steps 8 to 15</th>
+                    <td>Their controls, each under its stage.</td></tr>
+                <tr><th>Control switches 2 and 1</th>
+                    <td>The stage's length, 1 to 4 steps.</td></tr>
+                <tr><th>Control switches 8 and 4</th>
+                    <td>Its gate mode. Single: the note on the stage's first
+                        step only. Repeat: on every step. Hold: once, for
+                        the whole stage. Rest: not at all.</td></tr>
+                <tr><th>Outline</th>
+                    <td>The stage counted as playing, with its control,
+                        which counts its steps.</td></tr>
+                <tr><th>Light</th><td>On the stage's note.</td></tr>
+                <tr><th>Mode switches</th><td>No use.</td></tr>
+            </table></div>
+        </details>
+        <details class="engine-help" data-engine="2" hidden>
+            <summary>About the Klee engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Steps</th>
+                    <td>The sixteen stages of a register, which a pattern of
+                        bits goes round, one stage a step.</td></tr>
+                <tr><th>Switch 8</th>
+                    <td>The stage's pattern switch. It counts only at a
+                        load, which copies all sixteen into the register.</td></tr>
+                <tr><th>Switches 4, 2, 1</th>
+                    <td>The stage's value, 0 to 7, read on every step.</td></tr>
+                <tr><th>Note</th>
+                    <td>The sum of the values under the active stages, 15 at
+                        most. A sum of 0 is a rest.</td></tr>
+                <tr><th>Load (3)</th>
+                    <td>On the first step, and on the step after the switch
+                        is moved either way.</td></tr>
+                <tr><th>Invert (4)</th>
+                    <td>Turns the bit over as it comes round again.</td></tr>
+                <tr><th>Merge (5)</th>
+                    <td>Ties every note to the next step.</td></tr>
+                <tr><th>Chance (7, 6)</th>
+                    <td>How often in 8 the bit coming round is flipped at
+                        random, 0 to 3. At 0 the pattern is locked.</td></tr>
+                <tr><th>Lights</th>
+                    <td>The register itself: every active stage is lit, so
+                        the pattern can be seen going round. They come from
+                        the chip.</td></tr>
+                <tr><th>Counted here</th>
+                    <td>Only how far the register has moved since its load,
+                        0 to 15 and round again, shown under the mode
+                        switches. No step is outlined.</td></tr>
+            </table></div>
+        </details>
+        <details class="engine-help" data-engine="3" hidden>
+            <summary>About the chance engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Steps</th>
+                    <td>Played as the plain engine plays them, but some are
+                        skipped and some picked at random.</td></tr>
+                <tr><th>Skip (4, 3)</th>
+                    <td>How often in 4 a step becomes a rest, 0 to 3.</td></tr>
+                <tr><th>Shuffle (5)</th>
+                    <td>Each step is picked at random.</td></tr>
+                <tr><th>Outline, shuffle on</th>
+                    <td>Debug image: from the log, which names the step.
+                        Release image: none, there being no log.</td></tr>
+                <tr><th>Lights</th>
+                    <td>Show the step on both images.</td></tr>
+            </table></div>
+        </details>
+        <details class="engine-help" data-engine="4" hidden>
+            <summary>About the Cartesian engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Steps</th>
+                    <td>A grid of four rows of four: step n is at column x
+                        = n mod 4 of row y = n ÷ 4. Each half of a panel row
+                        is one row of the grid.</td></tr>
+                <tr><th>Plays</th>
+                    <td>The step at column x of row y. Both start at 0 and
+                        go round from 3 to 0.</td></tr>
+                <tr><th>x (4, 3)</th>
+                    <td>x moves on every 1, 2, 3 or 4 steps.</td></tr>
+                <tr><th>y (6, 5)</th>
+                    <td>y moves on every 4, 3, 2 or 1 steps.</td></tr>
+                <tr><th>All four off</th>
+                    <td>The sixteen steps in order. Other settings trace
+                        other paths, some of which never reach every step.</td></tr>
+            </table></div>
+        </details>
+        <details class="engine-help" data-engine="5" hidden>
+            <summary>About the Euclidean engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Steps</th>
+                    <td>Played in order, but a step sounds only on a beat;
+                        any other is a rest.</td></tr>
+                <tr><th>Beats (6 to 3)</th>
+                    <td>1 to 16 in a bar of sixteen, spread as evenly as the
+                        bar allows, the first on step 0.</td></tr>
+                <tr><th>"beat" under a step</th>
+                    <td>A beat at the present setting. It is still a rest if
+                        the step's own switches are all off.</td></tr>
+            </table></div>
+        </details>
+
+        <div class="row spaced">
             <label for="tempo">Tempo pot</label>
             <input type="range" id="tempo" min="0" max="1023" step="1">
             <span class="num" id="tempo-reading"></span>
             <span class="num" id="tempo-means"></span>
             <span class="num dim" id="bpm"></span>
         </div>
-        <div class="row" style="margin-top: 10px">
+        <div class="row spaced">
             <button id="run">Run button (D7)</button>
             <label><input type="checkbox" id="sync"> Sync switch (D3): follow
                 the clock input</label>
             <span id="transport"></span>
             <span class="dim" id="transport-from"></span>
         </div>
-        <div class="row" style="margin-top: 10px">
+        <div class="row spaced">
             <button id="cal-enter">Enter calibration mode</button>
-            <span class="dim">Sets steps 12 to 15 to 10, 5, 10, 5 and power cycles
-                the board, which is how the mode is entered.</span>
+            <span class="dim">Sets steps 12 to 15 to 10, 5, 10, 5 and power
+                cycles the board.</span>
         </div>
     </section>
 
@@ -214,63 +392,110 @@ canvas { width: 100%; height: 240px; display: block; }
         <div class="row">
             <label><input type="checkbox" id="clock-on"> Clock source into the
                 clock input (D8)</label>
-            <input type="range" id="clock-ms" min="20" max="1000" step="1"
-                   aria-label="Clock source period">
-            <span class="num" id="clock-rate"></span>
+            <label>Pattern <select id="clock-pattern">
+                <option value="steady">Steady</option>
+                <option value="swing54">Swing 54%</option>
+                <option value="swing58">Swing 58%</option>
+                <option value="swing62">Swing 62%</option>
+                <option value="swing67">Swing 67% (triplet)</option>
+                <option value="swing75">Swing 75% (dotted)</option>
+                <option value="white">Random: gated white noise</option>
+                <option value="pink">Random: gated pink noise</option>
+            </select></label>
             <button id="clock-pulse">One clock pulse</button>
         </div>
-        <div class="row" style="margin-top: 10px">
-            <button id="reset-pulse">Reset pulse (D2)</button>
-            <span class="dim">Sends the pattern back to its first step, which
-                plays when the next step is due. Ignored while stopped.</span>
+        <div class="row spaced">
+            <label for="clock-ms">Rate</label>
+            <input type="range" id="clock-ms" min="20" max="1000" step="1">
+            <span class="num" id="clock-rate"></span>
         </div>
-        <p class="dim note-text">The clock input is followed only with the sync
-            switch on: a step then begins on its edges, the tempo pot sets how
-            many edges to a step or steps to an edge, and with no edges
-            nothing plays. Each press of the run button stops the pattern or
-            starts it again from the first step. A power cycle leaves the sync
-            switch and the clock source as they are, and the board comes up
-            running.</p>
-        <p class="dim note-text">The step lights on the panel are the chip's
-            own output and are only passed on. The step outlined is another
-            thing: it is counted here from the
-            clock output, starting again at 0 after a start or a reset made
-            here, and after a change of engine. The debug image also names each
-            step in its log, and that is believed over the count. The release
-            image has no log, so there the count is all there is, and a reset
-            that lands within a tick or two of a step can leave
-            it out. A switch is counted from the panel read at which the
-            chip took it, so it does not. Where the outline and the light
-            disagree, the light is right.
-            On the stage engine the log names the stage, and which of its
-            steps is playing is always counted, from the lengths on the panel
-            as they stood when each stage began. On the Klee engine what is
-            counted is how far the register has moved since its last load,
-            and the count goes back to 0 when mode switch 3 is moved. On the
-            Cartesian engine the two counters are counted as the firmware
-            counts them, from the mode switches as each step begins. On the
-            chance engine with shuffle on there is nothing to count, and
-            only the log can say which step was picked, or the step lights.
-            Nothing here follows the firmware's random numbers.</p>
-        <p class="dim note-text">The engine is taken from the mode switches as
-            each step begins, and a change of engine starts the new one's
-            pattern from its beginning. Mode switches 3 to 7 belong to the
-            engine chosen, which reads them on every step.</p>
+        <div class="row spaced">
+            <button id="reset-pulse">Reset pulse (D2)</button>
+            <span class="dim">Back to the first step, at the next step.
+                Ignored while stopped.</span>
+        </div>
+        <details>
+            <summary>What the inputs do</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Clock input (D8)</th>
+                    <td>Followed only with the sync switch on. A step then
+                        begins on its edges, and with no edges nothing
+                        plays.</td></tr>
+                <tr><th>Tempo pot, sync on</th>
+                    <td>Sets how many edges to a step or steps to an edge,
+                        ÷4 to ×4.</td></tr>
+                <tr><th>Run button (D7)</th>
+                    <td>Each press stops the pattern, or starts it again
+                        from the first step.</td></tr>
+                <tr><th>Reset input (D2)</th>
+                    <td>Sends the pattern back to its first step, which
+                        plays when the next step is due. Ignored while
+                        stopped.</td></tr>
+                <tr><th>Power cycle</th>
+                    <td>Leaves the sync switch and the clock source as they
+                        are. The board comes up running.</td></tr>
+            </table></div>
+        </details>
+        <details>
+            <summary>The clock patterns, and what the firmware makes of an
+                uneven clock</summary>
+            <div class="scroll"><table class="key">
+                <thead><tr><th>Pattern</th><th>Edges</th></tr></thead>
+                <tr><th>Steady</th><td>One every period.</td></tr>
+                <tr><th>Swing</th>
+                    <td>In pairs, a long gap then a short one, a pair
+                        lasting two periods. The figure is the long gap's
+                        share: 50% would be steady, 67% is triplet swing and
+                        75% dotted.</td></tr>
+                <tr><th>Gated white noise</th>
+                    <td>Each period is a slot with an even chance of an
+                        edge, whatever came before: gaps of 1, 2, 3 or more
+                        slots with no pattern to them.</td></tr>
+                <tr><th>Gated pink noise</th>
+                    <td>A slot has an edge while a slowly wandering noise is
+                        over its middle: runs of edges with lulls between.</td></tr>
+                <tr><th>Both random ones</th>
+                    <td>An edge every 2 slots on average and never more than
+                        16 apart. The train is the same each time the clock
+                        is started.</td></tr>
+            </table></div>
+            <div class="scroll"><table class="key">
+                <thead><tr><th>On an uneven clock</th><th>The firmware</th></tr></thead>
+                <tr><th>Every edge</th>
+                    <td>Is seen once a millisecond, so its step begins a
+                        tick or two after it.</td></tr>
+                <tr><th>Gate and clock output</th>
+                    <td>Are high for half the gap before the edge, not half
+                        the gap after it, which is not known yet.</td></tr>
+                <tr><th>An edge in under half the last gap</th>
+                    <td>Finds the gate and clock output still high. Its step
+                        waits a tick with both low, then begins.</td></tr>
+                <tr><th>The first edge, or one after 4 s of none</th>
+                    <td>Has no gap to go by, so its step is taken to be
+                        20 ms long: a 10 ms gate and clock pulse.</td></tr>
+                <tr><th>× ratios</th>
+                    <td>The steps between two edges are spaced by the gap
+                        before, so they bunch or stretch after a change.</td></tr>
+            </table></div>
+        </details>
     </section>
 
     <section id="cal-banner" hidden>
         <h2>Calibration mode</h2>
-        <p>The sequence is stopped: no steps and no clock. The gate is held high
-            and the pitch CV sits at one point of the calibration table, to be
-            measured.</p>
-        <ul>
-            <li>Step 0's switches pick the point, 0 to 4: one per octave.</li>
-            <li>The tempo pot trims its voltage, a millivolt at a time.</li>
-            <li>Step 15's lowest switch, off and on again, stores it. The gate
-                drops for a quarter of a second to show it did.</li>
-        </ul>
-        <p>To leave: change any switch on steps 12 to 15, then power cycle. Keep
-            the EEPROM to play from what was stored.</p>
+        <p>The sequence is stopped. The gate is held high and the pitch CV
+            sits at one point of the calibration table, to be measured.</p>
+        <div class="scroll"><table class="key">
+            <tr><th>Step 0's switches</th>
+                <td>Pick the point, 0 to 4: one per octave.</td></tr>
+            <tr><th>Tempo pot</th>
+                <td>Trims its voltage, a millivolt at a time.</td></tr>
+            <tr><th>Step 15's lowest switch</th>
+                <td>Off and on again stores it. The gate drops for a quarter
+                    of a second to show it did.</td></tr>
+            <tr><th>To leave</th>
+                <td>Change any switch on steps 12 to 15, then power cycle.
+                    Keep the EEPROM to play from what was stored.</td></tr>
+        </table></div>
     </section>
 
     <section>
@@ -286,44 +511,102 @@ canvas { width: 100%; height: 240px; display: block; }
     </section>
 
     <section>
-        <h2>Serial log (115200 baud)</h2>
-        <pre id="log"></pre>
+        <details open>
+            <summary class="head">Serial log (115200 baud)</summary>
+            <pre id="log"></pre>
+        </details>
+        <details>
+            <summary>What the lines mean</summary>
+            <div class="scroll"><table class="key">
+                <thead><tr><th>Line</th><th>Sent</th><th>Meaning</th></tr></thead>
+                <tr><th><code>Step n Note = s</code></th>
+                    <td>As a step with a pitch begins</td>
+                    <td>n is the step, 0 to 15 (the stage, 0 to 7, on the
+                        stage engine). s is the pitch in semitones.</td></tr>
+                <tr><th><code>Step n Rest</code></th>
+                    <td>As a rest begins</td>
+                    <td>The step plays nothing.</td></tr>
+                <tr><th><code>Transport = t</code></th>
+                    <td>On a change, ahead of the step's own line</td>
+                    <td>0 stopped, 1 running on the internal clock, 2 on the
+                        external clock.</td></tr>
+                <tr><th><code>Reset = f Cal = c</code></th>
+                    <td>Once, at start-up</td>
+                    <td>f says why the chip started, as a sum: 1 power-on,
+                        2 the reset pin, 4 a brown-out, 8 the watchdog. c is
+                        1 if a stored calibration table was found.</td></tr>
+                <tr><th><code>Crash n Place = p Count = c</code></th>
+                    <td>At start-up, if the crash log holds a record</td>
+                    <td>The newest record, numbered n, of a watchdog reset.
+                        p is where the loop had got to: 1 start-up,
+                        2 applying outputs, 3 reading inputs, 4 the core,
+                        5 waiting for the next tick. c is how many times
+                        running, 1 to 255.</td></tr>
+                <tr><th><code>Cal point p = v</code></th>
+                    <td>When calibration mode stores a point</td>
+                    <td>p is the point, 0 to 4, and v the DAC value stored
+                        for it, 0 to 4095.</td></tr>
+                <tr><th><code>… failed, status code = n</code></th>
+                    <td>When something the firmware asked for failed</td>
+                    <td>The text names it: initialization, a step note
+                        read, an ADC read (the tempo pot), a pitch CV write,
+                        a calibration read or write, a crash log read or
+                        write.</td></tr>
+                <tr><th>Release image</th>
+                    <td>Never</td>
+                    <td>It has no log at all.</td></tr>
+            </table></div>
+        </details>
     </section>
 
     <section id="cal-help">
-        <h2>How to use calibration mode</h2>
-        <p>The mode sets the table the firmware plays pitch from: five points,
-            one per octave, each the DAC value that should give exactly 0, 1, 2,
-            3 and 4 V. On a real board each point is trimmed against a voltmeter
-            on the pitch CV output. Here the DAC is ideal, so the Pitch CV figure
-            above stands in for the meter and nothing needs correcting, but a
-            point can be stored off its mark to see it take effect.</p>
-        <ol>
-            <li><b>Enter.</b> Click "Enter calibration mode". The sequence stops,
-                the gate goes high and stays there, and the pitch CV holds
-                still. With the sound on, that is one steady tone.</li>
-            <li><b>Pick a point.</b> Set step 0's switches to 0, 1, 2, 3 or 4
-                (the switches marked 1, 2 and 4; a higher value counts as 4).
-                Point <i>n</i> should read <i>n</i> volts.</li>
-            <li><b>Trim it.</b> Turn the tempo pot until the Pitch CV reads the
-                voltage wanted. The middle of the pot (a reading of about 512)
-                gives the point's nominal value, and its travel covers 64 mV
-                below that to 63 mV above, a millivolt for every 8 of the
-                reading. Point 0 cannot go below 0 V.</li>
-            <li><b>Store it.</b> Switch step 15's lowest switch (marked 1) off
-                and on again. The gate drops for a quarter of a second, heard as
-                a gap in the tone, and the debug image logs the point and the
-                value stored. It is written to the EEPROM there and then.</li>
-            <li><b>Repeat</b> for any other points. A point that is not stored
-                keeps the value it had.</li>
-            <li><b>Leave.</b> Change any switch on steps 12 to 15 so they no
-                longer read 10, 5, 10, 5, then click "Power cycle" with "Keep
-                the EEPROM" ticked. The debug image's first log line then says
-                Cal = 1, a stored table was found, and notes are played from it,
-                on the straight line between the octaves either side.</li>
-        </ol>
-        <p>To go back to the ideal table, untick "Keep the EEPROM" and power
-            cycle: the EEPROM is erased and the first log line says Cal = 0.</p>
+        <details>
+            <summary class="head">How to use calibration mode</summary>
+            <p>The mode sets the table pitch is played from: five points,
+                one per octave, each the DAC value that should give exactly
+                0, 1, 2, 3 and 4 V. On a real board each is trimmed against
+                a voltmeter. Here the DAC is ideal, so the Pitch CV figure
+                stands in for the meter and nothing needs correcting, but a
+                point can be stored off its mark to see it take effect.</p>
+            <div class="scroll"><table class="key">
+                <thead><tr><th>Step</th><th>Do</th><th>Expect</th></tr></thead>
+                <tr><th>1. Enter</th>
+                    <td>Click "Enter calibration mode".</td>
+                    <td>The sequence stops, the gate stays high and the
+                        pitch CV holds still: with the sound on, one steady
+                        tone.</td></tr>
+                <tr><th>2. Pick a point</th>
+                    <td>Set step 0's switches to 0, 1, 2, 3 or 4 (switches
+                        1, 2 and 4; a higher value counts as 4).</td>
+                    <td>Point n should read n volts.</td></tr>
+                <tr><th>3. Trim it</th>
+                    <td>Turn the tempo pot until the Pitch CV reads the
+                        voltage wanted.</td>
+                    <td>The middle of the pot (about 512) is the point's
+                        nominal value. Its travel covers 64 mV below to
+                        63 mV above, a millivolt for every 8 of the reading.
+                        Point 0 cannot go below 0 V.</td></tr>
+                <tr><th>4. Store it</th>
+                    <td>Switch step 15's lowest switch (marked 1) off and on
+                        again.</td>
+                    <td>The gate drops for a quarter of a second, a gap in
+                        the tone, and the debug image logs the point and the
+                        value. It is written to the EEPROM there and then.</td></tr>
+                <tr><th>5. Repeat</th>
+                    <td>Do the same for any other points.</td>
+                    <td>A point that is not stored keeps the value it had.</td></tr>
+                <tr><th>6. Leave</th>
+                    <td>Change any switch on steps 12 to 15, then click
+                        "Power cycle" with "Keep the EEPROM" ticked.</td>
+                    <td>The debug image's first log line says Cal = 1, and
+                        notes are played from the stored table, on the
+                        straight line between the octaves either side.</td></tr>
+                <tr><th>Back to the ideal table</th>
+                    <td>Untick "Keep the EEPROM" and power cycle.</td>
+                    <td>The EEPROM is erased and the first log line says
+                        Cal = 0.</td></tr>
+            </table></div>
+        </details>
     </section>
 </main>
 
@@ -331,11 +614,27 @@ canvas { width: 100%; height: 240px; display: block; }
 'use strict';
 const STEP_COUNT = 16;
 const NOTE_BITS = 4;
+const STEPS_PER_ROW = 8;
 const STEPS_PER_GROUP = 4;
 const MODE_BITS = 8;
 // The low three mode switches choose the engine, as a number. Every number
-// with no engine of its own plays the plain one
+// with no engine of its own plays the plain one. On the panel they are one
+// rotary switch of eight positions that puts out its position as that number
 const ENGINE_BITS = 3;
+const ENGINE_MASK = (1 << ENGINE_BITS) - 1;
+const ENGINE_POSITIONS = 1 << ENGINE_BITS;
+// The rotary switch as drawn, in the units of its own picture: where its
+// middle is, how big it is, how far out the dots and the names stand, and
+// the angle of position 0 and of each position on from it, clockwise from up
+const KNOB_WIDTH = 230;
+const KNOB_HEIGHT = 112;
+const KNOB_X = 115;
+const KNOB_Y = 70;
+const KNOB_RADIUS = 26;
+const KNOB_DOT_RADIUS = 35;
+const KNOB_LABEL_RADIUS = 46;
+const KNOB_FIRST_DEG = -126;
+const KNOB_STEP_DEG = 36;
 const ENGINE_PLAIN = 0;
 const ENGINE_STAGE = 1;
 const ENGINE_KLEE = 2;
@@ -346,6 +645,17 @@ const ENGINE_NAMES = ['plain', 'stage', 'Klee', 'chance', 'Cartesian', 'Euclidea
 // The class the panel takes for each engine that has terms of its own to
 // read the steps in
 const ENGINE_CLASSES = ['', 'stage', 'klee', '', 'cartesian', 'euclid'];
+// What is said over each of the panel's two rows, for an engine to which
+// the rows mean something
+const ROW_CAPTIONS = {
+    [ENGINE_STAGE]: ['Stages 0 to 7: their notes',
+        'Their controls: length and gate mode'],
+    [ENGINE_CARTESIAN]: ['Grid rows y 0 and y 1', 'Grid rows y 2 and y 3'],
+};
+// The clock source's patterns that are random: the rate is then a slot, with
+// an edge on half the slots
+const RANDOM_CLOCK_PATTERNS = ['white', 'pink'];
+const RANDOM_SLOTS_PER_EDGE = 2;
 // Mode switches 3 to 7 are the chosen engine's own. Klee: 3 load, 4 invert,
 // 5 merge, 6 and 7 the chance as a number; a step's highest switch is its
 // pattern switch and its low three its value
@@ -423,11 +733,63 @@ function post(command) {
 
 // ---- Panel ----
 
+// Where a position of the rotary switch is on its picture, at a distance
+// from the middle
+function knobPoint(position, radius) {
+    const radians = ((KNOB_FIRST_DEG + (position * KNOB_STEP_DEG)) * Math.PI) / 180;
+
+    return [KNOB_X + (radius * Math.sin(radians)), KNOB_Y - (radius * Math.cos(radians))];
+}
+
+// Sets the low three mode switches together, as the rotary switch does
+function setEngine(engine) {
+    post({ mode: (state.mode & ~ENGINE_MASK) | engine });
+}
+
+// Draws the engine's rotary switch: a dot and a name at each position, and
+// the knob with its pointer. A position is chosen by clicking its name, by
+// clicking the knob for the next one round, or with the arrow keys
+function buildKnob() {
+    const knob = el('engine-knob');
+    let marks = '';
+
+    for (let position = 0; position < ENGINE_POSITIONS; position++) {
+        const [dotX, dotY] = knobPoint(position, KNOB_DOT_RADIUS);
+        const [textX, textY] = knobPoint(position, KNOB_LABEL_RADIUS);
+
+        marks += `<g class="detent" data-engine="${position}">`
+            + `<circle cx="${dotX.toFixed(1)}" cy="${dotY.toFixed(1)}" r="3"/>`
+            + `<text x="${textX.toFixed(1)}" y="${textY.toFixed(1)}"`
+            + ` text-anchor="${(textX < KNOB_X) ? 'end' : 'start'}">`
+            + `${ENGINE_NAMES[position] ?? position}</text></g>`;
+    }
+    knob.innerHTML = `<svg viewBox="0 0 ${KNOB_WIDTH} ${KNOB_HEIGHT}" aria-hidden="true">`
+        + `${marks}<circle class="knob-body" cx="${KNOB_X}" cy="${KNOB_Y}"`
+        + ` r="${KNOB_RADIUS}"/><line class="knob-pointer" x1="${KNOB_X}" y1="${KNOB_Y}"`
+        + ` x2="${KNOB_X}" y2="${KNOB_Y - KNOB_RADIUS + 4}"/></svg>`;
+    for (const detent of knob.querySelectorAll('.detent')) {
+        detent.addEventListener('click', () => setEngine(Number(detent.dataset.engine)));
+    }
+    knob.querySelector('.knob-body').addEventListener('click',
+        () => setEngine((engineNumber() + 1) % ENGINE_POSITIONS));
+    knob.addEventListener('keydown', (event) => {
+        const turn = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[event.key];
+
+        if (turn !== undefined) {
+            event.preventDefault();
+            setEngine(Math.max(0, Math.min(ENGINE_POSITIONS - 1, engineNumber() + turn)));
+        }
+    });
+}
+
 function buildPanel() {
     for (let step = 0; step < STEP_COUNT; step++) {
         const column = document.createElement('div');
-        const isGroupStart = (step > 0) && ((step % STEPS_PER_GROUP) === 0);
+        const isGroupStart = (step % STEPS_PER_ROW) === STEPS_PER_GROUP;
 
+        if ((step % STEPS_PER_ROW) === 0) {
+            el('steps').insertAdjacentHTML('beforeend', '<div class="row-caption dim"></div>');
+        }
         column.className = isGroupStart ? 'step group' : 'step';
         column.id = `step-${step}`;
         column.innerHTML = `<span class="dim num">${step}</span><span class="led"></span>`;
@@ -449,21 +811,25 @@ function buildPanel() {
             + '<span class="num dim means"></span><span class="num dim means"></span>');
         el('steps').append(column);
     }
-    for (let bit = MODE_BITS - 1; bit >= 0; bit--) {
+    // Mode switches 7 to 3, each a toggle with its number under it
+    for (let bit = MODE_BITS - 1; bit >= ENGINE_BITS; bit--) {
+        const cell = document.createElement('span');
         const button = document.createElement('button');
 
-        button.className = 'switch';
-        button.textContent = String(bit);
+        cell.className = 'lever-cell dim num';
+        button.className = 'switch lever';
         button.dataset.bit = String(bit);
-        button.title = `Mode switch ${bit}`;
+        button.setAttribute('aria-label', `Mode switch ${bit}`);
         button.addEventListener('click', () => post({ mode: state.mode ^ (1 << bit) }));
-        el((bit < ENGINE_BITS) ? 'modes-engine' : 'modes-spare').append(button);
+        cell.append(button, String(bit));
+        el('modes-spare').append(cell);
     }
+    buildKnob();
 }
 
 // The number the low three mode switches make
 function engineNumber() {
-    return state.mode & ((1 << ENGINE_BITS) - 1);
+    return state.mode & ENGINE_MASK;
 }
 
 // The engine whose terms the panel is read in: the plain one in calibration
@@ -488,8 +854,8 @@ function modePair(shift) {
     return (state.mode >> shift) & TWO_SWITCH_MASK;
 }
 
-function onOrOff(name, bit) {
-    return `${name} ${isModeOn(bit) ? 'on' : 'off'}`;
+function onOrOff(bit) {
+    return isModeOn(bit) ? 'on' : 'off';
 }
 
 function everySteps(steps) {
@@ -508,85 +874,112 @@ function isEuclidBeat(step) {
 }
 
 // What mode switches 7 to 3 mean to an engine and how they stand, highest
-// first: a list of [the switches, what they say]
+// first: a list of fields, each the switches read together, what they are
+// called and what they say just now. A field called NO_USE has no use
 function modeMeanings(engine) {
+    const field = (switches, name, value) => ({ switches, name, value });
+
     switch (engine) {
         case ENGINE_KLEE: {
             const chance = modePair(KLEE_CHANCE_SHIFT);
 
             return [
-                [[7, 6], (chance === 0)
-                    ? 'chance off' : `chance ${chance} in ${KLEE_CHANCE_OF}`],
-                [[5], onOrOff('merge', KLEE_MERGE_BIT)],
-                [[4], onOrOff('invert', KLEE_INVERT_BIT)],
-                [[3], 'load, at the step after it is moved either way'],
+                field([7, 6], 'chance', (chance === 0) ? 'off' : `${chance} in ${KLEE_CHANCE_OF}`),
+                field([5], 'merge', onOrOff(KLEE_MERGE_BIT)),
+                field([4], 'invert', onOrOff(KLEE_INVERT_BIT)),
+                // At the step after it is moved either way
+                field([3], 'load', 'any move'),
             ];
         }
         case ENGINE_CHANCE: {
             const skip = modePair(CHANCE_SKIP_SHIFT);
 
             return [
-                [[7, 6], NO_USE],
-                [[5], onOrOff('shuffle', CHANCE_SHUFFLE_BIT)],
-                [[4, 3], (skip === 0) ? 'skip off' : `skip ${skip} in ${CHANCE_SKIP_OF}`],
+                field([7, 6], NO_USE, ''),
+                field([5], 'shuffle', onOrOff(CHANCE_SHUFFLE_BIT)),
+                field([4, 3], 'skip', (skip === 0) ? 'off' : `${skip} in ${CHANCE_SKIP_OF}`),
             ];
         }
         case ENGINE_CARTESIAN:
             return [
-                [[7], NO_USE],
-                [[6, 5], `y moves ${everySteps(GRID_SIDE - modePair(GRID_Y_SHIFT))}`],
-                [[4, 3], `x moves ${everySteps(modePair(GRID_X_SHIFT) + 1)}`],
+                field([7], NO_USE, ''),
+                field([6, 5], 'y moves', everySteps(GRID_SIDE - modePair(GRID_Y_SHIFT))),
+                field([4, 3], 'x moves', everySteps(modePair(GRID_X_SHIFT) + 1)),
             ];
         case ENGINE_EUCLID:
             return [
-                [[7], NO_USE],
-                [[6, 5, 4, 3], `${euclidBeats()} ${(euclidBeats() === 1) ? 'beat' : 'beats'}`
-                    + ` in a bar of ${EUCLID_BAR_STEPS}`],
+                field([7], NO_USE, ''),
+                field([6, 5, 4, 3], 'beats', `${euclidBeats()} in a bar of ${EUCLID_BAR_STEPS}`),
             ];
         default:
-            return [[[7, 6, 5, 4, 3], `${NO_USE} on this engine`]];
+            return [field([7, 6, 5, 4, 3], NO_USE, 'on this engine')];
     }
 }
 
-// Names a run of mode switches: "5", "7, 6" or "6 to 3"
-function switchesText(switches) {
-    const last = switches[switches.length - 1];
-
-    if (switches.length === 1) {
-        return String(last);
-    }
-    return `${switches[0]}${(switches.length === 2) ? ', ' : ' to '}${last}`;
-}
-
-// Words mode switches 7 to 3 for the engine chosen, beside them and in the
-// tip each one shows
+// Names mode switches 7 to 3 for the engine chosen: a legend over them, a
+// box to a field and as wide as its switches, and the tip each one shows.
+// A switch with no use is dimmed
 function showModeMeanings() {
-    const meanings = modeMeanings(panelEngine());
+    const legend = el('mode-legend');
 
-    el('mode-means').textContent = meanings
-        .map(([switches, text]) => `${switchesText(switches)}: ${text}`).join(' · ');
-    for (const [switches, text] of meanings) {
+    legend.textContent = '';
+    for (const { switches, name, value } of modeMeanings(panelEngine())) {
+        const box = document.createElement('div');
+        const title = document.createElement('b');
+        const isUnused = name === NO_USE;
+
+        box.className = isUnused ? 'field unused' : 'field num';
+        box.style.gridColumn = `span ${switches.length}`;
+        title.textContent = name;
+        box.append(title, value);
+        legend.append(box);
         for (const bit of switches) {
-            el('modes-spare').querySelector(`[data-bit="${bit}"]`).title =
-                `Mode switch ${bit}: ${text}`;
+            const button = el('modes-spare').querySelector(`[data-bit="${bit}"]`);
+
+            button.title = `Mode switch ${bit}: ${name} ${value}`.trim();
+            button.parentElement.classList.toggle('unused', isUnused);
         }
     }
 }
 
-function showModes() {
+// Turns the engine's rotary switch to where the low three mode switches
+// stand, and says so beside it with the code the switch is putting out
+function showKnob() {
     const engine = engineNumber();
     const name = (engine < ENGINE_NAMES.length)
         ? ENGINE_NAMES[engine] : `plain (no engine ${engine} yet)`;
-    const panelClass = ENGINE_CLASSES[panelEngine()];
+    const knob = el('engine-knob');
+    const degrees = KNOB_FIRST_DEG + (engine * KNOB_STEP_DEG);
 
-    for (const button of document.querySelectorAll('.mode-group .switch')) {
-        button.classList.toggle('on', isModeOn(Number(button.dataset.bit)));
+    el('engine').textContent = `${engine}, ${name} `
+        + `(code ${engine.toString(2).padStart(ENGINE_BITS, '0')})`;
+    knob.setAttribute('aria-valuenow', String(engine));
+    knob.setAttribute('aria-valuetext', name);
+    knob.querySelector('.knob-pointer')
+        .setAttribute('transform', `rotate(${degrees} ${KNOB_X} ${KNOB_Y})`);
+    for (const detent of knob.querySelectorAll('.detent')) {
+        detent.classList.toggle('chosen', Number(detent.dataset.engine) === engine);
     }
-    el('engine').textContent = `${engine}, ${name}`;
+}
+
+function showModes() {
+    const panelClass = ENGINE_CLASSES[panelEngine()];
+    const captions = ROW_CAPTIONS[panelEngine()] ?? ['', ''];
+
+    for (const button of el('modes-spare').querySelectorAll('.switch')) {
+        const isOn = isModeOn(Number(button.dataset.bit));
+
+        button.classList.toggle('on', isOn);
+        button.setAttribute('aria-pressed', String(isOn));
+    }
+    showKnob();
     for (const engineClass of ENGINE_CLASSES.filter((each) => each !== '')) {
         el('steps').classList.toggle(engineClass, engineClass === panelClass);
     }
     el('steps').classList.toggle('terms', panelClass !== '');
+    el('steps').querySelectorAll('.row-caption').forEach((caption, row) => {
+        caption.textContent = captions[row];
+    });
     for (const help of document.querySelectorAll('.engine-help')) {
         help.hidden = Number(help.dataset.engine) !== panelEngine();
     }
@@ -650,6 +1043,7 @@ function showPanel() {
     el('run').classList.toggle('down', state.runDown);
     el('clock-on').checked = state.clockOn;
     el('clock-pulse').disabled = state.clockOn; // The jack is already taken
+    el('clock-pattern').value = state.clockPattern;
     if (document.activeElement !== el('clock-ms')) {
         el('clock-ms').value = String(state.clockMs);
         showClockRate(state.clockMs);
@@ -670,11 +1064,22 @@ function tempoMeaning() {
     return `sets ${RATIOS[part][0]}: ${RATIOS[part][1]}`;
 }
 
+// What the clock source's rate comes to with its pattern: a swung clock
+// keeps the rate on average, and a random one has an edge on half its slots
 function showClockRate(periodMs) {
-    const bpm = MS_PER_MINUTE / (periodMs * STEPS_PER_BEAT);
+    const isRandom = RANDOM_CLOCK_PATTERNS.includes(state.clockPattern);
+    const edgeMs = isRandom ? (periodMs * RANDOM_SLOTS_PER_EDGE) : periodMs;
+    const bpm = MS_PER_MINUTE / (edgeMs * STEPS_PER_BEAT);
+    let text = `${periodMs} ms between edges`;
 
-    el('clock-rate').textContent = `${periodMs} ms between edges `
-        + `(${bpm.toFixed(1)} BPM at ×1)`;
+    if (isRandom) {
+        text = `slots of ${periodMs} ms, an edge every ${edgeMs} ms on average`;
+    } else if (state.clockPattern !== 'steady') {
+        text += ' on average';
+    } else {
+        // A steady clock: the rate is the gap
+    }
+    el('clock-rate').textContent = `${text} (${bpm.toFixed(1)} BPM at ×1)`;
 }
 
 // The transport as the server has it: from the log's last `Transport = N`
@@ -1026,6 +1431,8 @@ el('clock-ms').addEventListener('change', () => {
     el('clock-ms').blur(); // So the answer from the server sets it
     post({ clockMs: Number(el('clock-ms').value) });
 });
+el('clock-pattern').addEventListener('change',
+    () => post({ clockPattern: el('clock-pattern').value }));
 el('clock-pulse').addEventListener('click', () => post({ pulse: 'clock' }));
 el('reset-pulse').addEventListener('click', () => post({ pulse: 'reset' }));
 el('power').addEventListener('click', powerCycle);

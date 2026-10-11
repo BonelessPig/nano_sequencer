@@ -22,6 +22,9 @@
  *                  { clockOn: true | false }    The clock source plugged
  *                                               into the clock input jack.
  *                  { clockMs: 20 to 1000 }      Its period.
+ *                  { clockPattern: name }       How even its edges are:
+ *                                               one of the board's
+ *                                               CLOCK_PATTERNS.
  *                  { power: 'debug' | 'release', keepEeprom: true | false },
  *                  which is a power cycle.
  *
@@ -41,7 +44,7 @@
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
+const { createBoard, STEP_COUNT, CLOCK_PATTERNS } = require('../boards/nano_sequencer');
 
 const HOST = '127.0.0.1'; // This PC only
 const DEFAULT_PORT = 8165;
@@ -104,6 +107,7 @@ const panel = {
     sync: false,
     clockOn: false,
     clockMs: START_CLOCK_MS,
+    clockPattern: CLOCK_PATTERNS[0], // Steady
 };
 const clients = new Set();
 let board = null;
@@ -144,7 +148,7 @@ function powerUp(config, eeprom) {
     // clock input carries on; the run button is up
     board.setSyncSwitch(panel.sync);
     if (panel.clockOn) {
-        board.startClockIn(panel.clockMs);
+        board.startClockIn(panel.clockMs, panel.clockPattern);
     }
     panel.config = config;
     // The firmware chooses its mode once, from the panel as it is now. This
@@ -527,18 +531,22 @@ function setClockOn(isOn) {
     if (isOn !== panel.clockOn) {
         panel.clockOn = isOn;
         if (isOn) {
-            board.startClockIn(panel.clockMs);
+            board.startClockIn(panel.clockMs, panel.clockPattern);
         } else {
             board.stopClockIn();
         }
     }
 }
 
-/** Sets the clock source's period. A running clock starts again at it. */
-function setClockMs(periodMs) {
+/**
+ * Sets the clock source's period or its pattern. A running clock starts
+ * again with it, a random pattern from the start of its train.
+ */
+function setClock(periodMs, pattern) {
     panel.clockMs = periodMs;
+    panel.clockPattern = pattern;
     if (panel.clockOn) {
-        board.startClockIn(periodMs);
+        board.startClockIn(periodMs, pattern);
     }
 }
 
@@ -582,7 +590,9 @@ function applyCommand(command) {
         setClockOn(command.clockOn);
     } else if (isWholeNumberUpTo(command.clockMs, MAX_CLOCK_MS)
         && (command.clockMs >= MIN_CLOCK_MS)) {
-        setClockMs(command.clockMs);
+        setClock(command.clockMs, panel.clockPattern);
+    } else if (CLOCK_PATTERNS.includes(command.clockPattern)) {
+        setClock(panel.clockMs, command.clockPattern);
     } else if (CONFIGS.includes(command.power)) {
         const isErased = command.keepEeprom === false;
 

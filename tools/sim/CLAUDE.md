@@ -4,7 +4,7 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 
 ## Layout
 
-- `lib/`: the chip, `pin_recorder.js` for watching an output pin, and `edge_flag.js` for a flag that latches an edge on an input pin. `parts/`: models of external chips and of things plugged in or pressed (`clock_source.js`, `switch.js`). Neither may know anything about the sequencer, so they can be lifted out for another project.
+- `lib/`: the chip, `pin_recorder.js` for watching an output pin, and `edge_flag.js` for a flag that latches an edge on an input pin. `parts/`: models of external chips and of things plugged in or pressed (`clock_source.js`, `switch.js`), with `clock_patterns.js` for the uneven trains a clock source can be given. Neither may know anything about the sequencer, so they can be lifted out for another project.
 - `boards/nano_sequencer.js`: which part is on which pin, plus the panel, the mode switches (`setModeSwitches()`), the step lights (`ledLatches`, `ledsAt()`), pot, the DAC's frames, the gate and clock recorders, the two input jacks, the sync switch and the run button, serial capture, and the EEPROM's contents and the reset flags at power-on (`createBoard(config, { eeprom, resetFlags })`). `boards/cal_record.js` works the calibration record out on its own, so a scenario does not check the firmware against itself, and `boards/crash_record.js` does the same for a crash log record and says where the log is.
 - `scenarios/*.test.js`: what each firmware image must do, using Node's built-in test runner. No other dependencies; avr8js is pinned in `package-lock.json`.
 
@@ -18,6 +18,8 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 - It is paced by wall time, so nothing measured through it counts; a timing question goes in a scenario.
 - No dependencies beyond Node's own modules, and it listens on 127.0.0.1 only.
 - A pin or part changed on the board is changed in the server and the page in the same piece of work.
+- The page draws the panel as one that could be built: the steps in two rows of eight, the engine on one coded rotary switch, mode switches 7 to 3 as toggles under a legend. A control drawn there is a part that exists, wired as the board has it; a part the firmware could not read as drawn goes in the roadmap's panel hardware options instead.
+- What explains the page goes in a table inside a `<details>`, closed until opened, not in a paragraph.
 
 ## Writing parts and scenarios
 
@@ -32,7 +34,7 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 - An output with nothing modelled on it gets a pin recorder on the board, not a listener in the scenario. It records the level at the instant the port register is written.
 - The first step is as long as the rest, after reset and after the run button. (Until phase 6 it was a tick short and had to be asserted on its own.)
 - An input pin whose edge the firmware polls from a flag (PB0, PD2) is driven through `machine.inputCapture1.setPin()` or `machine.externalInt0.setPin()`, never the port's own `setPin()`, or the flag is not set. avr8js has no input capture event and sets an external interrupt's flag only while the interrupt is enabled; `lib/edge_flag.js` fills that in from the datasheet. A scenario built on it shows what the firmware does with the flag, not that a chip sets it.
-- The board speaks in jack levels. Each jack reaches its pin through an inverting stage, so `pulseClockIn()` is a rising edge at the jack and a falling one at the pin. `clockIn.rises` has the cycle of every jack edge, to time a step against.
+- The board speaks in jack levels. Each jack reaches its pin through an inverting stage, so `pulseClockIn()` is a rising edge at the jack and a falling one at the pin. `clockIn.rises` has the cycle of every jack edge, to time a step against. `startClockIn(periodMs, pattern)` takes one of `CLOCK_PATTERNS` for an uneven clock; a random one is the same train on every run, from its seed.
 - A step begins between one and two ticks after its clock edge: taken at the next tick, applied at the one after. Assert that as a range. For a tight tolerance on a period, use a clock whose period is a whole number of milliseconds, so that every edge falls at the same point in its tick.
 - A scenario that needs to know which step played, on an image with no log, reads the voltage the DAC held as each gate rose (`stepsPlayed()` in `transport.test.js`). Use a panel with no rests and distinct notes for it.
 - `pressRunButton()` runs the chip for as long as the button is held, so it returns after the release. A press counts 20 ms after the contact settles; hold it for longer than that plus the bounce.

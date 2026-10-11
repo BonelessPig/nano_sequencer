@@ -21,6 +21,7 @@
 const path = require('node:path');
 const { createAtmega328p } = require('../lib/machine');
 const { attachPinRecorder } = require('../lib/pin_recorder');
+const { CLOCK_PATTERNS, makeClockPattern } = require('../parts/clock_patterns');
 const { attachClockSource } = require('../parts/clock_source');
 const { attachHc165Chain } = require('../parts/hc165');
 const { attachHc595Chain } = require('../parts/hc595');
@@ -179,9 +180,16 @@ function createBoard(config, options = {}) {
         /**
          * Starts a clock on the clock input jack: the first rising edge
          * now, then one every periodMs, each high for half the period.
+         * With a pattern (one of CLOCK_PATTERNS) the edges are uneven and
+         * periodMs is what parts/clock_patterns.js makes of it; the seed
+         * picks which train a random pattern gives.
          */
-        startClockIn(periodMs) {
-            clockIn.start(machine.msToCycles(periodMs), machine.msToCycles(periodMs / 2));
+        startClockIn(periodMs, pattern = 'steady', seed = undefined) {
+            if (pattern === 'steady') {
+                clockIn.start(machine.msToCycles(periodMs), machine.msToCycles(periodMs / 2));
+            } else {
+                clockIn.start(makeClockPattern(pattern, machine.msToCycles(periodMs), seed));
+            }
         },
 
         /** Stops the clock on the clock input jack. */
@@ -377,4 +385,4 @@ function createBoard(config, options = {}) {
     };
 }
 
-module.exports = { createBoard, STEP_COUNT };
+module.exports = { createBoard, STEP_COUNT, CLOCK_PATTERNS };

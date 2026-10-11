@@ -25,17 +25,24 @@ function attachClockSource(cpu, setLevel) {
     /**
      * Starts a pulse train: the first rising edge now, then one every
      * periodCycles, each high for highCycles. Replaces a train in progress.
+     * For an uneven train, give a function in place of periodCycles: it is
+     * asked as each pulse rises and answers { gap, high }, the cycles to
+     * the next rising edge and the cycles this pulse is high.
      */
     source.start = (periodCycles, highCycles) => {
-        const train = { periodCycles, highCycles };
+        const train = (typeof periodCycles === 'function')
+            ? { nextPulse: periodCycles }
+            : { nextPulse: () => ({ gap: periodCycles, high: highCycles }) };
 
         function tick() {
             if (running !== train) {
                 return;
             }
+            const pulse = train.nextPulse();
+
             rise();
-            cpu.addClockEvent(() => setLevel(false), train.highCycles);
-            cpu.addClockEvent(tick, train.periodCycles);
+            cpu.addClockEvent(() => setLevel(false), pulse.high);
+            cpu.addClockEvent(tick, pulse.gap);
         }
 
         running = train;
