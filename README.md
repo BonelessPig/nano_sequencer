@@ -40,6 +40,7 @@ ports/                        # What the app needs from the outside world (heade
 ├── platform_port.h                   # One-time platform bring-up
 ├── step_input_port.h                 # Raw step-note bits
 ├── led_output_port.h                 # The sixteen step lights
+├── watchdog_port.h                   # Telling the watchdog the firmware still runs
 ├── tempo_input_port.h                # Raw tempo control position
 ├── timebase_port.h                   # Elapsed time in 1 ms ticks
 ├── cv_output_port.h                  # The pitch control voltage, in millivolts
@@ -186,8 +187,8 @@ There are two build configurations, chosen with `CONFIG=`. They differ only in w
 
 | | Logging | Output | Flash | Static RAM |
 |---|---|---|---:|---:|
-| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 8132 bytes | 653 bytes |
-| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 7056 bytes | 199 bytes |
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 8160 bytes | 653 bytes |
+| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 7084 bytes | 199 bytes |
 
 `CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`). The tests, the coverage check and the static analysis always cover both loggers.
 

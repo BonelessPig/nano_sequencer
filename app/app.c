@@ -33,6 +33,7 @@
 #include "sync_input_port.h"
 #include "tempo_input_port.h"
 #include "timebase_port.h"
+#include "watchdog_port.h"
 
 // The panel and the tempo control are read once every this many ticks
 // (125 times a second), not on every tick
@@ -364,6 +365,10 @@ void app_run_once(void)
         // A tick boundary. Outputs go first so that they change at the same
         // point in every tick, however long the rest of the pass takes.
         apply_outputs();
+
+        // Kicked only here, so that the watchdog catches a tick that has
+        // stopped coming as well as a loop that has stopped going round
+        watchdog_kick();
         gather_inputs(elapsed_ticks);
         run_core();
     }

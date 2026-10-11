@@ -222,6 +222,11 @@ uint16_t host_log_poll_count(void);
 bool host_gate_level(void);
 
 /**
+ * @brief Number of times watchdog_kick() has been called since host_reset().
+ */
+uint16_t host_watchdog_kick_count(void);
+
+/**
  * @brief What led_output_write() was last given (0 if never called): one bit
  *        a step light.
  */

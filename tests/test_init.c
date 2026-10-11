@@ -24,6 +24,7 @@ static unsigned int  g_spi_call        = NOT_CALLED; // Position of the spi_init
 static unsigned int  g_timebase_call   = NOT_CALLED; // Position of the timebase_init call, from 1
 static unsigned int  g_clock_in_call   = NOT_CALLED; // Position of the clock_input_init call
 static unsigned int  g_reset_in_call   = NOT_CALLED; // Position of the reset_input_init call
+static unsigned int  g_watchdog_call   = NOT_CALLED; // Position of the watchdog_init call
 
 port_status_t logger_init(log_level_t level)
 {
@@ -76,6 +77,14 @@ void reset_input_init(void)
 
 
 
+void watchdog_init(void)
+{
+    g_call_count++;
+    g_watchdog_call = g_call_count;
+}
+
+
+
 /**
  * @brief Sets what the two stubs that can fail return and forgets any earlier calls.
  */
@@ -91,6 +100,7 @@ static void start_stubs(port_status_t serial_status, port_status_t register_stat
     g_timebase_call   = NOT_CALLED;
     g_clock_in_call   = NOT_CALLED;
     g_reset_in_call   = NOT_CALLED;
+    g_watchdog_call   = NOT_CALLED;
 }
 
 
@@ -106,8 +116,9 @@ static void test_success_brings_up_serial_registers_drivers_then_timebase(void)
     TEST_ASSERT_EQUAL(3, g_spi_call);
     TEST_ASSERT_EQUAL(4, g_clock_in_call);
     TEST_ASSERT_EQUAL(5, g_reset_in_call);
-    TEST_ASSERT_EQUAL(6, g_timebase_call);
-    TEST_ASSERT_EQUAL(6, g_call_count);
+    TEST_ASSERT_EQUAL(6, g_watchdog_call); // With interrupts still off
+    TEST_ASSERT_EQUAL(7, g_timebase_call);
+    TEST_ASSERT_EQUAL(7, g_call_count);
 }
 
 
@@ -132,6 +143,7 @@ static void test_serial_failure_is_returned_and_stops_the_bring_up(void)
     TEST_ASSERT_EQUAL(NOT_CALLED, g_spi_call);
     TEST_ASSERT_EQUAL(NOT_CALLED, g_clock_in_call);
     TEST_ASSERT_EQUAL(NOT_CALLED, g_reset_in_call);
+    TEST_ASSERT_EQUAL(NOT_CALLED, g_watchdog_call); // Halted, not reset for ever
     TEST_ASSERT_EQUAL(NOT_CALLED, g_timebase_call); // Interrupts stay off
 }
 
@@ -144,6 +156,7 @@ static void test_register_failure_is_returned(void)
     TEST_ASSERT_EQUAL(ERR_NOT_SUPPORTED, platform_init());
     TEST_ASSERT_EQUAL(2, g_call_count);
     TEST_ASSERT_EQUAL(NOT_CALLED, g_spi_call);
+    TEST_ASSERT_EQUAL(NOT_CALLED, g_watchdog_call);
     TEST_ASSERT_EQUAL(NOT_CALLED, g_timebase_call); // Interrupts stay off
 }
 

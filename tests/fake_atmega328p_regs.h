@@ -6,6 +6,7 @@
 #define ATMEGA328P_EEPROM_REGS_H // And for the EEPROM header
 #define ATMEGA328P_TIMER1_REGS_H // And for the Timer/Counter1 header
 #define ATMEGA328P_EXTINT_REGS_H // And for the external interrupt header
+#define ATMEGA328P_WDT_REGS_H    // And for the watchdog header
 /**
  * @file   fake_atmega328p_regs.h
  * @brief  Stand-in for adapters/target/atmega328p_regs.h,
@@ -83,9 +84,23 @@
 #define ISC01 1 // Interrupt Sense Control 0 bit 1 in EICRA
 #define INTF0 0 // External Interrupt Flag 0 in EIFR
 
+#define WDP2 2 // Watchdog prescaler bit 2 in WDTCSR
+#define WDE  3 // Watchdog System Reset Enable in WDTCSR
+#define WDCE 4 // Watchdog Change Enable in WDTCSR
+
 // The interrupt handler becomes an ordinary function the test can call
 #define TIMER2_COMPA_ISR fake_timer2_compa_isr
 #define TIMER2_COMPA_ISR_ATTR
+
+// ---- Watchdog ----
+#define FAKE_WDTCSR_WRITES_MAX (8U)
+
+static uint8_t  g_fake_wdtcsr       = 0U; // The control register as last written
+static uint8_t  g_fake_wdtcsr_noted = 0U; // Its value when the model last looked
+static uint8_t  g_fake_wdtcsr_writes[FAKE_WDTCSR_WRITES_MAX]; // Each value written, in order
+static uint16_t g_fake_wdtcsr_write_count = 0U;
+static uint16_t g_fake_wdr_count          = 0U; // Reset instructions executed
+static uint16_t g_fake_wdr_count_at_first_wdtcsr_write = 0U;
 
 // ---- CPU and Timer/Counter2 ----
 static uint8_t g_fake_sreg   = 0U;
@@ -308,6 +323,45 @@ static inline uint16_t *fake_eifr(void)
 {
     fake_flags_sync();
     return &g_fake_eifr.shown;
+}
+
+/**
+ * @brief Notes a write to the watchdog control register made since the model
+ *        last looked. The register is seen before the write the code makes
+ *        to it, so each access notes the write before it, and the test calls
+ *        this before checking. Two writes of the same value running would
+ *        be taken as one; the adapter never makes such a pair.
+ */
+static inline void fake_wdt_sync(void)
+{
+    if (g_fake_wdtcsr != g_fake_wdtcsr_noted)
+    {
+        if (g_fake_wdtcsr_write_count < FAKE_WDTCSR_WRITES_MAX)
+        {
+            g_fake_wdtcsr_writes[g_fake_wdtcsr_write_count] = g_fake_wdtcsr;
+        }
+        if (0U == g_fake_wdtcsr_write_count)
+        {
+            g_fake_wdr_count_at_first_wdtcsr_write = g_fake_wdr_count;
+        }
+        g_fake_wdtcsr_write_count++;
+        g_fake_wdtcsr_noted = g_fake_wdtcsr;
+    }
+}
+
+static inline uint8_t *fake_wdtcsr(void)
+{
+    fake_wdt_sync();
+    return &g_fake_wdtcsr;
+}
+
+/**
+ * @brief Stands in for the watchdog reset instruction.
+ */
+static inline void wdt_reset_instruction(void)
+{
+    fake_wdt_sync();
+    g_fake_wdr_count++;
 }
 
 /**
@@ -671,6 +725,16 @@ static inline void fake_regs_reset(void)
     g_fake_tccr1b_at_tifr1_write = 0U;
     g_fake_eicra_at_eifr_write   = 0U;
 
+    g_fake_wdtcsr       = 0U;
+    g_fake_wdtcsr_noted = 0U;
+    for (size_t i = 0U; i < FAKE_WDTCSR_WRITES_MAX; i++)
+    {
+        g_fake_wdtcsr_writes[i] = 0U;
+    }
+    g_fake_wdtcsr_write_count = 0U;
+    g_fake_wdr_count          = 0U;
+    g_fake_wdr_count_at_first_wdtcsr_write = 0U;
+
     g_fake_mcusr  = 0U;
     g_fake_sreg   = 0U;
     g_fake_tccr2a = 0U;
@@ -722,6 +786,7 @@ static inline void fake_regs_reset(void)
 #define EIFR   (*fake_eifr())
 
 #define MCUSR  g_fake_mcusr
+#define WDTCSR (*fake_wdtcsr())
 #define SREG   (*fake_sreg())
 #define TCCR2A g_fake_tccr2a
 #define TCCR2B g_fake_tccr2b

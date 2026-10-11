@@ -78,6 +78,11 @@ function createAtmega328p(hexPath, clockHz) {
         timer1: new avr8js.AVRTimer(cpu, avr8js.timer1Config),
         timer2: new avr8js.AVRTimer(cpu, avr8js.timer2Config),
         spi: new avr8js.AVRSPI(cpu, avr8js.spiConfig, clockHz),
+        // On timing out it restarts the program and sets the watchdog reset
+        // flag; the rest of the chip is left as it was, which a real reset
+        // would not do
+        watchdog: new avr8js.AVRWatchdog(
+            cpu, avr8js.watchdogConfig, new avr8js.AVRClock(cpu, clockHz)),
 
         /** Converts a cycle count to milliseconds of chip time. */
         cyclesToMs(cycles) {
@@ -104,6 +109,16 @@ function createAtmega328p(hexPath, clockHz) {
                 cpu.tick();
             }
         },
+    };
+
+    // The emulator's reset, which only its watchdog ever asks for, restarts
+    // the program and leaves every register as it was. A real reset puts
+    // them back, and one of them matters to the firmware: the USART's
+    // "ready for a byte" flag, without which nothing is ever sent again
+    const restartProgram = cpu.reset.bind(cpu);
+    cpu.reset = () => {
+        restartProgram();
+        machine.usart.reset();
     };
 
     // Drive these two pins through their setPin(), not the port's, so that

@@ -43,6 +43,7 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 - A scenario about the mode switches or an engine goes in `engines.test.js`, inside the loop over the two. An engine's gates are checked against the clock output, which pulses on every step whatever the engine does: say which step each gate should rise on and how long it should be, and read its note from the DAC.
 - The chain is nine chips, so a panel read is 72 clocks and nine transfers. The mode switches are off on a new board, which is the plain engine, so a scenario that does not set them plays sixteen steps.
 - The step lights change only at a panel read, so a light is up to a scan (8 ms) behind its step. Ask what they showed a scan and a half after an edge (`ledsAt()`), and run a scan or two past the last edge asked about. `ledLatches` has an entry per read, changed or not.
+- The firmware never hangs by itself. A watchdog scenario stops the tick from outside by clearing the interrupt enable bit in `SREG`, and goes in `watchdog.test.js`. The emulator's watchdog reset restarts the program and sets the reset flag and nothing else; `lib/machine.js` puts the USART back as well. Do not read anything about the chip's state after a reset from such a scenario.
 - A peripheral the firmware starts using (a timer, SPI, the EEPROM) has to be instantiated in `lib/machine.js` first; avr8js does nothing for registers nobody models.
 - When a pin or part changes in `adapters/target/`, change the board and its scenarios in the same piece of work.
 

@@ -32,6 +32,15 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 - The calibration record is at address 0 (the app's choice, not this file's). Another user of the EEPROM takes other addresses.
 - `reset_cause.c` passes on the low four bits of `MCUSR` as they are, because the port gives the causes in that order, and clears the register. Read it once, at start-up. What it holds on the board depends on the bootloader (`docs/ROADMAP.md` section 8).
 
+## Watchdog
+
+- `watchdog.c` implements `watchdog_port.h` and owns `WDTCSR`; nothing else includes `atmega328p_wdt_regs.h`.
+- Setting the timeout is two writes that must be within four clock cycles of each other. Keep them adjacent and check with `avr-objdump -d` that they are `ldi`, `sts`, `ldi`, `sts` with nothing between. They are not wrapped in an interrupt mask because `watchdog_init()` runs before `timebase_init()`; if it ever runs with interrupts on, mask them as `eeprom.c` does.
+- `watchdog_init()` goes after everything in `platform_init()` that can fail, so a failed bring-up halts and is not reset for ever, and it must stay well within 16 ms of reset: after a watchdog reset the hardware has the watchdog running at that timeout already.
+- It leaves `MCUSR` alone. The reset cause is read, and the flags cleared, by `reset_cause.c` afterwards.
+- `wdr` comes from `__builtin_avr_wdr`, declared in the register header so the call has a prototype, inside a `static inline` function the fake header replaces. cppcheck accepts the declaration.
+- The stock old bootloader does not turn the watchdog off, so on that bootloader a watchdog reset loops until the power is cycled (`docs/ARCHITECTURE.md` open item 15).
+
 ## Edge inputs
 
 - `clock_input.c` (PB0, Timer/Counter1's input capture flag) and `reset_input.c` (PD2, the flag of external interrupt 0) each poll a flag the MCU latches on an edge. Each owns its peripheral's registers, like `eeprom.c`, and has an init function that `platform_init()` calls after `register_init()` and before `timebase_init()`.
@@ -44,7 +53,7 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 
 ## Compiler
 
-- **Compiler builtins need a visible prototype** or cppcheck reports rule 17.3. No builtin is in use now; the removed `delay.c` declared `__builtin_avr_delay_cycles` for that reason, and avr-gcc accepted the redeclaration and still inlined it.
+- **Compiler builtins need a visible prototype** or cppcheck reports rule 17.3. One is in use, `__builtin_avr_wdr` (see Watchdog); the removed `delay.c` declared `__builtin_avr_delay_cycles` for that reason, and avr-gcc accepted the redeclaration and still inlined it.
 - The `io_low` and `signal` attributes are compiler extensions that cppcheck does not flag.
 
 ## Interrupts

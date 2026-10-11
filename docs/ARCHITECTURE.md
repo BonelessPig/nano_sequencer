@@ -2,17 +2,18 @@
 
 How the firmware is structured, what happens from reset to the main loop, how each part works, and what is still open. The standing rules for the codebase are in [CLAUDE.md](../CLAUDE.md) and the `CLAUDE.md` in each source folder; this document describes what is there.
 
-How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite, the 115200 baud setting, the release build, the step advance, the timer tick with its non-blocking loop, the addressing, note mapping and rests, the shift registers on the SPI bus (which also needs three wires moved on the board), the gate and clock outputs, the pitch CV (which needs a DAC wired in), calibration with its storage in the EEPROM, the clock input, reset input, run button and sync switch (none of them wired yet), the mode switches with the five engines they choose beside the plain one (a ninth shift register, not wired yet), and the step lights (two more shift registers and sixteen LEDs, not wired yet) have not. Timing figures marked as measured come from the emulated board; the rest are calculated.
+How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, and the same source is compiled and tested on a PC with `make test`, the MCU adapters against fake registers. The refactored firmware has been flashed and run on the board; the later logger rewrite, the 115200 baud setting, the release build, the step advance, the timer tick with its non-blocking loop, the addressing, note mapping and rests, the shift registers on the SPI bus (which also needs three wires moved on the board), the gate and clock outputs, the pitch CV (which needs a DAC wired in), calibration with its storage in the EEPROM, the clock input, reset input, run button and sync switch (none of them wired yet), the mode switches with the five engines they choose beside the plain one (a ninth shift register, not wired yet), the step lights (two more shift registers and sixteen LEDs, not wired yet), and the watchdog have not. Timing figures marked as measured come from the emulated board; the rest are calculated.
 
 ## At a glance
 
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano), 16 MHz |
-| Flash used | 8132 bytes of 32 KB (debug build); 7056 bytes (release build) |
+| Flash used | 8160 bytes of 32 KB (debug build); 7084 bytes (release build) |
 | RAM used | Debug: 653 bytes static (a 128-byte log queue, 321 bytes of message text and 51 bytes of scale tables copied from flash, 153 bytes of state). Release: 199 bytes (the tables and 147 bytes of state). Plus stack |
 | Storage | 12 of the EEPROM's 1024 bytes: the pitch calibration record |
 | Interrupts | One: Timer/Counter2 compare match A, 1000 times a second. It adds one to a counter and does nothing else. The clock and reset inputs use two interrupt flags, but polled, with their interrupts off |
+| Watchdog | The MCU's own, set to about 250 ms and kicked once a tick. If the loop or the tick stops, the firmware is restarted. It is not started if the bring-up fails |
 | Main loop | Never blocks. One sequencer tick per millisecond; outputs are applied at the tick boundary |
 | Inputs | 16 steps × 4 bits and 8 mode switches from nine 74HC165s on the SPI bus; one pot on ADC channel 6 for tempo. Both are read every 8 ms. A clock input (PB0), a reset input (PD2), a sync switch (PD3) and a run button (PD7), read every millisecond |
 | Tempo | 30 to 285 BPM, a step being a sixteenth note (500 ms down to 52.6 ms per step) |
@@ -22,8 +23,8 @@ How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c
 | Engines | The low three mode switches choose what the panel means, and the other five are the chosen engine's own. Plain: 16 steps, each one's switches its note. Stage: 8 stages, each with a note, a length of 1 to 4 steps and a gate mode. Klee: a pattern of bits going round a 16-stage register, the note being the sum of the values under them, with load, invert, merge and a chance of drifting. Chance: the plain steps, skipped or shuffled at random. Cartesian: the steps as a 4 by 4 grid crossed by two counters. Euclidean: the plain steps sounded on 1 to 16 beats spread evenly over a bar |
 | Outputs | A pitch CV from an MCP4822 DAC on the SPI bus, 1 V to the octave from 0 V (0 to 3.75 V over the 45 semitones the core can ask for), unbuffered, through a calibration table that is the ideal one until a measured one is stored. A gate on PD4, high while a note is held (half a step), and a clock on PD5, one pulse per step; both are bare 0 V to 5 V logic pins. Sixteen step lights on two 74HC595s on the SPI bus: the light of the step playing flashes for the first half of it, and with the Klee engine the lights show its register. A serial log as well in the debug build (115200 baud) |
 | Calibration | A mode entered by a panel pattern at power-on: the switches choose an octave, the tempo pot trims its voltage against a meter, and a switch stores it |
-| Tests | 439 host tests in 37 programs (258 for the core, 54 for the app loop, 124 for the seventeen target adapter sources, 3 for `main.c`) |
-| Coverage | 100% of lines (1214) and branches (550) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
+| Tests | 444 host tests in 38 programs (258 for the core, 55 for the app loop, 128 for the eighteen target adapter sources, 3 for `main.c`) |
+| Coverage | 100% of lines (1224) and branches (550) in `core/`, `app/` and `adapters/target/`, measured on the PC build by `make coverage` |
 
 ## Hardware
 
@@ -111,7 +112,7 @@ flowchart TD
     t_reset -.->|"implements"| p_reset
     t_serial -.->|"implements"| p_log
     t_null -.->|"implements"| p_log
-    h_ports -.->|"implements all fifteen"| ports
+    h_ports -.->|"implements all sixteen"| ports
 ```
 
 Solid arrows are calls; dotted arrows show which file supplies the functions a port header declares. The core sits to one side: it calls nothing and nothing but the app calls it.
@@ -134,6 +135,7 @@ Ports are bound at link time: the firmware links `adapters/target/`, the tests l
 |---|---|---|
 | `platform_port.h` | `platform_init()` | `init.c`: logger, then pin directions and ADC, then the SPI bus, then the two edge inputs, then the timebase |
 | `step_input_port.h` | `step_input_read(p_raw_bits, byte_count)` | `shift_reg_reader.c`: 74HC165 chain, read through the SPI driver `spi.c` |
+| `watchdog_port.h` | `watchdog_kick()` | `watchdog.c`: the MCU's watchdog timer, started by `platform_init()` |
 | `led_output_port.h` | `led_output_write(leds)` | `shift_reg_reader.c` again: two 74HC595s, written as part of the next step input read |
 | `tempo_input_port.h` | `tempo_input_read(p_raw)` | `analog_reader.c`: ADC channel 6 |
 | `timebase_port.h` | `timebase_elapsed_ticks()` | `timebase.c`: Timer/Counter2 interrupting at 1 kHz |
@@ -181,6 +183,7 @@ sequenceDiagram
         A->>P: timebase_elapsed_ticks()
         opt a tick has passed
             A->>P: cv_output_write(), gate_output_write(), clock_output_write()
+            A->>P: watchdog_kick()
             A->>P: nv_write() if calibration mode stored a point
             A->>P: log_transport() if the transport changed
             A->>P: log_step_note() or log_step_rest() if the last tick began a step
@@ -941,6 +944,18 @@ Nothing reports that a write has finished, and nothing reads back what was writt
 
 Two things outside the firmware can wipe the EEPROM: a chip erase by an ISP programmer (unless the EESAVE fuse is set), and loading another program that uses the same bytes. Uploading through the serial bootloader leaves it alone.
 
+### Watchdog — `watchdog.c`
+
+The MCU's watchdog timer counts on its own 128 kHz oscillator and resets the MCU when it reaches its timeout, unless a `wdr` instruction has started the count again first. `watchdog_init()` sets it to reset after 32768 of its cycles, 256 ms, with no interrupt; `watchdog_kick()` is the one instruction.
+
+- **Setting it** is a timed sequence, like starting an EEPROM write: the control register is first written with its change-enable and enable bits, and the real setting has to follow within four clock cycles. The two writes are adjacent in the source and compile to `ldi`, `sts`, `ldi`, `sts`, which is three cycles from one write to the next. Nothing masks interrupts around them, because `platform_init()` calls this before the timebase switches interrupts on; it would have to if that order ever changed.
+- **Kicking it** is done by the app once a tick, and nowhere else. So the watchdog catches a main loop that has stopped going round and also a tick that has stopped coming, with the loop still spinning: either way no tick is run for a quarter of a second.
+- **After a reset it caused**, the hardware has the watchdog running again before any code runs, at its shortest timeout (about 16 ms), and it cannot be turned off until the reset flag is cleared. `watchdog_init()` starts the count afresh and sets the 256 ms well inside that: it is reached a few hundred microseconds after reset. The reset flag itself is left for `reset_cause_read()`, which the app calls afterwards.
+- **A bring-up that fails** never starts it, so the firmware halts as it did before, and does not reset over and over.
+- **The reset instruction** has no register behind it. It comes from the compiler's `__builtin_avr_wdr`, wrapped in a `static inline` function in `atmega328p_wdt_regs.h` that the fake register header replaces with a counter.
+
+**With the stock old bootloader this is not safe to rely on.** That bootloader does not turn the watchdog off, so after a watchdog reset the 16 ms timeout fires again inside it, before the firmware is reached, and the board goes round in resets until the power is cycled. That is no worse than the hang the watchdog was catching, but it is not a recovery either. Optiboot turns the watchdog off first thing (roadmap decision 3).
+
 ### Reset cause — `reset_cause.c`
 
 Implements the `reset_cause` port. The MCU keeps a flag for each kind of reset in `MCUSR` and never clears them itself, so `reset_cause_read()` reads the low four bits and writes the register back to zero, so that the next start sees only its own cause. The bits are, from the lowest: power-on (1), the reset pin (2), brown-out (4), watchdog (8). More than one can be set. By the datasheet, switching the board on should show as a power-on reset and pressing its reset button as the reset pin alone.
@@ -1007,7 +1022,7 @@ sequenceDiagram
 
 ## Host side — `adapters/host/` and `tests/`
 
-`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every log call in order. The gate, the clock output, the pitch CV and the step lights are written on every tick, so they are not in that record: the fake keeps each one's level (or voltage) and counts the rising edges of the first two, and notes how long the record was and what the pitch CV was when the gate last rose. The non-volatile storage is 32 bytes of memory that a test can fill beforehand and read afterwards, and that survive the app being initialized again, as the EEPROM survives a power cycle; a write to it lands at once. The start-up log line is kept out of the event record too, so that the record of a run begins with its first step. The two edge inputs are each a pending edge that a test sets and the next read takes, as the hardware's flag is, and the button and the switch are levels a test sets. `make test` builds and runs thirty-seven programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
+`adapters/host/host_ports.c` implements every port for the PC. Tests script what the input ports return (data and status) and read back a record of every log call in order. The gate, the clock output, the pitch CV and the step lights are written on every tick, so they are not in that record: the fake keeps each one's level (or voltage) and counts the rising edges of the first two, and notes how long the record was and what the pitch CV was when the gate last rose. The non-volatile storage is 32 bytes of memory that a test can fill beforehand and read afterwards, and that survive the app being initialized again, as the EEPROM survives a power cycle; a write to it lands at once. The start-up log line is kept out of the event record too, so that the record of a run begins with its first step. The two edge inputs are each a pending edge that a test sets and the next read takes, as the hardware's flag is, and the button and the switch are levels a test sets. `make test` builds and runs thirty-eight programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
 
 Nineteen link the code they test:
 
@@ -1029,9 +1044,9 @@ Nineteen link the code they test:
 - `test_cal_record`: the record alone. The exact twelve bytes for two tables, with checksums worked out separately (by a CRC-8 that gives the standard check value); every table read back as written; a record made elsewhere accepted; erased and all-zero storage refused; another version refused although its checksum is right; every one of the 96 single-bit errors refused; a write cut off after any number of bytes refused; the caller's table untouched by every refusal; and null-pointer handling.
 - `test_cal`: calibration mode alone. An ordinary panel never enters it, even if the pattern appears later; the pattern on the first tick does, and it stays; each of the four pattern steps has to match and the other twelve are free; an unreadable panel, or none, plays as normal; the point follows step 0, with higher values limited; the trim is one value for every eight counts, to both ends of its range and no lower than 0; the trim at its middle until read and held through a failed read; the nominal octave taken from the input and the result limited; a store on the switch going on, once, of the value given, to the one entry; each point on its own, and only the lowest switch of step 15; nothing stored while the panel cannot be read; the gate low for exactly 250 ticks after a store, counted in elapsed ticks and restarted by a second store; a new init choosing afresh; and null-pointer handling.
 - `test_seq`: the sequencer with the modules above linked in. The first tick begins step 0; step length for five tempos (exactly 15000 / BPM ticks, the first step included); 19 steps a second at the fastest setting; the steps in order with wrap; the pitch or rest of every step and nibble; the note taken from the tick its step begins on; a step beginning on time through a failed read; the tempo floor before any reading; last-valid-tempo reuse; independence of the two valid flags; batched ticks; steps owed after a stall; a rest; the scale and root applied; the addressing controls followed; a one-shot pattern stopping while the clock runs on; reset not moving the clock, held, and restarting a finished one-shot; the gate open for half of each of sixteen steps, to the tick; four other gate lengths; no gate for a rest or an unreadable step; tied notes and the rest that ends them; the gate length read when the step begins; a late step's gate counted from when it was due; the clock output high for the first half of every step, with or without a note, and through a finished one-shot; a reset not cutting a held note; the pitch CV set by each note on the tick its gate opens, through the scale and root; given on every tick and held after the gate closes; 0 until the first note; held through a rest, an unreadable step, a reset and a finished one-shot; the calibration table read when the step begins; and null-pointer handling. For the transport: the mode given on every tick; the run button stopping the pattern at once, with the gate cut, the clock output low and the pitch held; starting again from the first step, a whole step long; the time on the tick of a start not counted; a stopped pattern ignoring reset and the external clock; with the sync switch on, nothing until an edge and then a step on each, whatever the gap, and nothing when they stop; the external gate and clock output half the measured step, and 10 ticks for the first; all seven ratios at their boundaries, and a reading above the range; four steps to an edge 25 ticks apart; steps owed after an early edge beginning one per tick; a divided clock passing over edges; the last valid reading used as the ratio; going to the external clock mid-step finishing the step and waiting; going back carrying on; a reset on the external clock playing the first step at the next edge; a start on the external clock waiting for an edge; an early edge getting a tick with the gate and clock output low before its step, and the edge after it being on time; and a tied gate not being broken by edges that come on time. For the engines: the mode switches' low three bits choosing the stage engine at 1 and the plain one at every other number, whatever the other five switches say; the choice made from the last readable panel; a change of engine starting the new pattern from its beginning, each way; a reset sending the chosen engine back; a note the engine ties held into the next step as one gate, with the clock output still pulsing on every step; and a tie leaving a longer gate length alone. For the step lights: the light of each step lit for the first half of it and dark for the second, a rest included, round the pattern; nothing lit for a step of a finished one-shot or while stopped; and the Klee register shown. Mode 2 playing the Klee engine, its register back after sixteen steps and loaded again by a reset; modes 3, 4 and 5 playing the chance, Cartesian and Euclidean engines; and a reset not starting the random numbers again.
-- `test_app`: the real `app.c` and core linked against the fakes, with time scripted. Checks that a pass with no tick only polls the log; that a step is logged one tick after it begins, once; that steps are logged at the tempo and wrap; that the gate and clock output go high one tick after their step begins and before its log line; that they are written on every tick and not between ticks; that the gate is held for half a step; that a rest has a clock pulse and no gate, and an unreadable step no gate; that re-initializing puts both low; that the pitch CV is written on every tick and not between ticks, is at the note's voltage before the gate goes high, follows the ideal table, holds through a rest and goes back to 0 V on re-initializing; that a failed write of it is logged once per step, after the note, and put right by the next tick; that a rest is logged as a rest; that all sixteen steps play forward in the chromatic scale; that the inputs are read on the first tick and every eighth after, counted in elapsed ticks; that a failed read logs the right error in the right place, once per step; and that init failure is logged, flushed and returned. For calibration: that init reads the reset cause once and reports it with whether a calibration was found, and does neither if the platform failed; that a stored record is loaded and played from; that an invalid one leaves the ideal table without an error, and a failed read leaves it with one; that the storage is polled on every pass; that the entry pattern at start-up gives the point's voltage and a high gate on the second tick, with no step, no clock pulse and no write; that the point and the trim follow the controls at the scan after they change; that a store starts one write of the whole record a tick after the scan that saw it, logs the point, and is not repeated; that the gate is then low for 250 ticks; that a stored point is played after the next init, and the other points of a loaded table are kept; that a write that cannot start is logged and can be done again; and that the pattern set after start-up, or behind a failed first read, is only a pattern. For the transport: that the run button stops the pattern a tick after its press counts and logs it, and starts it again from step 0 with the transport logged ahead of the step; that with the sync switch on the change is logged, no step begins, and each edge at the clock input is one step, taken on the next tick whether or not it is a scan tick; that an edge at the reset input sends the pattern back once; that a new init starts a stopped pattern running; and that calibration mode leaves all four inputs without effect. And that the mode switches reach the core with the panel read: with them set to 1 the log shows a two-step stage twice. And that the step lights are given on every tick and not between ticks, one tick after their step begins, go dark half a step later, and start dark after a new init.
+- `test_app`: the real `app.c` and core linked against the fakes, with time scripted. Checks that a pass with no tick only polls the log; that a step is logged one tick after it begins, once; that steps are logged at the tempo and wrap; that the gate and clock output go high one tick after their step begins and before its log line; that they are written on every tick and not between ticks; that the gate is held for half a step; that a rest has a clock pulse and no gate, and an unreadable step no gate; that re-initializing puts both low; that the pitch CV is written on every tick and not between ticks, is at the note's voltage before the gate goes high, follows the ideal table, holds through a rest and goes back to 0 V on re-initializing; that a failed write of it is logged once per step, after the note, and put right by the next tick; that a rest is logged as a rest; that all sixteen steps play forward in the chromatic scale; that the inputs are read on the first tick and every eighth after, counted in elapsed ticks; that a failed read logs the right error in the right place, once per step; and that init failure is logged, flushed and returned. For calibration: that init reads the reset cause once and reports it with whether a calibration was found, and does neither if the platform failed; that a stored record is loaded and played from; that an invalid one leaves the ideal table without an error, and a failed read leaves it with one; that the storage is polled on every pass; that the entry pattern at start-up gives the point's voltage and a high gate on the second tick, with no step, no clock pulse and no write; that the point and the trim follow the controls at the scan after they change; that a store starts one write of the whole record a tick after the scan that saw it, logs the point, and is not repeated; that the gate is then low for 250 ticks; that a stored point is played after the next init, and the other points of a loaded table are kept; that a write that cannot start is logged and can be done again; and that the pattern set after start-up, or behind a failed first read, is only a pattern. For the transport: that the run button stops the pattern a tick after its press counts and logs it, and starts it again from step 0 with the transport logged ahead of the step; that with the sync switch on the change is logged, no step begins, and each edge at the clock input is one step, taken on the next tick whether or not it is a scan tick; that an edge at the reset input sends the pattern back once; that a new init starts a stopped pattern running; and that calibration mode leaves all four inputs without effect. And that the mode switches reach the core with the panel read: with them set to 1 the log shows a two-step stage twice. That the watchdog is kicked once on every tick, however late, and never by a pass with no tick or by init. And that the step lights are given on every tick and not between ticks, one tick after their step begins, go dark half a step later, and start dark after a new init.
 
-The other eighteen `#include` the one source file they test, with `tests/fake_atmega328p_regs.h` standing in for the register map (it claims the include guards of all seven real register headers) and any function that file calls but does not define supplied as a stub by the test:
+The other nineteen `#include` the one source file they test, with `tests/fake_atmega328p_regs.h` standing in for the register map (it claims the include guards of all seven real register headers) and any function that file calls but does not define supplied as a stub by the test:
 
 - `test_eeprom`: bytes read from the right addresses, to both ends of the EEPROM; erased bytes reading as ones; bad parameters refused without touching the hardware; a write doing nothing until polled, then one byte per poll, from its own copy of the data; each byte armed before it is started, with interrupts off for both and the status register given back as it was found; a poll returning at once while the byte before is still being written; a byte already there not written again; a second write refused until the first has gone; a read refused while bytes are waiting and while the hardware is still writing the last; the largest write, to the last byte of the EEPROM; and a poll with nothing to do not looking at the hardware. The fake EEPROM stores a byte only if the write was armed first and then shows it as in progress for a set number of polls.
 - `test_reset_cause`: each of the sixteen combinations of flags reported in its own bits, the flags cleared by the read, other bits of the register left out, and nothing else touched.
@@ -1045,7 +1060,8 @@ The other eighteen `#include` the one source file they test, with `tests/fake_at
 - `test_analog_reader`: channel and reference selection, the result, a slow conversion, the timeout at exactly the poll budget, and parameter checks. The fake ADC clears its start bit after a set number of polls.
 - `test_spi`: the control register values (master, mode 0, 1 MHz) with stale bits cleared, the pin directions and levels (SS, MOSI and SCK outputs, MISO left an input), SS high before it is an output and an output before master mode, bytes sent and received, the complete flag cleared, a slow transfer, the timeout at exactly the poll budget and with the SPI never enabled, and the null check. The fake SPI completes a transfer after a set number of polls, and only if it is enabled as master.
 - `test_shift_reg_reader`: every bit of the nine-chip chain lands in the right place, two bytes for the step lights sent first with the line idle (the high byte, then the low, and the latest given), then one load pulse and one transfer per byte of zeros, no load pulse if the lights could not be sent, the load line left idle, other port B pins and all of port D untouched, a failed transfer at each position returned with the caller's buffer left alone, and parameter checks. The SPI driver is a stub that clocks the fake's model of the 74HC165 chain, so a read only returns the right bytes if the load pulse comes first and the line is high while it reads.
-- `test_init`: logger bring-up, then registers, then the SPI bus, then the clock and reset inputs, then the timebase; at DEBUG level; each failure returned, and the timebase (and so interrupts) not started after one.
+- `test_watchdog`: exactly two writes to the control register, the change-enable value and then the 256 ms reset setting; the count started afresh before the first; the reset flags, the interrupt enable and the ports left alone; and a kick being one reset instruction and no write. The fake keeps every value written to the register, in order, and counts the instruction.
+- `test_init`: logger bring-up, then registers, then the SPI bus, then the clock and reset inputs, then the watchdog, then the timebase; the watchdog not started after a failure; at DEBUG level; each failure returned, and the timebase (and so interrupts) not started after one.
 - `test_timebase`: the Timer/Counter2 register values, that interrupts are enabled only after the timer is fully set up and without disturbing the other status bits, one tick per interrupt, ticks reported once, a late caller losing none up to 255, and the counter wrap. The fake header turns the interrupt handler into an ordinary function, which the test calls to make a tick happen.
 - `test_main`: `main()` (renamed while included) returns the status when init fails and otherwise loops calling `app_run_once`. The stub leaves the endless loop with `longjmp`.
 
@@ -1071,7 +1087,7 @@ flowchart LR
     t_address["test_address<br/>23 tests"] --> address["core/address.c"]
     t_note["test_note_map<br/>12 tests"] --> note["core/note_map.c"]
     t_panel["test_panel<br/>6 tests"] --> panel["core/panel.c"]
-    t_app["test_app<br/>54 tests"] --> app["app/app.c"]
+    t_app["test_app<br/>55 tests"] --> app["app/app.c"]
     t_app --> core["all of core/"]
     t_app --> hostp["adapters/host/host_ports.c"]
     t_main["test_main<br/>3 tests"] -.-> mainc["app/main.c"]
@@ -1092,14 +1108,15 @@ flowchart LR
     t_shift["test_shift_reg_reader<br/>10 tests"] -.-> shift["shift_reg_reader.c"]
     t_init["test_init<br/>4 tests"] -.-> init["init.c"]
     t_time["test_timebase<br/>9 tests"] -.-> time["timebase.c"]
+    t_wdt["test_watchdog<br/>4 tests"] -.-> wdt["watchdog.c"]
 ```
 
 ```mermaid
 pie showData
-    title Host tests by area (439)
+    title Host tests by area (444)
     "Core" : 258
-    "Target adapters" : 124
-    "App loop" : 54
+    "Target adapters" : 128
+    "App loop" : 55
     "main.c" : 3
 ```
 
@@ -1115,21 +1132,23 @@ What this does not show: the fakes are plain variables, so nothing here checks a
 
 | Folder | Holds | Knows about the sequencer |
 |---|---|---|
-| `lib/` | `machine.js`: loads the HEX file and builds the chip (CPU, ports B to D, ADC, USART0, Timer/Counter1 and 2, SPI, EEPROM, and the two edge flags). `pin_recorder.js`: every change of level on one pin, with its cycle, as edges and as pulses. `edge_flag.js`: a flag that latches an edge on an input pin whether or not its interrupt is on, and is cleared by writing a one | No |
+| `lib/` | `machine.js`: loads the HEX file and builds the chip (CPU, ports B to D, ADC, USART0, Timer/Counter1 and 2, SPI, EEPROM, the watchdog, and the two edge flags). `pin_recorder.js`: every change of level on one pin, with its cycle, as edges and as pulses. `edge_flag.js`: a flag that latches an edge on an input pin whether or not its interrupt is on, and is cleared by writing a one | No |
 | `parts/` | `hc165.js`: a 74HC165 chain, its load line a wire and its clock and data taken a byte at a time from the SPI. `mcp4822.js`: the DAC, its chip select a wire and its frames taken from the SPI the same way. `hc595.js`: a 74HC595 chain, taking in every byte sent and showing what it holds when its latch clock rises. `clock_source.js`: something that sends pulses, one or a train. `switch.js`: a switch or button, with scripted bounce | No |
 | `boards/` | `nano_sequencer.js`: which part is on which pin, the panel switches, the mode switches, the step lights as each latch showed them, the tempo pot, the frames the DAC took, recorders on the gate and clock pins, a pulse source on each of the two input jacks (through its inverting stage), the sync switch and the run button, serial capture, what the EEPROM holds at power-on and afterwards, the reset flags at power-on. `cal_record.js`: the calibration record worked out independently of the firmware | Yes |
-| `scenarios/` | `debug.test.js`, `release.test.js`: what each image must do. `calibration.test.js`: calibration and its storage, run on both. `transport.test.js`: the clock and reset inputs, the run button and the sync switch, run on both. `engines.test.js`: the mode switches and the engines they choose, run on both | Yes |
+| `scenarios/` | `debug.test.js`, `release.test.js`: what each image must do. `calibration.test.js`: calibration and its storage, run on both. `transport.test.js`: the clock and reset inputs, the run button and the sync switch, run on both. `engines.test.js`: the mode switches and the engines they choose, run on both. `watchdog.test.js`: the watchdog, run on both | Yes |
 | `live/` | `server.js`, `page.html`: the board run at real speed and shown in a browser (`make live`, below) | Yes |
 
 The first two folders are kept free of anything specific to this project so they can be lifted out for another one.
 
-A hundred scenarios run: ten for the debug image, fourteen for the release image, twenty-one for calibration (nine run on each image, and three on the debug image's log), twenty-seven for the transport (twelve run on each image, and three on the debug image's log) and twenty-eight for the engines and the step lights (thirteen run on each image, and two on the debug image's log). For the debug image: every log line matches the switches set on the emulated panel across two passes of the pattern, as a pitch one below the note value or as a rest where all four switches are off; the USART is set to 115200 baud in double-speed mode; the panel is read every 8 ms with 72 clock pulses (the chain also sees the 16 that carry the step lights and the 16 of each DAC frame); a switch changed mid-pattern is heard the next time its step plays; a step lasts 100 ms at 150 BPM, with no drift over 16 steps; a step lasts 500 ms with the pot at zero; every step with a note has a gate that rose before its log line began, in the same tick, and the rest has none; the voltage the DAC holds as each gate rises is the pitch logged for that note, at 1 V to the octave; the gate and clock output keep time to within 0.02 ms while the log is being sent; and the first step is logged within 3 ms of reset. Every step is timed alike, the first included. For the release image: the USART is never enabled, nothing is sent and PD0 and PD1 are left as inputs; PD4 and PD5 are the only outputs on port D; the clock output pulses once per step at 150 BPM, 100 ms apart and 50 ms high to within 0.02 ms, with no drift over 16 steps; the gate rises with the clock output of every step that has a note, just ahead of it, stays high 50 ms, and is absent for the rest; the first gate opens on the second tick; Timer/Counter2 holds the 1 kHz settings and interrupts are enabled; the SPI runs as master in mode 0, MSB first, at 1 MHz, with SS and the load line idle high and MOSI an output; the DAC is sent one whole frame every tick, for channel A at a gain of 2 with the output on, and none it would ignore; the pitch CV is 0 V until the first note; the DAC has taken each note's voltage before that note's gate rises, in the same tick; the pitch changes only when a note begins and holds through the rest; a read is two bytes for the step lights and then nine transfers of zeros; the panel is read every 8 ms, to within 0.01 ms, with 72 clock pulses of its own (the chain also sees the 16 of each DAC frame); and the first read is on the first tick.
+A hundred and five scenarios run: ten for the debug image, fourteen for the release image, twenty-one for calibration (nine run on each image, and three on the debug image's log), twenty-seven for the transport (twelve run on each image, and three on the debug image's log) twenty-eight for the engines and the step lights (thirteen run on each image, and two on the debug image's log) and five for the watchdog (two run on each image, and one on the debug image's log). For the debug image: every log line matches the switches set on the emulated panel across two passes of the pattern, as a pitch one below the note value or as a rest where all four switches are off; the USART is set to 115200 baud in double-speed mode; the panel is read every 8 ms with 72 clock pulses (the chain also sees the 16 that carry the step lights and the 16 of each DAC frame); a switch changed mid-pattern is heard the next time its step plays; a step lasts 100 ms at 150 BPM, with no drift over 16 steps; a step lasts 500 ms with the pot at zero; every step with a note has a gate that rose before its log line began, in the same tick, and the rest has none; the voltage the DAC holds as each gate rises is the pitch logged for that note, at 1 V to the octave; the gate and clock output keep time to within 0.02 ms while the log is being sent; and the first step is logged within 3 ms of reset. Every step is timed alike, the first included. For the release image: the USART is never enabled, nothing is sent and PD0 and PD1 are left as inputs; PD4 and PD5 are the only outputs on port D; the clock output pulses once per step at 150 BPM, 100 ms apart and 50 ms high to within 0.02 ms, with no drift over 16 steps; the gate rises with the clock output of every step that has a note, just ahead of it, stays high 50 ms, and is absent for the rest; the first gate opens on the second tick; Timer/Counter2 holds the 1 kHz settings and interrupts are enabled; the SPI runs as master in mode 0, MSB first, at 1 MHz, with SS and the load line idle high and MOSI an output; the DAC is sent one whole frame every tick, for channel A at a gain of 2 with the output on, and none it would ignore; the pitch CV is 0 V until the first note; the DAC has taken each note's voltage before that note's gate rises, in the same tick; the pitch changes only when a note begins and holds through the rest; a read is two bytes for the step lights and then nine transfers of zeros; the panel is read every 8 ms, to within 0.01 ms, with 72 clock pulses of its own (the chain also sees the 16 of each DAC frame); and the first read is on the first tick.
 
 For calibration, on both images: an erased EEPROM is left erased by playing, and the ideal table is played; a record put in the EEPROM beforehand is played from, each note's voltage being on the line between the stored octaves, and is not rewritten; a record with one bit wrong, or of another version, leaves the ideal table; the entry pattern at power-on holds the chosen point's voltage with the gate high from the second tick, with no clock pulse and no step, and the pot and the first step's switches move it; the store switch writes exactly the twelve bytes of the record (worked out separately, in JavaScript) and nothing beyond them, drops the gate once for 250 ms to within 0.02 ms, and leaves the DAC written once a tick throughout; three points stored one after another on one board are played by a second board powered up with the same EEPROM contents; storing over a loaded record keeps its other points; and the entry pattern set while playing stores nothing. On the debug image: the start-up line gives the reset flags the scenario set and whether a record was found, ahead of the first step's line; and each store is logged with its point and value.
 
 For the transport, on both images: the four pins are inputs with their pull-ups on, Timer/Counter1 is set to capture falling edges with no interrupt and external interrupt 0 to flag them with none; with the sync switch off a clock at the input changes nothing; with it on at power-on nothing plays until the clock comes, each step then begins between one and two ticks after its edge, 80 ms apart on an 80 ms clock to within 0.02 ms, with a gate and clock pulse of half that (10 ms on the first), and the pattern stops when the clock does; a pulse with no width at all is caught, seven times out of seven; a clock whose gaps go 200, 200, 60, 60, 200, 40, 40 ms gets a clock output pulse and a gate for every edge, the steps after the two sudden speed-ups being one tick later than the rest; the pot at the bottom gives a step to every fourth edge and at the top four steps to an edge, 25 ms apart on a 100 ms clock; a reset pulse plays step 0 where the next step would have been, with the clock not moved, and on the external clock at the next edge; a press of the run button, with 5 ms of bounce, cuts the note off 20 to 28 ms later, nothing rises while stopped, and the next press plays step 0 at once and step 1 a whole step later; a press held for 15 ms is no press; and the sync switch turned on mid-pattern winds up the step and waits for an edge, which plays the next step and not the first, and turned off carries on at the tempo. Which step played is read from the voltage the DAC held as each gate rose. On the debug image: each change is logged as `Transport = 0`, `1` or `2`; a start is logged ahead of its first step; and with the switch on at power-on the change is logged and no step is.
 
 For the engines, on both images, at 150 BPM: with the mode switches at 1 and a panel of eight stages (a hold of three steps, a repeat of two, a single of two, a rest, and four of a step each), the gates of one cycle rise on steps 0, 3, 4, 5, 8, 9, 10 and 11, each with the clock pulse of its step and at the voltage of its stage's note; the held one is 250 ms long and the others 50, to within 0.02 ms; the pattern comes round after twelve steps; and the clock output pulses on every step, held or silent. With the switches at 0, 6, 7 or with only the upper five on, the same panel plays as sixteen plain steps. A change of the switch mid-pattern begins the stage engine's first stage where the next step would have been. On the debug image: a stage is logged once for each of its steps, a silent one as a rest. For the Klee engine: two loaded bits over a few values give gates on exactly the steps where their sum is not 0, at the voltage of the sum, and the pattern is back after sixteen steps; moving the load switch makes the next step the pattern's first; merge runs three consecutive notes into one gate of three steps while the pitch still moves with each; and with a chance of one in eight a single loaded bit has become two by the second step. The chance engine shuffling plays steps 7, 6, 0 and 14 first, and skipping three in four lets steps 3, 4 and 7 through of the first ten: the same picks the host tests work out from the generator's bytes, since the firmware starts it from the same seed at every power-on. The Cartesian engine with y moving every step plays the diagonal, and the Euclidean engine with five beats sounds steps 0, 4, 7, 10 and 13 of each bar. For the step lights: within a scan and a half of each step's clock pulse rising its light alone is lit, and within the same of the pulse falling none is, for eighteen steps; the lights are latched once per panel read and at no other time, and never show anything but one light or none, although every DAC frame passes through their chips; and with the Klee engine they show the register, moving a stage a step.
+
+For the watchdog, on both images: its control register holds the 256 ms reset setting, and over ten times that long the pattern plays without a break. The firmware never stops by itself, so the other scenario stops it from outside: it clears the interrupt enable bit, which stops the tick. Nothing more begins for 256 ms, to within a few, and then the pattern starts again from its first step and keeps time. On the debug image the start-up line after that reads `Reset = 8`. The emulator's watchdog only restarts the program and sets the reset flag; `lib/machine.js` adds the one other thing the firmware needs put back, the USART's ready flag. Every other register is left as it was, so this shows the firmware arming, kicking and coming back, and nothing about the state of a real chip after a watchdog reset, the 16 ms it is left running at, or the bootloader.
 
 The release image has no log, so until the gate there was nothing outside the chip to show when a step began in that build. Now its step timing is measured directly, on the same pins as the debug build's, and the two agree.
 
@@ -1167,7 +1186,7 @@ flowchart TD
 
 | | Debug | Release |
 |---|---:|---:|
-| Flash | 8132 bytes | 7056 bytes |
+| Flash | 8160 bytes | 7084 bytes |
 | Static RAM | 653 bytes | 199 bytes |
 | Step timing | From the timer tick | The same |
 
@@ -1179,19 +1198,20 @@ Sizes of the linked functions and data, from `avr-nm --size-sort` on each `outpu
 
 ```mermaid
 pie showData
-    title Debug build flash, 8132 bytes
+    title Debug build flash, 8160 bytes
     "Core code" : 4724
     "Core scale tables" : 51
     "Serial logger code" : 778
     "Serial logger message text" : 321
-    "App loop and main" : 954
+    "App loop and main" : 958
     "EEPROM adapter" : 308
     "Step input, step lights and tempo input adapters" : 294
     "SPI driver" : 70
     "Vector table and startup" : 132
     "libgcc helpers" : 102
     "Timebase" : 90
-    "Init adapters" : 100
+    "Init adapters" : 104
+    "Watchdog" : 20
     "Transport inputs" : 90
     "Pitch CV output" : 82
     "Gate and clock outputs" : 24
@@ -1202,23 +1222,26 @@ pie showData
 |---|---:|---:|
 | Core (code and scale tables) | 4775 | 4776 |
 | Logger (code and message text) | 1099 | 22 |
-| App loop and `main` | 954 | 954 |
+| App loop and `main` | 958 | 958 |
 | EEPROM adapter | 308 | 308 |
 | Step input, step lights and tempo input adapters | 294 | 294 |
 | Vector table and startup code | 132 | 132 |
 | SPI driver | 70 | 70 |
 | libgcc helpers | 102 | 102 |
 | Timebase (setup, interrupt handler, tick count) | 90 | 90 |
-| Init adapters | 100 | 100 |
+| Init adapters | 104 | 104 |
+| Watchdog | 20 | 20 |
 | Transport inputs (clock, reset, run, sync) | 90 | 90 |
 | Pitch CV output | 82 | 82 |
 | Gate and clock outputs | 24 | 24 |
 | Reset cause | 12 | 12 |
-| **Total** | **8132** | **7056** |
+| **Total** | **8160** | **7084** |
 
 Within the core: the sequencer 1146 bytes, calibration mode 496, the clock 484, the stage engine 364, the Klee engine 358, the chance engine 260, the Euclidean engine 206, the Cartesian engine 194, the random number generator 76, the transport 192, the calibration record 184, addressing 178, pitch calibration 152, the plain engine 126, note mapping 106 plus its 51 bytes of tables (52 in the release build, with a byte of padding), the debounce 70, the gate 68 and the panel 64.
 
-The core is the largest part of either image, and the serial logger is about a fifth of the debug one. Both builds carry the same libgcc helpers: the 16-bit divide, which the logger uses to print decimal numbers and pitch calibration uses to interpolate, the 8-bit divide (note mapping divides by the length of the scale) and the routine that copies initialised data into RAM at startup. The debug build uses 26.5 % and the release build 23.0 % of the 30720 bytes available below the old bootloader.
+The core is the largest part of either image, and the serial logger is about a fifth of the debug one. Both builds carry the same libgcc helpers: the 16-bit divide, which the logger uses to print decimal numbers and pitch calibration uses to interpolate, the 8-bit divide (note mapping divides by the length of the scale) and the routine that copies initialised data into RAM at startup. The debug build uses 26.6 % and the release build 23.1 % of the 30720 bytes available below the old bootloader.
+
+The watchdog cost 28 bytes in each build: 20 for the adapter and 4 each for the two calls to it.
 
 The step lights of phase 8 cost 168 bytes in each build: 82 in the sequencer, 66 in the step input adapter (sending two bytes first, and the case where they cannot be sent) and 20 in the app.
 
@@ -1274,6 +1297,8 @@ Earlier findings from this analysis that have since been fixed are in the git hi
 PC0 and PC1 are given a direction in `register_init.c` but never read or written. PD0, the USART receive pin, used to be set as an output there as well; that line was removed, because the release build never enables the receiver and would have driven the pin against the board's USB serial chip. PD0 and PD1 are now left as they are at reset (inputs) unless the serial logger takes them over.
 
 ### 2. No crash log
+
+The watchdog is now in (see "Watchdog"), so a hang becomes a reset, and the reset cause says so in the debug log. What is still missing is the record:
 
 Nothing records a reset or an error across power cycles, and the release build has no logging at all. A persistent error log in EEPROM is wanted and there is ample space, but it waits until there is a watchdog and an output stage, so that it can record real resets. Two of its parts are now in place: the EEPROM adapter, and the reset cause, which is read at start-up and logged by the debug build but not kept.
 
@@ -1365,6 +1390,16 @@ The two 74HC595s and the LEDs are not wired, and one thing about them is an assu
 - **Brightness and current.** The lights are on for half of each step at most. Keep each LED to a few milliamps: a 74HC595 is not an LED driver.
 
 Being late by up to a scan (8 ms) is how it is built; if a light ever needs to be on time, latch it from a pin of its own.
+
+### 15. The watchdog has not run on the board, and the bootloader matters
+
+Everything about the watchdog comes from the host tests and an emulator whose watchdog reset is only partly like a real one. Before relying on it:
+
+- **Do not expect recovery with the stock old bootloader.** It leaves the watchdog running, so after a watchdog reset the board resets again every 16 ms inside the bootloader until the power is cycled. Burn Optiboot first (roadmap decision 3), which also changes the upload speed in the Makefile.
+- **Uploading still works** with the watchdog running in the firmware: the reset the upload starts with is an external reset, which turns the watchdog off.
+- **To see it work** there is no way from the panel to make the firmware hang. A test build that stops kicking when, say, the run button is held would do it; with Optiboot the debug log should then show `Reset = 8` a quarter of a second later and the pattern start again.
+- **The reset cause** may read 0 after any reset if the bootloader clears the flags first (roadmap section 8).
+- **The oscillator** behind the 256 ms is only roughly 128 kHz, and slower at low voltage; the margin over one tick is large either way.
 
 Closed by the timebase work: the tempo range now has a floor (30 to 285 BPM), and the debug and release builds keep the same time, because the step period comes from the timer and not from a delay plus however long the rest of the loop took.
 

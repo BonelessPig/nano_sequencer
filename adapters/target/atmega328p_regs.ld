@@ -51,6 +51,7 @@ EEARH = 0x42;
 
 /* ---- CPU ---- */
 MCUSR = 0x54;
+WDTCSR = 0x60;
 SREG  = 0x5F;
 
 /* ---- External interrupts ---- */

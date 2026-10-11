@@ -24,6 +24,7 @@
 #include "sync_input_port.h"
 #include "tempo_input_port.h"
 #include "timebase_port.h"
+#include "watchdog_port.h"
 
 #define STEP_BYTE_COUNT_MIN (1U)
 
@@ -40,6 +41,7 @@ static port_status_t g_tempo_status = STATUS_OK;
 static uint16_t      g_tempo_read_count = 0U;
 
 static uint8_t       g_elapsed_ticks = 0U;
+static uint16_t      g_watchdog_kick_count = 0U;
 static uint16_t      g_log_poll_count = 0U;
 
 static bool          g_b_gate_high = false;
@@ -118,6 +120,7 @@ void host_reset(void)
     g_tempo_status         = STATUS_OK;
     g_tempo_read_count     = 0U;
     g_elapsed_ticks        = 0U;
+    g_watchdog_kick_count  = 0U;
     g_log_poll_count       = 0U;
     g_event_count          = 0U;
 
@@ -544,6 +547,20 @@ port_status_t cv_output_write(uint16_t millivolts)
         // Scripted failure: the voltage stays as it was
     }
     return status;
+}
+
+
+
+void watchdog_kick(void)
+{
+    g_watchdog_kick_count++;
+}
+
+
+
+uint16_t host_watchdog_kick_count(void)
+{
+    return g_watchdog_kick_count;
 }
 
 

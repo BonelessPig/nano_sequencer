@@ -348,6 +348,30 @@ static void test_step_lights_are_given_on_every_tick_and_follow_the_step(void)
 
 
 
+static void test_watchdog_is_kicked_on_every_tick_and_only_then(void)
+{
+    start_app();
+    TEST_ASSERT_EQUAL(0, host_watchdog_kick_count()); // Not by init
+
+    // A loop going round with no tick must not keep the watchdog quiet
+    host_set_elapsed_ticks(0U);
+    for (unsigned int pass = 0U; pass < 50U; pass++)
+    {
+        app_run_once();
+    }
+    TEST_ASSERT_EQUAL(0, host_watchdog_kick_count());
+
+    run_ticks(3U);
+    TEST_ASSERT_EQUAL(3, host_watchdog_kick_count());
+
+    // Once for a late pass, however many ticks it brings
+    host_set_elapsed_ticks(40U);
+    app_run_once();
+    TEST_ASSERT_EQUAL(4, host_watchdog_kick_count());
+}
+
+
+
 static void test_elapsed_ticks_reach_the_core(void)
 {
     // Ten ticks at a time, a 100-tick step begins on every tenth pass. The
@@ -1262,6 +1286,7 @@ int main(void)
     RUN_TEST(test_tick_reads_the_whole_chain);
     RUN_TEST(test_mode_switches_reach_the_core);
     RUN_TEST(test_step_lights_are_given_on_every_tick_and_follow_the_step);
+    RUN_TEST(test_watchdog_is_kicked_on_every_tick_and_only_then);
     RUN_TEST(test_elapsed_ticks_reach_the_core);
     RUN_TEST(test_gate_opens_one_tick_after_its_step_begins_and_before_the_log);
     RUN_TEST(test_pitch_cv_is_in_place_before_the_gate_opens);
