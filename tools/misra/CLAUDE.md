@@ -15,9 +15,9 @@ MISRA C is a secondary, automated check. BARR-C plus the rules in `README.md` is
 ## Handling findings
 
 - **Mandatory**: always fix, no deviations.
-- **Required**: fix by default. If fixing would make the code worse or isn't possible (common in `adapters/target/` for register access and vendor headers), add a deviation instead.
+- **Required**: fix by default. If fixing would make the code worse or isn't possible (most likely in `adapters/target/`, for register access), add a deviation instead.
 - **Advisory**: fix when it's cheap and clearly improves the code. Otherwise leave it and mention it in your summary.
-- `core/` should be as close to zero findings as practical. `adapters/target/` gets more leeway, because hardware access legitimately needs things like casts to register addresses and `volatile`.
+- `core/` stays at zero findings with no deviations. `adapters/target/` gets more leeway, because hardware access legitimately needs things like `volatile`.
 - If a headline is ambiguous and you're not sure what the rule requires, don't guess and don't make sweeping changes. Flag it to me with the rule number.
 - To deviate, suppress inline and justify it on the same spot:
 
@@ -27,17 +27,10 @@ MISRA C is a secondary, automated check. BARR-C plus the rules in `README.md` is
   ```
 
 - cppcheck's rule ID prefix (`misra-c2012-` or `misra-c2023-`) depends on its version. Use whatever prefix the actual output shows in suppressions.
-- Never suppress a rule for a whole file or the whole project without asking me first.
-- Never copy MISRA headline text into source comments, commits or docs. Refer to rules by number only.
-- When you finish a task, report new MISRA findings by rule and category, along with any deviations you added.
+- The rules on suppressing, quoting MISRA text and reporting findings are under "MISRA text" in the root `CLAUDE.md`.
 
 ## Lessons
 
-- A macro used by only one build configuration is a rule 2.5 finding in the other run. Put it in a header only that configuration's files include.
-- A compiler builtin needs a visible prototype or it is a rule 17.3 finding.
-- An interrupt handler is reported under rule 8.7 (advisory), and that is a false positive: the vector table in the startup object refers to it, which is why it needs external linkage, but cppcheck sees only the C source. It is suppressed inline in `adapters/target/timebase.c`, in the deviation format, with the reason. Do the same for each new handler.
+- A lesson about one folder's code is in that folder's `CLAUDE.md` (`core/`, `adapters/target/`): rules 2.5, 8.7, 8.9 and 17.3 have come up so far. Read it before fixing a finding there.
 - Two file-static objects with the same name in different files of one run are a rule 5.9 (advisory) finding. The host run sees `app/app.c` and `adapters/host/host_ports.c` together, so their statics need different names.
-- A file-scope constant table used by one function is a rule 8.9 (advisory) finding; declare it `static const` inside the function.
-- A macro in a core header that only a test or a comment uses is a rule 2.5 (advisory) finding in every run, because findings in `tests/` are suppressed but uses there do not count. Leave the macro out and let the test define its own.
-- A bit mask in `adapters/target/bits.h` that nothing uses any more is a rule 2.5 (advisory) finding. Remove it and add it back when a pin needs it.
-- The current result is zero findings, with one inline suppression (the rule 8.7 false positive, above) and no true deviations. That is zero from this tool, not a claim of full compliance.
+- Zero findings is zero from this tool, not a claim of full compliance. The current status is in `docs/ARCHITECTURE.md`.

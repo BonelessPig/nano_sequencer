@@ -8,7 +8,7 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 - Registers at 0x20 to 0x3F need the `REG_IO_LOW` attribute or the compiler stops using `sbi`/`cbi`, which changes the shift register load pulse.
 - Putting the address inside the attribute does not work on avr-gcc 12.1.0 (`io_low(0x2B)` fails with "IO definition needs an address"), which is why the linker file exists.
 - **A macro used by only one build configuration is a rule 2.5 finding in the other.** Definitions that only one configuration's files use go in a header only those files include. That is why the USART0 registers and bit positions are in `atmega328p_usart_regs.h` (same `.ld` file), included only by `serial_logger.c`.
-- Group a new peripheral's registers in a header of its own on the same pattern (`atmega328p_timer2_regs.h`, `atmega328p_spi_regs.h`, `atmega328p_eeprom_regs.h`, `atmega328p_timer1_regs.h`, `atmega328p_extint_regs.h`), with only the bit positions the code uses, and check each position against the toolchain's `avr/iom328p.h`. An unused bit position is a rule 2.5 finding, and so is an unused mask in `bits.h`.
+- Group a new peripheral's registers in a header of its own on the same pattern (`atmega328p_timer2_regs.h`, `atmega328p_spi_regs.h` and the rest), with only the bit positions the code uses, and check each position against the toolchain's `avr/iom328p.h`. An unused bit position is a rule 2.5 finding, and so is an unused mask in `bits.h`.
 - A new register also goes into `tests/fake_atmega328p_regs.h` and its `fake_regs_reset()`.
 
 ## Drivers and devices
@@ -61,7 +61,7 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 
 ## Compiler
 
-- **Compiler builtins need a visible prototype** or cppcheck reports rule 17.3. One is in use, `__builtin_avr_wdr` (see Watchdog); the removed `delay.c` declared `__builtin_avr_delay_cycles` for that reason, and avr-gcc accepted the redeclaration and still inlined it.
+- **Compiler builtins need a visible prototype** or cppcheck reports rule 17.3. One is in use, `__builtin_avr_wdr` (see Watchdog); avr-gcc accepts the redeclaration and still inlines it.
 - The `io_low`, `signal` and `section` attributes are compiler extensions that cppcheck does not flag.
 
 ## Interrupts

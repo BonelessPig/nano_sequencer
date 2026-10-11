@@ -18,7 +18,7 @@ Pure sequencer logic. The same source is compiled for the MCU and for a PC.
 - An out-of-range control never fails: it wraps or falls back to a default, and the header says which. The core has no error codes.
 - Controls arrive in a `<module>_config_t` inside `seq_inputs_t` and are read when a step begins, like the panel.
 - Constant tables are `static const` inside the function that uses them (rule 8.9), and cost RAM as well as flash on this target, since flash-only data needs a compiler extension.
-- A macro that only tests or comments would use is a rule 2.5 finding. Write the number in the comment and let the test define its own.
+- A macro that only tests or comments would use is a rule 2.5 finding, because findings in `tests/` are suppressed but uses there do not count. Write the number in the comment and let the test define its own.
 - The step lights (`leds`) are the lights of the step that last began, given while the clock output is high and 0 otherwise. An engine with more to show than its step (the Klee register) has it read from its state in `step_leds()` in `seq.c`; do not add a field to `engine_step_t` for one engine.
 - Outputs that are levels (`b_gate`, `b_clock_out`, `cv`, `leds`, `transport`) are given on every tick, as the level after that tick. Outputs that describe a step are given on the tick it begins and are zero otherwise.
 - Musical lengths are counted in clock pulses, never ticks, so they scale with the tempo. When a step begins late, what it starts is counted from when it was due (`step_pulses` after the step's 24 are taken off), not from the tick that noticed.
