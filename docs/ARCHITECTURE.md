@@ -29,7 +29,7 @@ How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c
 
 ## Hardware
 
-What is wired to the chip, and which way each signal goes. The dotted path exists only in the debug build. [SCHEMATIC.html](SCHEMATIC.html) has the wiring pin by pin, with a diagram of each chip; open it in a browser.
+What is wired to the chip, and which way each signal goes. The dotted path exists only in the debug build. [SCHEMATIC.html](SCHEMATIC.html) has the wiring pin by pin, with a diagram of each chip; open it in a browser. [PARTS.md](PARTS.md) lists the parts to buy.
 ```mermaid
 flowchart LR
     panel["Front panel<br/>16 steps x 4 bits,<br/>8 mode switches"] --> chain["9 x 74HC165<br/>shift register chain"]
@@ -1371,7 +1371,7 @@ The crash log is in (see "The crash log"), on the host and on the emulated board
 - **Reading it takes the debug image.** Its second line at start-up is the newest record, `Crash 3 Place = 5 Count = 2`, so a board that crashed running the release image can be read by uploading the debug one, which leaves the EEPROM alone. The seven records before it are only in the EEPROM, from address 16, for a programmer to read out; whether a bootloader can read the EEPROM has not been looked at. Nothing clears the log but erasing the EEPROM.
 - **It knows five places and one kind of crash.** A failed port call is logged by the debug build and not kept.
 - **To see it work**, use the test build of item 15 that stops kicking: the log should then read `Reset = 8` and `Crash 1 Place = 5 Count = 1`, and the count should go up each time.
-- **The debug build's first log line is later for it.** Reading the log at start-up holds the first step's line back by half a millisecond, and by 2.6 ms more when there is a record to report. The pins are not affected. If it matters, the log could be read only after a watchdog reset, at the price of not reporting an old crash on later starts (roadmap decision 111).
+- **The debug build's first log line is later for it.** Reading the log at start-up holds the first step's line back by half a millisecond, and by 2.6 ms more when there is a record to report. The pins are not affected. If it matters, the log could be read only after a watchdog reset, at the price of not reporting an old crash on later starts; the owner chose the report (roadmap decision 111).
 
 ### 3. The timer tick has not run on the board
 

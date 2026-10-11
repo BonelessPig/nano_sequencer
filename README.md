@@ -115,7 +115,7 @@ tools/sim/                    # Emulated board (make sim)
 
 ## Hardware target
 
-The wiring is drawn pin by pin, with a diagram of each chip, in [docs/SCHEMATIC.html](docs/SCHEMATIC.html) (open it in a browser).
+The wiring is drawn pin by pin, with a diagram of each chip, in [docs/SCHEMATIC.html](docs/SCHEMATIC.html) (open it in a browser). The parts to buy are listed in [docs/PARTS.md](docs/PARTS.md).
 - MCU: ATmega328P (as used on the Arduino Nano)
 - Clock: 16 MHz
 - USART: 115200 baud, 8N1, transmit only in practice (debug build; unused in the release build)

@@ -182,7 +182,7 @@ Taken while building the first piece of phase 9, on 2026-10-11, left to recommen
 | 105 | The port | **`watchdog_port`, one function, `watchdog_kick()`.** Starting it is the platform's business, not the app's. |
 | 106 | The bootloader | **Still the stock one on the board.** The firmware is built as if for Optiboot (decision 3). With the stock one a watchdog reset does not recover until the power is cycled (ARCHITECTURE open item 15). |
 
-Taken while building the rest of phase 9, the crash log, on 2026-10-11, left to recommendation. Provisional. 111 is the one with a real cost either way, and 115 says what was left out.
+Taken while building the rest of phase 9, the crash log, on 2026-10-11, left to recommendation. Provisional, but for 111, which had a real cost either way and which the owner confirmed as built the same day. 115 says what was left out.
 
 | # | Decision | Outcome |
 |---|---|---|
@@ -190,11 +190,17 @@ Taken while building the rest of phase 9, the crash log, on 2026-10-11, left to 
 | 108 | The record | **Five bytes: a number, the reset cause, the place, a count, and a CRC-8 of those** that starts from the layout's version, 1, so that a record of another version fails its checksum without a byte spent on the version. The number goes up by one a record and round from 255 to 0. |
 | 109 | The log | **Eight records as a ring, 40 bytes at EEPROM address 16**, clear of the calibration record at 0 to 11. There is no pointer: the newest record is the first not followed by the one numbered above it, so there is no second thing to keep in step with the records and nothing that is written every time. A slot with a bad checksum is an empty place. |
 | 110 | A crash that repeats | **Raises the count of the newest record, up to 255, and then writes nothing.** A firmware that hangs the same way on every start resets four times a second; without this it would wear a byte out in a few hours. A different crash is still taken as a new record. |
-| 111 | Reading it | **The debug build logs the newest record at every start-up** (`Crash 3 Place = 5 Count = 2`), crash or not, so a board that crashed running the release image is read by uploading the debug one. The price is at start-up: the 40 bytes are read and checked on every start, about 0.3 ms, which makes the debug build's first step line half a millisecond late (it had been arranged, in decision 58, to follow the start-up line with no wait). The alternative is to read the log only after a watchdog reset: no cost on an ordinary start, and no report of an old crash. The older seven records are never logged; they are in the EEPROM for a programmer to read. |
+| 111 | Reading it | **The debug build logs the newest record at every start-up** (`Crash 3 Place = 5 Count = 2`), crash or not, so a board that crashed running the release image is read by uploading the debug one. The price is at start-up: the 40 bytes are read and checked on every start, about 0.3 ms, which makes the debug build's first step line half a millisecond late (it had been arranged, in decision 58, to follow the start-up line with no wait). The alternative is to read the log only after a watchdog reset: no cost on an ordinary start, and no report of an old crash. The older seven records are never logged; they are in the EEPROM for a programmer to read. **Confirmed by the owner.** |
 | 112 | The breadcrumb | **One byte in `.noinit`, behind `breadcrumb_port`, written by the app as each part of the loop begins**: 1 from start-up to the first tick, 2 applying the outputs, 3 gathering the inputs, 4 in the core, 5 between ticks. Four stores a tick, about 3 µs. No check byte beside it: it is only believed when the reset cause says the watchdog, and the watchdog leaves RAM alone. The numbers are stored, so they are never reused for another place. |
 | 113 | When it is written | **At start-up, before the first tick, as one `nv_write()` of the one record that changed.** It cannot collide with storing a calibration point, which takes a switch thrown twice. If it cannot be started it is logged and that crash is lost. |
 | 114 | The checksum | **A core module of its own, `crc8`, shared with the calibration record**, with the start value as a parameter. The calibration record's bytes are what they were. |
 | 115 | Not built | Taking the reset cause from where Optiboot leaves it (section 8), without which the log records nothing on a board with that bootloader; any way to clear the log or to read the older records from the firmware; recording failed port calls; a time or an up-count with each record, there being no clock that survives a reset. |
+
+The owner's, on 2026-10-11, when the parts list (`docs/PARTS.md`) was drawn up.
+
+| # | Decision | Outcome |
+|---|---|---|
+| 116 | Power | **USB for now, with a Eurorack supply a possible later step, so the analogue stages are to be designed to work from either.** That bears on three things not yet designed: the pitch CV buffer (it has to reach 0 V on a single 5 V rail, so a rail-to-rail op-amp, which also works from ±12 V), the gate and clock output level (5 V from USB; more is only possible from the Eurorack rails), and where 5 V comes from (the Nano's USB socket, or a regulator from +12 V, never both at once without something to keep them apart). Nothing in the firmware depends on it. |
 
 ## 3. What the survey found
 
