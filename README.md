@@ -4,7 +4,7 @@ A bare-metal firmware project for the ATmega328P (Arduino Nano), written from sc
 
 ## Status
 
-Work in progress. The firmware initializes the ADC, USART, I/O direction registers, the SPI bus and a 1 kHz timer tick, then steps through a 16-step pattern at a tempo of 30 to 285 BPM set by a pot. The main loop never blocks: once a millisecond it runs one tick of the sequencer, which reads the 16 step note values from a daisy-chained 74HC165 shift register bank over the SPI bus and the tempo pot (every 8 ms) and, when the next step is due, plays it: if the step has a note, a pitch control voltage is set through an MCP4822 DAC (1 V to the octave) and a gate output goes high for half the step; a clock output pulses once per step, and the debug build also logs the step and its pitch, or that it is a rest, over serial. A step's four switches are its note value: 0 is a rest, and 1 to 15 are notes of a scale. The core can also play any range of the steps forward, in reverse or as a pendulum, looping or once, with a reset, and in five scales from any root; the board has no controls for those yet, so the firmware plays all 16 steps forward in the chromatic scale. The gate and clock outputs are bare logic pins and the pitch CV is the DAC's own output, with no buffer stage on any of them yet, and the pitch is not calibrated: it uses the ideal table. The DAC has not been on the real board yet.
+Work in progress. The firmware initializes the ADC, USART, I/O direction registers, the SPI bus and a 1 kHz timer tick, then steps through a 16-step pattern at a tempo of 30 to 285 BPM set by a pot. The main loop never blocks: once a millisecond it runs one tick of the sequencer, which reads the 16 step note values from a daisy-chained 74HC165 shift register bank over the SPI bus and the tempo pot (every 8 ms) and, when the next step is due, plays it: if the step has a note, a pitch control voltage is set through an MCP4822 DAC (1 V to the octave) and a gate output goes high for half the step; a clock output pulses once per step, and the debug build also logs the step and its pitch, or that it is a rest, over serial. A step's four switches are its note value: 0 is a rest, and 1 to 15 are notes of a scale. The core can also play any range of the steps forward, in reverse or as a pendulum, looping or once, with a reset, and in five scales from any root; the board has no controls for those yet, so the firmware plays all 16 steps forward in the chromatic scale. The gate and clock outputs are bare logic pins and the pitch CV is the DAC's own output, with no buffer stage on any of them yet. The pitch goes through a calibration table with an entry per octave, which is the ideal one until a measured one is stored: powering up with a reserved pattern on the last four steps gives a calibration mode, in which the first step's switches choose an octave, the tempo pot trims its voltage against a meter, and a switch stores it in the MCU's EEPROM. At start-up the firmware loads that table if its version and checksum are good, and the debug build logs why the processor reset. The DAC has not been on the real board yet, so neither has calibration.
 
 ## Why bare-metal?
 
@@ -24,6 +24,8 @@ core/                         # Pure sequencer logic; also compiles on a PC
 ├── note_map.c / note_map.h           # note_map_semitone(): note value to pitch through a scale and root
 ├── gate.c / gate.h                   # gate_advance(): how long a note is held, in clock pulses; ties
 ├── pitch_cal.c / pitch_cal.h         # pitch_cal_cv(): pitch to CV value through a per-octave table
+├── cal.c / cal.h                     # cal_tick(): calibration mode, setting that table from the panel and pot
+├── cal_record.c / cal_record.h       # The table as stored bytes, with a version and a checksum
 └── panel.c / panel.h                 # panel_step_value(): one step's four switches from the raw bytes
 ports/                        # What the app needs from the outside world (headers only)
 ├── port_status.h                     # Shared status/error codes
@@ -34,10 +36,12 @@ ports/                        # What the app needs from the outside world (heade
 ├── cv_output_port.h                  # The pitch control voltage, in millivolts
 ├── gate_output_port.h                # The gate output's level
 ├── clock_output_port.h               # The clock output's level
+├── nv_port.h                         # Storage that survives power-off (written a byte per loop pass)
+├── reset_cause_port.h                # Why the processor last started
 └── log_port.h                        # Diagnostic output (queued; never blocks the loop)
 adapters/
 ├── target/                   # The ports implemented for the ATmega328P
-│   ├── init.c                        # Platform bring-up (logger + registers)
+│   ├── init.c                        # Platform bring-up (logger, registers, SPI, timebase)
 │   ├── register_init.c / .h          # I/O direction + ADC setup
 │   ├── analog_reader.c               # Tempo input: ADC channel read
 │   ├── shift_reg_reader.c            # Step input: 74HC165 shift register chain read, over SPI
@@ -46,6 +50,8 @@ adapters/
 │   ├── cv_output.c                   # Pitch CV output: MCP4822 DAC, over SPI
 │   ├── gate_output.c                 # Gate output: PD4
 │   ├── clock_output.c                # Clock output: PD5
+│   ├── eeprom.c                      # Non-volatile storage: the MCU's EEPROM, never waited for
+│   ├── reset_cause.c                 # Reset cause: the MCU's reset flags, read and cleared
 │   ├── logger.h                      # Logger bring-up and log levels, shared by the two loggers
 │   ├── serial_logger.c               # Log, debug build: USART setup + queued text logging with log levels
 │   ├── null_logger.c                 # Log, release build: discards every message
@@ -54,6 +60,7 @@ adapters/
 │   ├── atmega328p_usart_regs.h       # The same for USART0, used only by the serial logger
 │   ├── atmega328p_timer2_regs.h      # The same for Timer/Counter2, and its interrupt vector
 │   ├── atmega328p_spi_regs.h         # The same for the SPI, used only by the SPI driver
+│   ├── atmega328p_eeprom_regs.h      # The same for the EEPROM, used only by the EEPROM adapter
 │   └── atmega328p_regs.ld            # Register addresses, applied by the linker
 └── host/                     # The ports faked for PC tests
     └── host_ports.c / .h             # Scripted inputs, recorded outputs
@@ -70,6 +77,7 @@ tools/sim/                    # Emulated board (make sim)
 ├── parts/hc165.js                    # 74HC165 chain model
 ├── parts/mcp4822.js                  # MCP4822 DAC model
 ├── boards/nano_sequencer.js          # What is wired to which pin
+├── boards/cal_record.js              # The calibration record, worked out apart from the firmware
 └── scenarios/*.test.js               # What each firmware image must do on that board
 ```
 
@@ -80,8 +88,9 @@ tools/sim/                    # Emulated board (make sim)
 - USART: 115200 baud, 8N1, transmit only in practice (debug build; unused in the release build)
 - Timer/Counter2: compare match interrupt at 1 kHz, the sequencer's tick (drives no pin)
 - Analog inputs: ADC channel 6 (tempo control, 30 to 285 BPM)
+- EEPROM: 12 of its 1024 bytes, from address 0, hold the pitch calibration record. A chip erase by an ISP programmer wipes it unless the EESAVE fuse is set; an upload through the bootloader does not
 - SPI: master, mode 0, MSB first, 1 MHz, shared by the shift registers and the DAC
-- Pitch CV: channel A of an MCP4822 12-bit DAC (internal 2.048 V reference, gain 2: 1 mV a step, 0 to 4.095 V). `PORTB2` (D10, SS) is its chip select, `PORTB5` (D13, SCK) its clock and `PORTB3` (D11, MOSI) its data; its LDAC pin is tied to GND. 1 V to the octave from 0 V at the lowest pitch, written every millisecond. No buffer or protection yet
+- Pitch CV: channel A of an MCP4822 12-bit DAC (internal 2.048 V reference, gain 2: 1 mV a step, 0 to 4.095 V). `PORTB2` (D10, SS) is its chip select, `PORTB5` (D13, SCK) its clock and `PORTB3` (D11, MOSI) its data; its LDAC pin is tied to GND. 1 V to the octave from 0 V at the lowest pitch, written every millisecond, through the calibration table. No buffer or protection yet
 - Step notes: 16 steps × 4 bits, read from a chain of 8 daisy-chained 74HC165 shift registers on the SPI bus: `PORTB1` (D9) is SH/LD, `PORTB5` (D13, SCK) is CLK, and `PORTB4` (D12, MISO) takes QH of the nearest chip through 1 kΩ — each 74HC165's Clock Inhibit/CE pin must be tied to GND in hardware
 - Gate output: `PORTD4` (D4), high while a note is held, which is half a step. Clock output: `PORTD5` (D5), high for the first half of every step. Both are 0 V / 5 V logic straight from the MCU, with no buffer or protection yet
 - Other digital I/O configured in `register_init.c`: `PORTC0` as input, `PORTC1` as output; neither is used yet. `PORTD2`, `PORTD3`, `PORTD6` and `PORTD7` are free
@@ -147,16 +156,16 @@ There are two build configurations, chosen with `CONFIG=`. They differ only in w
 
 | | Logging | Output | Flash | Static RAM |
 |---|---|---|---:|---:|
-| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 3340 bytes | 440 bytes |
-| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 2606 bytes | 112 bytes |
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 4974 bytes | 587 bytes |
+| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 3962 bytes | 145 bytes |
 
 `CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`). The tests, the coverage check and the static analysis always cover both loggers.
 
-The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, so any warning fails the build. `make test` never touches the board: it links the real core and app loop against fake ports and checks what they do, and it compiles each MCU adapter against fake registers to check what it does with them (the exact serial text, the shift register load pulse and transfers, the SPI settings, the ADC timeout, the timer settings, the frame sent to the DAC, the gate and clock pins, and so on). Time is scripted in these tests, so they check on which millisecond tick each thing happens.
+The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror`, so any warning fails the build. `make test` never touches the board: it links the real core and app loop against fake ports and checks what they do, and it compiles each MCU adapter against fake registers to check what it does with them (the exact serial text, the shift register load pulse and transfers, the SPI settings, the ADC timeout, the timer settings, the frame sent to the DAC, the gate and clock pins, the EEPROM's timed write sequence, and so on). Time is scripted in these tests, so they check on which millisecond tick each thing happens.
 
 `make coverage` runs the same tests built with gcc's coverage instrumentation and prints a table per source file. Every file in `core/`, `app/` and `adapters/target/` must have all of its lines run and all of its branches taken, or the command fails. That is measured on the PC build: it shows the logic is exercised, not that register addresses or pulse timing are right on the chip.
 
-`make sim` builds both configurations and runs the two `output.hex` files, unmodified, on an emulated ATmega328P with the 74HC165 chain, the MCP4822 DAC, the tempo pot, recorders on the gate and clock pins and a serial capture modelled around it. The scenarios check the log text against the switches set on the emulated panel, the load pulse and SPI transfers of each panel read and how often it is read, the SPI and timer settings, the length of a step at a given tempo, the width and timing of every gate and clock pulse, and that the DAC holds each note's voltage before its gate rises, all counted in CPU cycles. It checks the real machine code, which the host tests cannot, but against models of the chip and the parts: the board is still the final check.
+`make sim` builds both configurations and runs the two `output.hex` files, unmodified, on an emulated ATmega328P with the 74HC165 chain, the MCP4822 DAC, the tempo pot, recorders on the gate and clock pins and a serial capture modelled around it. The scenarios check the log text against the switches set on the emulated panel, the load pulse and SPI transfers of each panel read and how often it is read, the SPI and timer settings, the length of a step at a given tempo, the width and timing of every gate and clock pulse, that the DAC holds each note's voltage before its gate rises, and that a calibration stored in the emulated EEPROM in calibration mode is played from after a power cycle, all counted in CPU cycles. It checks the real machine code, which the host tests cannot, but against models of the chip and the parts: the board is still the final check.
 
 `make check` runs both builds, the tests, coverage, the MISRA analysis and the emulated board in one go. A stage that passes prints one line (with the flash and RAM figures, the coverage total or the scenario count); a stage that fails prints its full output. Every stage runs even if an earlier one failed, and the command fails if any did. It needs all the tools in the table above.
 

@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const avr8js = require('avr8js');
 
 const FLASH_BYTES = 0x8000; // 32 KB of program memory
+const EEPROM_BYTES = 1024;
 const HEX_DATA_RECORD = 0;  // Intel HEX record type that carries data
 const MS_PER_SECOND = 1000;
 
@@ -45,9 +46,14 @@ function loadHex(hexPath) {
 function createAtmega328p(hexPath, clockHz) {
     const flash = loadHex(hexPath);
     const cpu = new avr8js.CPU(new Uint16Array(flash.buffer));
+    const eepromBackend = new avr8js.EEPROMMemoryBackend(EEPROM_BYTES);
     const machine = {
         cpu,
         clockHz,
+        eeprom: new avr8js.AVREEPROM(cpu, eepromBackend),
+        // The EEPROM's contents, erased (0xFF) to begin with. Write to it
+        // before running to start with something stored
+        eepromMemory: eepromBackend.memory,
         portB: new avr8js.AVRIOPort(cpu, avr8js.portBConfig),
         portC: new avr8js.AVRIOPort(cpu, avr8js.portCConfig),
         portD: new avr8js.AVRIOPort(cpu, avr8js.portDConfig),

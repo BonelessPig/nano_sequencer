@@ -1,6 +1,7 @@
 /*
  * atmega328p_regs.ld - where each register declared in atmega328p_regs.h and
- * the per-peripheral headers beside it (USART0, Timer/Counter2, SPI) lives.
+ * the per-peripheral headers beside it (USART0, Timer/Counter2, SPI, EEPROM)
+ * lives.
  *
  * The Makefile passes this file to the linker alongside the object files. Each
  * line gives a register name its data-space address from the ATmega328P
@@ -42,8 +43,15 @@ SPCR = 0x4C;
 SPSR = 0x4D;
 SPDR = 0x4E;
 
+/* ---- EEPROM ---- */
+EECR  = 0x3F;
+EEDR  = 0x40;
+EEARL = 0x41;
+EEARH = 0x42;
+
 /* ---- CPU ---- */
-SREG = 0x5F;
+MCUSR = 0x54;
+SREG  = 0x5F;
 
 /* ---- Timer/Counter2 ---- */
 TIMSK2 = 0x70;

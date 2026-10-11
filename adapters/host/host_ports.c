@@ -13,7 +13,9 @@
 #include "clock_output_port.h"
 #include "cv_output_port.h"
 #include "gate_output_port.h"
+#include "nv_port.h"
 #include "platform_port.h"
+#include "reset_cause_port.h"
 #include "step_input_port.h"
 #include "tempo_input_port.h"
 #include "timebase_port.h"
@@ -48,8 +50,32 @@ static uint16_t      g_cv_millivolts = 0U;
 static uint16_t      g_cv_write_count = 0U;
 static uint16_t      g_cv_millivolts_at_gate_rise = 0U;
 
+static uint8_t       g_reset_cause = 0U;
+
+static uint8_t       g_nv_bytes[HOST_NV_BYTES];
+static port_status_t g_nv_read_status = STATUS_OK;
+static port_status_t g_nv_write_status = STATUS_OK;
+static uint16_t      g_nv_read_count = 0U;
+static uint16_t      g_nv_write_count = 0U;
+static uint16_t      g_nv_poll_count = 0U;
+
+static uint16_t      g_startup_count = 0U;
+static uint8_t       g_startup_reset_cause = 0U;
+static bool          g_b_startup_calibrated = false;
+
 static host_event_t  g_events[HOST_MAX_EVENTS];
 static uint16_t      g_event_count = 0U;
+
+
+
+/**
+ * @brief Tells whether a run of bytes lies inside the faked storage.
+ */
+static bool is_nv_run_valid(uint16_t address, uint8_t count)
+{
+    return (count > 0U) && (address < HOST_NV_BYTES) &&
+           (count <= (uint16_t)(HOST_NV_BYTES - address));
+}
 
 
 
@@ -95,10 +121,118 @@ void host_reset(void)
     g_cv_write_count             = 0U;
     g_cv_millivolts_at_gate_rise = 0U;
 
+    g_reset_cause          = 0U;
+    g_nv_read_status       = STATUS_OK;
+    g_nv_write_status      = STATUS_OK;
+    g_nv_read_count        = 0U;
+    g_nv_write_count       = 0U;
+    g_nv_poll_count        = 0U;
+    g_startup_count        = 0U;
+    g_startup_reset_cause  = 0U;
+    g_b_startup_calibrated = false;
+
     for (uint8_t i = 0U; i < HOST_RAW_STEP_BYTES; i++)
     {
         g_raw_steps[i] = 0U;
     }
+    for (uint8_t i = 0U; i < HOST_NV_BYTES; i++)
+    {
+        g_nv_bytes[i] = HOST_NV_ERASED;
+    }
+}
+
+
+
+void host_set_reset_cause(uint8_t cause)
+{
+    g_reset_cause = cause;
+}
+
+
+
+void host_set_nv_bytes(uint16_t address, const uint8_t *p_data, uint8_t count)
+{
+    if (NULL != p_data)
+    {
+        for (uint8_t i = 0U; i < count; i++)
+        {
+            const uint16_t at = (uint16_t)(address + i);
+
+            if (at < HOST_NV_BYTES)
+            {
+                g_nv_bytes[at] = p_data[i];
+            }
+        }
+    }
+}
+
+
+
+uint8_t host_nv_byte(uint16_t address)
+{
+    uint8_t value = HOST_NV_ERASED;
+
+    if (address < HOST_NV_BYTES)
+    {
+        value = g_nv_bytes[address];
+    }
+    return value;
+}
+
+
+
+void host_set_nv_read_status(port_status_t status)
+{
+    g_nv_read_status = status;
+}
+
+
+
+void host_set_nv_write_status(port_status_t status)
+{
+    g_nv_write_status = status;
+}
+
+
+
+uint16_t host_nv_read_count(void)
+{
+    return g_nv_read_count;
+}
+
+
+
+uint16_t host_nv_write_count(void)
+{
+    return g_nv_write_count;
+}
+
+
+
+uint16_t host_nv_poll_count(void)
+{
+    return g_nv_poll_count;
+}
+
+
+
+uint16_t host_startup_count(void)
+{
+    return g_startup_count;
+}
+
+
+
+uint8_t host_startup_reset_cause(void)
+{
+    return g_startup_reset_cause;
+}
+
+
+
+bool host_startup_calibrated(void)
+{
+    return g_b_startup_calibrated;
 }
 
 
@@ -375,6 +509,95 @@ void clock_output_write(bool b_high)
         g_clock_output_rise_count++;
     }
     g_b_clock_output_high = b_high;
+}
+
+
+
+uint8_t reset_cause_read(void)
+{
+    const uint8_t cause = g_reset_cause;
+
+    g_reset_cause = 0U; // Reading it clears it, as on the hardware
+    return cause;
+}
+
+
+
+port_status_t nv_read(uint16_t address, uint8_t *p_data, uint8_t count)
+{
+    port_status_t status = g_nv_read_status;
+
+    g_nv_read_count++;
+
+    // Same parameter contract as the real adapter (see nv_port.h)
+    if ((NULL == p_data) || !is_nv_run_valid(address, count))
+    {
+        status = ERR_INVALID_PARAM;
+    }
+    else if (STATUS_OK == status)
+    {
+        for (uint8_t i = 0U; i < count; i++)
+        {
+            p_data[i] = g_nv_bytes[address + i];
+        }
+    }
+    else
+    {
+        // Scripted failure: leave the caller's buffer untouched
+    }
+    return status;
+}
+
+
+
+port_status_t nv_write(uint16_t address, const uint8_t *p_data, uint8_t count)
+{
+    port_status_t status = g_nv_write_status;
+
+    g_nv_write_count++;
+
+    // Same parameter contract as the real adapter (see nv_port.h)
+    if ((NULL == p_data) || (count > NV_WRITE_BYTES_MAX) ||
+        !is_nv_run_valid(address, count))
+    {
+        status = ERR_INVALID_PARAM;
+    }
+    else if (STATUS_OK == status)
+    {
+        // Stored at once: the fake has no write time to wait out
+        for (uint8_t i = 0U; i < count; i++)
+        {
+            g_nv_bytes[address + i] = p_data[i];
+        }
+    }
+    else
+    {
+        // Scripted failure: the storage stays as it was
+    }
+    return status;
+}
+
+
+
+void nv_poll(void)
+{
+    g_nv_poll_count++;
+}
+
+
+
+void log_startup(uint8_t reset_cause, bool b_calibrated)
+{
+    g_startup_count++;
+    g_startup_reset_cause  = reset_cause;
+    g_b_startup_calibrated = b_calibrated;
+}
+
+
+
+void log_cal_point(uint8_t point, uint16_t cv)
+{
+    record_event(HOST_EVENT_CAL_POINT, point, cv);
 }
 
 

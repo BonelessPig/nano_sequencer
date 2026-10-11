@@ -12,8 +12,8 @@ Pure sequencer logic. The same source is compiled for the MCU and for a PC.
 
 ## Modules
 
-- One module, one question: `seq` (is a step due), `clock` (ticks to pulses), `engine_*` (which step and its note value), `address` (next step in the range), `note_map` (note value to pitch), `panel` (a step's switches), `gate` (is the note still held), `pitch_cal` (pitch to CV value). A new one gets its own `.c`, `.h` and test program; `docs/ROADMAP.md` section 4 lists the ones planned.
-- A module includes only the modules below it. `seq` is the top and the only one the app calls; nothing includes `seq.h` from inside `core/`.
+- One module, one question: `seq` (is a step due), `clock` (ticks to pulses), `engine_*` (which step and its note value), `address` (next step in the range), `note_map` (note value to pitch), `panel` (a step's switches), `gate` (is the note still held), `pitch_cal` (pitch to CV value), `cal` (is this calibration mode, and what is it setting), `cal_record` (are these stored bytes a calibration table). A new one gets its own `.c`, `.h` and test program; `docs/ROADMAP.md` section 4 lists the ones planned.
+- A module includes only the modules below it. `seq` is the top of the sequencer, and nothing includes `seq.h` from inside `core/`. The app calls `seq`, and beside it `cal` and `cal_record`, which share only `pitch_cal.h` and `panel.h` with it; the sequencer knows nothing of calibration.
 - Every pointer parameter is checked for null, and a null means do nothing and return the harmless value (false, 0). The header says so.
 - An out-of-range control never fails: it wraps or falls back to a default, and the header says which. The core has no error codes.
 - Controls arrive in a `<module>_config_t` inside `seq_inputs_t` and are read when a step begins, like the panel.
@@ -24,6 +24,14 @@ Pure sequencer logic. The same source is compiled for the MCU and for a PC.
 - The pitch CV value changes only when a note begins, on the tick its gate opens, and holds through everything else (rests, unreadable steps, reset, a finished one-shot). The core gives it as a number from 0 to 4095 and does not know what that is in volts.
 - Arithmetic wider than 8 bits has to work where `int` is 16 bits (the MCU) and where it is 32 (the PC, with `-Wconversion`). Keep intermediate results within 16 bits, say why they fit, and cast each product or sum back to its type; do not cast a narrower composite expression to a wider type (rule 10.8), give the operand the type first.
 - Every step that falls due calls `gate_begin()`, note or not: that is what ends a tied gate at a rest or at the end of a one-shot pattern. Look at the gate's level only after it.
+
+## Calibration
+
+- `cal_tick()` runs on every tick, ahead of the sequencer. It chooses the mode once, on the first tick after `cal_init()`, and never changes its mind; outside the mode every output is false or 0 and the table is not touched.
+- The mode's controls (the entry pattern, which step chooses the point, which switch stores, the trim range, the gate's low time) are constants at the top of `cal.c`. The header describes them in words, with the numbers, and the tests define their own.
+- `cal` counts in ticks, not pulses: it has no clock, and its one time (the gate low after a store) is for a person, not for music.
+- The core still does not know what a CV value is in volts: the nominal value of an octave is an input.
+- A change to the layout of the record takes a new version number in `cal_record.c`, so that old records are refused and not misread. The checksum has a test vector worked out outside the firmware; keep one.
 
 ## Engines
 

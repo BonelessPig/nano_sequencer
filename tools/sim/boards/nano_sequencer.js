@@ -6,7 +6,8 @@
  * with its chip select on PB2, the tempo pot on ADC channel 6, the gate
  * output on PD4, the clock output on PD5, and USART0 going to a PC. Scenarios set the panel and
  * the pot, run the firmware, and read back what it did. Nothing is wired to
- * Timer/Counter2; the firmware uses it for its 1 kHz tick.
+ * Timer/Counter2; the firmware uses it for its 1 kHz tick. The chip's own
+ * EEPROM holds the pitch calibration record, from address 0.
  */
 const path = require('node:path');
 const { createAtmega328p } = require('../lib/machine');
@@ -24,20 +25,36 @@ const SHIFT_REG_LOAD_PIN = 1; // On port B
 const DAC_SELECT_PIN = 2;     // On port B
 const GATE_PIN = 4;           // On port D
 const CLOCK_OUT_PIN = 5;      // On port D
+const MCUSR = 0x54;           // Reset flags register, data address
+const STEP_LINE_PREFIX = 'Step ';
 const BUILD_DIR = path.resolve(__dirname, '..', '..', '..', 'build');
+
+// The panel that asks for calibration mode at power-on: the last four steps
+// read 10, 5, 10, 5. The lowest switch of the last step is the store switch
+const CAL_ENTRY_NOTES = [10, 5, 10, 5];
+const CAL_STORE_SWITCH = 1;
 
 /**
  * Powers up a board running one build of the firmware.
- * @param config  'debug' or 'release': which build/<config>/output.hex to run.
+ * @param config   'debug' or 'release': which build/<config>/output.hex to run.
+ * @param options  Optional. eeprom: bytes the EEPROM holds from address 0,
+ *                 the rest being erased. resetFlags: what the chip's reset
+ *                 flags register holds at start (1 for a power-on reset);
+ *                 the emulator leaves it at 0.
  */
-function createBoard(config) {
+function createBoard(config, options = {}) {
     const hexPath = path.join(BUILD_DIR, config, 'output.hex');
     const machine = createAtmega328p(hexPath, CLOCK_HZ);
     const notes = new Array(STEP_COUNT).fill(0);
-    const serial = { bytes: 0, lines: [] };
+    // lines holds the step lines, which most scenarios count and time;
+    // notices holds every other line (start-up, calibration, errors)
+    const serial = { bytes: 0, lines: [], notices: [] };
     const spiSent = [];
     let partial = '';
     let partialStart = 0;
+
+    machine.eepromMemory.set(options.eeprom || []);
+    machine.cpu.data[MCUSR] = options.resetFlags || 0;
 
     // Step 0's most significant bit is the first bit out of the chain
     function panelBits() {
@@ -86,11 +103,14 @@ function createBoard(config) {
         }
         partial += String.fromCharCode(byte);
         if (partial.endsWith('\r\n')) {
-            serial.lines.push({
+            const line = {
                 text: partial.slice(0, -2),
                 startCycle: partialStart,
                 cycle: machine.cpu.cycles,
-            });
+            };
+            const list = line.text.startsWith(STEP_LINE_PREFIX) ? serial.lines : serial.notices;
+
+            list.push(line);
             partial = '';
         }
     };
@@ -140,6 +160,41 @@ function createBoard(config) {
             for (let step = 0; step < STEP_COUNT; step++) {
                 notes[step] = newNotes[step];
             }
+        },
+
+        /**
+         * Sets the panel as calibration mode uses it: the entry pattern on
+         * the last four steps, the point to set (0 to 4) on step 0, and the
+         * store switch on or off.
+         */
+        setCalibrationPanel(point, storeOn) {
+            const firstEntryStep = STEP_COUNT - CAL_ENTRY_NOTES.length;
+
+            notes.fill(0);
+            notes[0] = point;
+            CAL_ENTRY_NOTES.forEach((note, i) => {
+                notes[firstEntryStep + i] = note;
+            });
+            if (!storeOn) {
+                notes[STEP_COUNT - 1] &= ~CAL_STORE_SWITCH;
+            }
+        },
+
+        /** A copy of the EEPROM's bytes from address 0. */
+        eepromBytes(count) {
+            return Array.from(machine.eepromMemory.slice(0, count));
+        },
+
+        /** Runs for this many milliseconds of chip time. */
+        runForMs(ms) {
+            const end = machine.cpu.cycles + machine.msToCycles(ms);
+
+            machine.runUntil(() => machine.cpu.cycles >= end, ms + 1);
+        },
+
+        /** Runs until this many lines other than step lines have been sent. */
+        runUntilNotices(count, limitMs) {
+            machine.runUntil(() => serial.notices.length >= count, limitMs);
         },
 
         /** Sets the tempo pot wiper voltage, 0 to 5 V. */

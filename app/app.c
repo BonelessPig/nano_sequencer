@@ -11,6 +11,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "address.h"
+#include "cal.h"
+#include "cal_record.h"
 #include "note_map.h"
 #include "panel.h"
 #include "pitch_cal.h"
@@ -19,7 +21,9 @@
 #include "cv_output_port.h"
 #include "gate_output_port.h"
 #include "log_port.h"
+#include "nv_port.h"
 #include "platform_port.h"
+#include "reset_cause_port.h"
 #include "step_input_port.h"
 #include "tempo_input_port.h"
 #include "timebase_port.h"
@@ -31,13 +35,20 @@
 // The board has no gate length control yet: a note is held for half its step
 #define GATE_LENGTH_PULSES (SEQ_PULSES_PER_STEP / 2U)
 
-// The pitch CV is not calibrated yet: the table is the ideal one, 1 V to the
-// octave from 0 V at the lowest pitch
+// The pitch CV is nominally 1 V to the octave from 0 V at the lowest pitch.
+// That is the ideal calibration table, used until a measured one is stored,
+// and what calibration mode trims each point from
 #define CV_MILLIVOLTS_PER_OCTAVE (1000U)
+
+// Where the calibration record is kept in the non-volatile storage
+#define CAL_RECORD_ADDRESS (0U)
 
 static seq_state_t   g_seq_state; // Sequencer state carried between ticks
 static seq_inputs_t  g_inputs;    // Latest snapshot of the inputs
 static seq_outputs_t g_outputs;   // What the last tick computed; applied at the next
+
+static cal_state_t   g_cal_state;   // Calibration mode's state carried between ticks
+static cal_outputs_t g_cal_outputs; // What it computed on the last tick
 
 static port_status_t g_step_read_status  = STATUS_OK; // Status of the last step input read
 static port_status_t g_tempo_read_status = STATUS_OK; // Status of the last tempo input read
@@ -68,12 +79,38 @@ static void log_step(void)
 
 
 /**
+ * @brief  Saves the calibration table after calibration mode has stored a
+ *         point in it: starts the write of the whole record and logs the
+ *         point, or the failure to start.
+ */
+static void save_calibration(void)
+{
+    uint8_t       record[CAL_RECORD_SIZE];
+    port_status_t status;
+
+    cal_record_encode(&g_inputs.pitch_cal, record);
+    status = nv_write(CAL_RECORD_ADDRESS, record, (uint8_t)CAL_RECORD_SIZE);
+
+    if (STATUS_OK == status)
+    {
+        log_cal_point(g_cal_outputs.point, g_cal_outputs.cv);
+    }
+    else
+    {
+        log_error(LOG_ERROR_NV_WRITE, status);
+    }
+}
+
+
+
+/**
  * @brief  Acts on what the previous tick computed. The pitch CV, the gate
  *         and the clock output are set first, on every tick, so that their
  *         edges are not held up by the log; the pitch goes ahead of the gate
  *         so that it is in place when the note starts. Then, when a step
  *         began, logs it (or the failed step read), and with it a failed
- *         tempo read and a failed write of the pitch.
+ *         tempo read and a failed write of the pitch. Last, saves the
+ *         calibration if a point of it was stored.
  */
 static void apply_outputs(void)
 {
@@ -81,6 +118,11 @@ static void apply_outputs(void)
 
     gate_output_write(g_outputs.b_gate);
     clock_output_write(g_outputs.b_clock_out);
+
+    if (g_cal_outputs.b_stored)
+    {
+        save_calibration();
+    }
 
     if (g_outputs.b_step_started)
     {
@@ -137,10 +179,43 @@ static void gather_inputs(uint8_t elapsed_ticks)
 
 
 /**
+ * @brief  Runs the core for this tick. Calibration goes first: if the panel
+ *         asked for calibration mode at start-up, it gives the pitch CV and
+ *         the gate and nothing is sequenced; otherwise the sequencer runs.
+ */
+static void run_core(void)
+{
+    cal_inputs_t cal_in;
+
+    cal_in.p_raw_steps   = g_inputs.raw_steps;
+    cal_in.b_steps_valid = g_inputs.b_steps_valid;
+    cal_in.tempo_raw     = g_inputs.tempo_raw;
+    cal_in.b_tempo_valid = g_inputs.b_tempo_valid;
+    cal_in.elapsed_ticks = g_inputs.elapsed_ticks;
+    cal_in.cv_per_octave = CV_MILLIVOLTS_PER_OCTAVE;
+
+    cal_tick(&g_cal_state, &cal_in, &g_inputs.pitch_cal, &g_cal_outputs);
+
+    if (g_cal_outputs.b_active)
+    {
+        // The rest of the outputs stay as init left them: no step, clock low
+        g_outputs.cv     = g_cal_outputs.cv;
+        g_outputs.b_gate = g_cal_outputs.b_gate;
+    }
+    else
+    {
+        seq_tick(&g_seq_state, &g_inputs, &g_outputs);
+    }
+}
+
+
+
+/**
  * @brief  Sets the controls the board has no hardware for yet to fixed
  *         values: all sixteen steps, forward, looping, never reset, the
  *         chromatic scale from the lowest pitch, a gate of half a step, and
- *         the ideal pitch calibration table.
+ *         the ideal pitch calibration table, which stays unless a stored
+ *         one is loaded over it.
  */
 static void set_fixed_controls(void)
 {
@@ -189,9 +264,45 @@ static void reset_tick_state(void)
     g_outputs.b_clock_out    = false;
     g_outputs.cv             = 0U;
 
+    cal_init(&g_cal_state);
+    g_cal_outputs.b_active = false;
+    g_cal_outputs.cv       = 0U;
+    g_cal_outputs.b_gate   = false;
+    g_cal_outputs.b_stored = false;
+    g_cal_outputs.point    = 0U;
+
     g_step_read_status  = STATUS_OK;
     g_tempo_read_status = STATUS_OK;
     g_ticks_until_scan  = 0U;
+}
+
+
+
+/**
+ * @brief  Loads the stored pitch calibration over the ideal table, if there
+ *         is a valid record, and logs how the firmware started: what reset
+ *         it, and whether a stored calibration is in use. A read that fails
+ *         is logged and leaves the ideal table, as does anything that is not
+ *         a record (storage never written, say).
+ */
+static void load_calibration(void)
+{
+    uint8_t             record[CAL_RECORD_SIZE];
+    const uint8_t       reset_cause  = reset_cause_read();
+    const port_status_t status       =
+        nv_read(CAL_RECORD_ADDRESS, record, (uint8_t)CAL_RECORD_SIZE);
+    bool                b_calibrated = false;
+
+    if (STATUS_OK == status)
+    {
+        b_calibrated = cal_record_decode(record, &g_inputs.pitch_cal);
+    }
+    else
+    {
+        log_error(LOG_ERROR_NV_READ, status);
+    }
+
+    log_startup(reset_cause, b_calibrated);
 }
 
 
@@ -200,13 +311,18 @@ port_status_t app_init(void)
 {
     const port_status_t status = platform_init();
 
-    if (STATUS_OK != status)
+    reset_tick_state();
+
+    if (STATUS_OK == status)
+    {
+        load_calibration();
+    }
+    else
     {
         // The main loop will not run, so nothing else would send this
         log_error(LOG_ERROR_INIT, status);
         log_flush();
     }
-    reset_tick_state();
 
     return status;
 }
@@ -223,8 +339,9 @@ void app_run_once(void)
         // point in every tick, however long the rest of the pass takes.
         apply_outputs();
         gather_inputs(elapsed_ticks);
-        seq_tick(&g_seq_state, &g_inputs, &g_outputs);
+        run_core();
     }
 
     log_poll();
+    nv_poll();
 }

@@ -17,6 +17,8 @@
 
 #define HOST_RAW_STEP_BYTES (8U)  // Size of the scripted step-input buffer
 #define HOST_MAX_EVENTS     (64U) // Output-port calls recorded before further ones are dropped
+#define HOST_NV_BYTES       (32U) // Size of the faked non-volatile storage
+#define HOST_NV_ERASED      (0xFFU) // What a byte of it holds until it is written
 
 /**
  * @brief Which output-port call an event records.
@@ -26,7 +28,8 @@ typedef enum
     HOST_EVENT_STEP_NOTE = 0, // log_step_note(step, semitone): a = step, b = semitone
     HOST_EVENT_STEP_REST,     // log_step_rest(step):           a = step, b = 0
     HOST_EVENT_ERROR,         // log_error(what, status):       a = what, b = status
-    HOST_EVENT_FLUSH          // log_flush():                   a = 0,    b = 0
+    HOST_EVENT_FLUSH,         // log_flush():                   a = 0,    b = 0
+    HOST_EVENT_CAL_POINT      // log_cal_point(point, cv):      a = point, b = cv
 } host_event_kind_t;
 
 /**
@@ -43,7 +46,8 @@ typedef struct
  * @brief Clears the event record and the call counts, puts the gate and the
  *        clock output low and the pitch CV at 0, and restores the default
  *        script: every port succeeds, all step bits are 0, the tempo reading
- *        is 0 and no time passes.
+ *        is 0, no time passes, the non-volatile storage is erased and no
+ *        reset cause is recorded.
  */
 void host_reset(void);
 
@@ -78,6 +82,76 @@ void host_set_cv_status(port_status_t status);
  * @param ticks  Elapsed ticks to report, 0 to 255.
  */
 void host_set_elapsed_ticks(uint8_t ticks);
+
+/**
+ * @brief Sets what the next reset_cause_read() returns. Like the hardware,
+ *        reading it clears it.
+ * @param cause  Reset flags to report, 0 to 15.
+ */
+void host_set_reset_cause(uint8_t cause);
+
+/**
+ * @brief Puts bytes straight into the non-volatile storage, as if written
+ *        before the power last went off. Bytes that would fall outside the
+ *        storage are left out.
+ * @param address  Address of the first byte.
+ * @param p_data   The bytes; null does nothing.
+ * @param count    How many.
+ */
+void host_set_nv_bytes(uint16_t address, const uint8_t *p_data, uint8_t count);
+
+/**
+ * @brief  Returns one byte of the non-volatile storage.
+ * @param  address  0 to HOST_NV_BYTES - 1.
+ * @return The byte, or HOST_NV_ERASED if the address is outside the storage.
+ */
+uint8_t host_nv_byte(uint16_t address);
+
+/**
+ * @brief Sets the status nv_read() returns. Data is only copied out when it
+ *        is STATUS_OK.
+ */
+void host_set_nv_read_status(port_status_t status);
+
+/**
+ * @brief Sets the status nv_write() returns. The bytes are only stored when
+ *        it is STATUS_OK, and are then stored at once.
+ */
+void host_set_nv_write_status(port_status_t status);
+
+/**
+ * @brief Number of times nv_read() has been called since host_reset().
+ */
+uint16_t host_nv_read_count(void);
+
+/**
+ * @brief Number of times nv_write() has been called since host_reset().
+ */
+uint16_t host_nv_write_count(void);
+
+/**
+ * @brief Number of times nv_poll() has been called since host_reset().
+ */
+uint16_t host_nv_poll_count(void);
+
+/**
+ * @brief Number of times log_startup() has been called since host_reset().
+ *        It is kept out of the event record, so that the record of a run
+ *        begins with its first step.
+ */
+uint16_t host_startup_count(void);
+
+/**
+ * @brief The reset cause the most recent log_startup() call was given (0 if
+ *        none).
+ */
+uint8_t host_startup_reset_cause(void);
+
+/**
+ * @brief Whether the most recent log_startup() call reported a stored
+ *        calibration (false if none).
+ */
+bool host_startup_calibrated(void);
 
 /**
  * @brief Number of output-port calls recorded since host_reset().

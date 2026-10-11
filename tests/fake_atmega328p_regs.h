@@ -3,15 +3,17 @@
 #define ATMEGA328P_USART_REGS_H  // This file stands in for the USART header too
 #define ATMEGA328P_TIMER2_REGS_H // And for the Timer/Counter2 header
 #define ATMEGA328P_SPI_REGS_H    // And for the SPI header
+#define ATMEGA328P_EEPROM_REGS_H // And for the EEPROM header
 /**
  * @file   fake_atmega328p_regs.h
  * @brief  Stand-in for adapters/target/atmega328p_regs.h,
- *         atmega328p_usart_regs.h, atmega328p_timer2_regs.h and
- *         atmega328p_spi_regs.h so a target adapter can be compiled and
+ *         atmega328p_usart_regs.h, atmega328p_timer2_regs.h,
+ *         atmega328p_spi_regs.h and atmega328p_eeprom_regs.h so a target
+ *         adapter can be compiled and
  *         tested on a PC. It claims the real headers' include guards, so
  *         including this first makes the adapter's own #include of a real
  *         one a no-op. Registers become plain variables,
- *         with four small hardware models behind them:
+ *         with five small hardware models behind them:
  *           - USART:  bytes written to the data register are captured, and the
  *                     "transmit buffer empty" flag can be held off for a while
  *           - ADC:    a started conversion finishes after a set number of polls
@@ -21,6 +23,10 @@
  *           - 74HC165 chain with its load line on PB1: scripted bytes are
  *                     handed out eight clocks at a time, as an SPI transfer
  *                     clocks them, in response to the load line
+ *           - EEPROM: a read strobe puts the addressed byte in the data
+ *                     register; a write strobe stores it, but only if it
+ *                     was armed first, and the write then shows as in
+ *                     progress for a set number of polls
  *
  *         Everything is static, so each test program gets its own copy. Call
  *         fake_regs_reset() at the start of each test.
@@ -60,12 +66,17 @@
 #define SPR0 0 // SPI Clock Rate Select bit 0 in SPCR
 #define SPIF 7 // SPI Interrupt Flag in SPSR
 
+#define EERE  0 // EEPROM Read Enable bit in EECR
+#define EEPE  1 // EEPROM Write Enable bit in EECR
+#define EEMPE 2 // EEPROM Master Write Enable bit in EECR
+
 // The interrupt handler becomes an ordinary function the test can call
 #define TIMER2_COMPA_ISR fake_timer2_compa_isr
 #define TIMER2_COMPA_ISR_ATTR
 
 // ---- CPU and Timer/Counter2 ----
 static uint8_t g_fake_sreg   = 0U;
+static uint8_t g_fake_mcusr  = 0U;
 static uint8_t g_fake_tccr2a = 0U;
 static uint8_t g_fake_tccr2b = 0U;
 static uint8_t g_fake_tcnt2  = 0U;
@@ -128,6 +139,24 @@ static bool     g_fake_spi_b_pending  = false;    // A byte has been written and
 // whether SS was a high output before master mode was selected
 static uint8_t g_fake_ddrb_at_spcr  = 0U;
 static uint8_t g_fake_portb_at_spcr = 0U;
+
+// ---- EEPROM ----
+#define FAKE_EEPROM_BYTES  (1024U)
+#define FAKE_EEPROM_ERASED (0xFFU) // What a byte never written holds
+
+static uint8_t  g_fake_eeprom[FAKE_EEPROM_BYTES];
+static uint8_t  g_fake_eecr  = 0U;
+static uint8_t  g_fake_eedr  = 0U;
+static uint8_t  g_fake_eearl = 0U;
+static uint8_t  g_fake_eearh = 0U;
+static uint16_t g_fake_eeprom_busy_polls = 0U; // Reads of EECR that still show a write running
+static uint16_t g_fake_eeprom_polls_left = 0U; // The same, for the write in progress
+static bool     g_fake_eeprom_b_writing  = false; // A byte write has started and not finished
+static uint16_t g_fake_eeprom_reads      = 0U; // Read strobes
+static uint16_t g_fake_eeprom_writes     = 0U; // Bytes written
+static uint16_t g_fake_eeprom_unarmed    = 0U; // Write strobes that were not armed first
+// true if a write was armed or started with interrupts enabled
+static bool     g_fake_eeprom_b_unmasked = false;
 
 // ---- ADC ----
 static uint8_t  g_fake_adcsra = 0U;
@@ -351,10 +380,89 @@ static inline uint8_t *fake_ucsr0a(void)
 }
 
 /**
+ * @brief Brings the EEPROM model up to date with whatever the adapter last
+ *        wrote to its registers. Like the chain model, a register access is
+ *        seen before the write it makes, so every access of EECR, EEDR and
+ *        SREG (and the test, before it checks) calls this for the previous
+ *        one. The four clock cycles the hardware allows between arming a
+ *        write and starting it are not modelled; that interrupts are off for
+ *        both is.
+ */
+static inline void fake_eeprom_sync(void)
+{
+    const uint16_t address =
+        (uint16_t)((((uint16_t)g_fake_eearh << 8U) | g_fake_eearl) % FAKE_EEPROM_BYTES);
+    const bool b_interrupts_on = (0U != (g_fake_sreg & (1U << SREG_I)));
+    const bool b_armed         = (0U != (g_fake_eecr & (1U << EEMPE)));
+    const bool b_strobe        = (0U != (g_fake_eecr & (1U << EEPE)));
+
+    if (0U != (g_fake_eecr & (1U << EERE)))
+    {
+        g_fake_eedr = g_fake_eeprom[address];
+        g_fake_eecr &= (uint8_t)~(1U << EERE);
+        g_fake_eeprom_reads++;
+    }
+
+    if (b_armed && b_interrupts_on)
+    {
+        g_fake_eeprom_b_unmasked = true;
+    }
+    if (b_strobe && !g_fake_eeprom_b_writing)
+    {
+        if (b_armed)
+        {
+            g_fake_eeprom[address]   = g_fake_eedr;
+            g_fake_eeprom_b_writing  = true;
+            g_fake_eeprom_polls_left = g_fake_eeprom_busy_polls;
+            g_fake_eeprom_writes++;
+            g_fake_eecr &= (uint8_t)~(1U << EEMPE); // The hardware clears it
+        }
+        else
+        {
+            g_fake_eecr &= (uint8_t)~(1U << EEPE); // No effect on the hardware
+            g_fake_eeprom_unarmed++;
+        }
+    }
+}
+
+/**
+ * @brief EECR with the hardware's self-clearing write enable bit: once a
+ *        byte write has started, the bit reads as set for
+ *        g_fake_eeprom_busy_polls accesses and then clears.
+ */
+static inline uint8_t *fake_eecr(void)
+{
+    fake_eeprom_sync();
+    if (g_fake_eeprom_b_writing)
+    {
+        if (g_fake_eeprom_polls_left > 0U)
+        {
+            g_fake_eeprom_polls_left--;
+        }
+        else
+        {
+            g_fake_eeprom_b_writing = false;
+            g_fake_eecr &= (uint8_t)~(1U << EEPE);
+        }
+    }
+    return &g_fake_eecr;
+}
+
+/**
+ * @brief EEDR, holding the byte a read strobe just before it asked for.
+ */
+static inline uint8_t *fake_eedr(void)
+{
+    fake_eeprom_sync();
+    return &g_fake_eedr;
+}
+
+/**
  * @brief SREG, noting the state of the timer at the moment it is touched.
  */
 static inline uint8_t *fake_sreg(void)
 {
+    fake_eeprom_sync();
     g_fake_tccr2b_at_sreg = g_fake_tccr2b;
     g_fake_timsk2_at_sreg = g_fake_timsk2;
     g_fake_ocr2a_at_sreg  = g_fake_ocr2a;
@@ -440,6 +548,23 @@ static inline void fake_regs_reset(void)
     g_fake_uart_busy_polls = 0U;
     fake_uart_clear();
 
+    for (size_t i = 0U; i < FAKE_EEPROM_BYTES; i++)
+    {
+        g_fake_eeprom[i] = FAKE_EEPROM_ERASED;
+    }
+    g_fake_eecr  = 0U;
+    g_fake_eedr  = 0U;
+    g_fake_eearl = 0U;
+    g_fake_eearh = 0U;
+    g_fake_eeprom_busy_polls = 0U;
+    g_fake_eeprom_polls_left = 0U;
+    g_fake_eeprom_b_writing  = false;
+    g_fake_eeprom_reads      = 0U;
+    g_fake_eeprom_writes     = 0U;
+    g_fake_eeprom_unarmed    = 0U;
+    g_fake_eeprom_b_unmasked = false;
+
+    g_fake_mcusr  = 0U;
     g_fake_sreg   = 0U;
     g_fake_tccr2a = 0U;
     g_fake_tccr2b = 0U;
@@ -476,6 +601,12 @@ static inline void fake_regs_reset(void)
 #define UCSR0C g_fake_ucsr0c
 #define UDR0   (*fake_udr0())
 
+#define EECR  (*fake_eecr())
+#define EEDR  (*fake_eedr())
+#define EEARL g_fake_eearl
+#define EEARH g_fake_eearh
+
+#define MCUSR  g_fake_mcusr
 #define SREG   (*fake_sreg())
 #define TCCR2A g_fake_tccr2a
 #define TCCR2B g_fake_tccr2b

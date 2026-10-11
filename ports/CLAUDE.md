@@ -6,4 +6,5 @@ Headers only: what the app needs from the outside world, one small header per ne
 - Document every port function in its header: purpose, units, valid ranges, and whether it's ISR-safe.
 - A port header includes nothing from `adapters/` and names no register, pin or MCU.
 - Every port function has two implementations: one in `adapters/target/` and a fake in `adapters/host/host_ports.c`. `log_port.h` has two on the target, one per logger. Add all of them in the same change.
+- A port function never waits for slow hardware. Where the work takes longer than a tick (the log, a write to non-volatile storage), the port has a function that only starts it and a `_poll()` function the main loop calls on every pass.
 - Functions that can fail return `port_status_t` from `port_status.h`. Its values are printed in the serial log, so never renumber them; add new codes with new numbers.

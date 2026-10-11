@@ -225,6 +225,48 @@ void log_step_rest(uint8_t step)
 
 
 /**
+ * @brief Logs how the firmware started at INFO level (see log_port.h).
+ * @param reset_cause what reset the processor, as a number
+ * @param b_calibrated true if a stored pitch calibration is in use
+ */
+void log_startup(uint8_t reset_cause, bool b_calibrated)
+{
+    if (is_level_enabled(LOGLVL_INFO))
+    {
+        begin_message();
+        write_text("Reset = ");
+        write_decimal(reset_cause);
+        write_text(" Cal = ");
+        write_decimal(b_calibrated ? 1U : 0U);
+        write_text("\r\n");
+        end_message();
+    }
+}
+
+
+
+/**
+ * @brief Logs a calibration point being stored at INFO level (see log_port.h).
+ * @param point table entry
+ * @param cv its new value
+ */
+void log_cal_point(uint8_t point, uint16_t cv)
+{
+    if (is_level_enabled(LOGLVL_INFO))
+    {
+        begin_message();
+        write_text("Cal point ");
+        write_decimal(point);
+        write_text(" = ");
+        write_decimal(cv);
+        write_text("\r\n");
+        end_message();
+    }
+}
+
+
+
+/**
  * @brief Logs a failed operation and its status code at ERROR level (see log_port.h).
  * @param what which operation failed
  * @param status the status code it returned
@@ -249,6 +291,14 @@ void log_error(log_error_id_t what, port_status_t status)
 
         case LOG_ERROR_CV_WRITE:
             p_text = "Pitch CV write failed, status code = ";
+            break;
+
+        case LOG_ERROR_NV_READ:
+            p_text = "Calibration read failed, status code = ";
+            break;
+
+        case LOG_ERROR_NV_WRITE:
+            p_text = "Calibration write failed, status code = ";
             break;
 
         default:

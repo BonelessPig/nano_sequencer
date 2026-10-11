@@ -9,6 +9,7 @@
  *
  */
 #include "logger.h"
+#include <stdbool.h>
 #include <stdint.h>
 #include "log_port.h"
 #include "port_status.h"
@@ -48,6 +49,32 @@ void log_step_note(uint8_t step, uint8_t semitone)
 void log_step_rest(uint8_t step)
 {
     (void)step;
+}
+
+
+
+/**
+ * @brief Discards a start-up message (see log_port.h).
+ * @param reset_cause ignored
+ * @param b_calibrated ignored
+ */
+void log_startup(uint8_t reset_cause, bool b_calibrated)
+{
+    (void)reset_cause;
+    (void)b_calibrated;
+}
+
+
+
+/**
+ * @brief Discards a calibration point message (see log_port.h).
+ * @param point ignored
+ * @param cv ignored
+ */
+void log_cal_point(uint8_t point, uint16_t cv)
+{
+    (void)point;
+    (void)cv;
 }
 
 

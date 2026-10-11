@@ -51,6 +51,10 @@ static void test_messages_are_discarded(void)
     log_error(LOG_ERROR_STEP_READ, ERR_INVALID_PARAM);
     log_error(LOG_ERROR_TEMPO_READ, ERR_TIMEOUT);
     log_error(LOG_ERROR_CV_WRITE, ERR_TIMEOUT);
+    log_error(LOG_ERROR_NV_READ, ERR_BUSY);
+    log_error(LOG_ERROR_NV_WRITE, ERR_BUSY);
+    log_startup(1U, true);
+    log_cal_point(2U, 2013U);
     expect_usart_untouched();
 }
 

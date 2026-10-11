@@ -8,7 +8,7 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 - Registers at 0x20 to 0x3F need the `REG_IO_LOW` attribute or the compiler stops using `sbi`/`cbi`, which changes the shift register load pulse.
 - Putting the address inside the attribute does not work on avr-gcc 12.1.0 (`io_low(0x2B)` fails with "IO definition needs an address"), which is why the linker file exists.
 - **A macro used by only one build configuration is a rule 2.5 finding in the other.** Definitions that only one configuration's files use go in a header only those files include. That is why the USART0 registers and bit positions are in `atmega328p_usart_regs.h` (same `.ld` file), included only by `serial_logger.c`.
-- Group a new peripheral's registers in a header of its own on the same pattern (`atmega328p_timer2_regs.h`, `atmega328p_spi_regs.h`), with only the bit positions the code uses, and check each position against the toolchain's `avr/iom328p.h`. An unused bit position is a rule 2.5 finding, and so is an unused mask in `bits.h`.
+- Group a new peripheral's registers in a header of its own on the same pattern (`atmega328p_timer2_regs.h`, `atmega328p_spi_regs.h`, `atmega328p_eeprom_regs.h`), with only the bit positions the code uses, and check each position against the toolchain's `avr/iom328p.h`. An unused bit position is a rule 2.5 finding, and so is an unused mask in `bits.h`.
 - A new register also goes into `tests/fake_atmega328p_regs.h` and its `fake_regs_reset()`.
 
 ## Drivers and devices
@@ -21,6 +21,15 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 - The SPI is master, mode 0, MSB first, 1 MHz. Every part on the bus must work in that mode, or the mode becomes a parameter of the transfer. SS (PB2) stays an output: as a low input it cancels master mode.
 - A pin that idles high is set high before it is made an output.
 - A driver's init goes in `platform_init()` after `register_init()` and before `timebase_init()`.
+
+## EEPROM and reset cause
+
+- `eeprom.c` implements `nv_port.h` and owns the EEPROM registers; nothing else includes `atmega328p_eeprom_regs.h`. It is one file with no driver under it, like `timebase.c`, because the peripheral has one user. Split it if a second one arrives (the crash log).
+- Nothing waits for the EEPROM. `nv_write()` only copies the bytes; `nv_poll()` starts at most one byte per call, and only when the hardware's write bit is clear. A byte that already holds the value is skipped.
+- Starting a byte is a timed sequence: EEMPE, then EEPE within four clock cycles. Keep the two writes adjacent, with interrupts masked around just them and the status register restored as found, and check with `avr-objdump -d` that they compile to an `out` followed directly by an `sbi`. `EECR` needs `REG_IO_LOW` for that.
+- A read while a write is in hand is refused, not waited for: it would move the address register.
+- The calibration record is at address 0 (the app's choice, not this file's). Another user of the EEPROM takes other addresses.
+- `reset_cause.c` passes on the low four bits of `MCUSR` as they are, because the port gives the causes in that order, and clears the register. Read it once, at start-up. What it holds on the board depends on the bootloader (`docs/ROADMAP.md` section 8).
 
 ## Compiler
 
@@ -45,7 +54,7 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 
 ## Pins
 
-- In use: PB1 (74HC165 load), PB5 (SCK, the clock of the chain and the DAC), PB4 (MISO, the chain's data, through 1 kΩ), PB3 (MOSI, the DAC's data), PB2 (SS, the DAC's chip select, idle high), PD4 (gate output), PD5 (clock output), ADC channel 6 (tempo pot). Timer/Counter2 is the 1 kHz tick and drives no pin.
+- In use: PB1 (74HC165 load), PB5 (SCK, the clock of the chain and the DAC), PB4 (MISO, the chain's data, through 1 kΩ), PB3 (MOSI, the DAC's data), PB2 (SS, the DAC's chip select, idle high), PD4 (gate output), PD5 (clock output), ADC channel 6 (tempo pot). Timer/Counter2 is the 1 kHz tick and drives no pin, and the EEPROM has none either.
 - The MCP4822 is used on channel A at a gain of 2 from its internal reference (1 mV a step), with LDAC tied low. Its frame layout and pinout have not been checked against the datasheet (`docs/ROADMAP.md` section 8).
 - PD2, PD3, PD6 and PD7 are free. PC0 and PC1 are given a direction but are unused and free.
 - An output pin's direction and idle level are set in `register_init.c`, level first. The adapter that writes it (`gate_output.c`, `clock_output.c`) only changes its level, one pin per statement so that it compiles to a single `sbi` or `cbi` and cannot disturb the rest of the port. Check that with `avr-objdump -d` for a new one.

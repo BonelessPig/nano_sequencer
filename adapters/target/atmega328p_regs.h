@@ -13,7 +13,8 @@
  *
  * The USART0 registers are in atmega328p_usart_regs.h, because only the debug
  * build's serial logger uses them. The Timer/Counter2 registers are in
- * atmega328p_timer2_regs.h and the SPI registers in atmega328p_spi_regs.h.
+ * atmega328p_timer2_regs.h, the SPI registers in atmega328p_spi_regs.h and
+ * the EEPROM registers in atmega328p_eeprom_regs.h.
  *
  * Bit positions are taken directly from the ATmega328P datasheet. This file
  * has no dependency on avr-libc's <avr/io.h> — it exists so the rest of the
@@ -57,7 +58,8 @@ extern volatile uint16_t ADC;    // ADC Data Register (10-bit result)
 #define REFS0 6 // Reference Selection Bit 0 in ADMUX
 
 // ---- CPU ----
-extern volatile uint8_t SREG; // Status Register
+extern volatile uint8_t SREG;  // Status Register
+extern volatile uint8_t MCUSR; // MCU Status Register: one flag per reset source
 
 #define SREG_I 7 // Global Interrupt Enable bit in SREG
 

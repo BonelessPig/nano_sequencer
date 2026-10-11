@@ -5,7 +5,7 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 ## Layout
 
 - `lib/`: the chip, and `pin_recorder.js` for watching an output pin. `parts/`: models of external chips. Neither may know anything about the sequencer, so they can be lifted out for another project.
-- `boards/nano_sequencer.js`: which part is on which pin, plus the panel, pot, the DAC's frames, the gate and clock recorders and serial capture.
+- `boards/nano_sequencer.js`: which part is on which pin, plus the panel, pot, the DAC's frames, the gate and clock recorders, serial capture, and the EEPROM's contents and the reset flags at power-on (`createBoard(config, { eeprom, resetFlags })`). `boards/cal_record.js` works the calibration record out on its own, so a scenario does not check the firmware against itself.
 - `scenarios/*.test.js`: what each firmware image must do, using Node's built-in test runner. No other dependencies; avr8js is pinned in `package-lock.json`.
 
 ## Writing parts and scenarios
@@ -20,9 +20,12 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 - The release image has no log. Time its steps from the clock output, which pulses on every step, and its notes from the gate. The same measurements work on the debug image, where they are far steadier than the log (0.003 ms against 0.25 ms).
 - An output with nothing modelled on it gets a pin recorder on the board, not a listener in the scenario. It records the level at the instant the port register is written.
 - The first step after reset is a tick short, and so are its gate and clock pulse. Leave pulse 0 out of a width or period loop and assert it on its own.
-- A peripheral the firmware starts using (a timer, SPI) has to be instantiated in `lib/machine.js` first; avr8js does nothing for registers nobody models.
+- The board sorts the log: `serial.lines` holds the step lines, which scenarios count and time, and `serial.notices` every other line (start-up, calibration, errors). A new kind of line goes to the notices unless it begins `Step `.
+- A power cycle is a second board created with the first one's `eepromBytes()`. A scenario with no log (the release image, or calibration mode in either) runs for a time with `runForMs()`, not until a line.
+- A calibration scenario that should hold for both images goes in `calibration.test.js`, inside the loop over the two.
+- A peripheral the firmware starts using (a timer, SPI, the EEPROM) has to be instantiated in `lib/machine.js` first; avr8js does nothing for registers nobody models.
 - When a pin or part changes in `adapters/target/`, change the board and its scenarios in the same piece of work.
 
 ## Limits
 
-The chip and parts are models. Nothing analog is modelled, parts have no setup or hold limits, and only the GPIO, ADC, USART, Timer/Counter2 (with its compare match interrupt) and SPI models have been exercised so far. SPI clock edges are not modelled at all, and an output pin is a logic level with no voltage, rise time or load. A scenario passing is not proof on hardware; say so when reporting.
+The chip and parts are models. Nothing analog is modelled, parts have no setup or hold limits, and only the GPIO, ADC, USART, Timer/Counter2 (with its compare match interrupt), SPI and EEPROM models have been exercised so far. The EEPROM model keeps the four-cycle rule for starting a write but never wears or fails, and the reset flags register holds only what the scenario put there. SPI clock edges are not modelled at all, and an output pin is a logic level with no voltage, rise time or load. A scenario passing is not proof on hardware; say so when reporting.

@@ -11,6 +11,7 @@
  * @copyright Copyright (c) 2026
  *
  */
+#include <stdbool.h>
 #include <stdint.h>
 #include "port_status.h"
 
@@ -22,8 +23,31 @@ typedef enum
     LOG_ERROR_INIT = 0,   // platform_init() failed
     LOG_ERROR_STEP_READ,  // step_input_read() failed
     LOG_ERROR_TEMPO_READ, // tempo_input_read() failed
-    LOG_ERROR_CV_WRITE    // cv_output_write() failed
+    LOG_ERROR_CV_WRITE,   // cv_output_write() failed
+    LOG_ERROR_NV_READ,    // nv_read() of the stored calibration failed
+    LOG_ERROR_NV_WRITE    // nv_write() of the calibration failed
 } log_error_id_t;
+
+/**
+ * @brief  Reports how the firmware started (info-level output).
+ * @param  reset_cause   What reset the processor, as reset_cause_read()
+ *                       gives it: 0 to 15.
+ * @param  b_calibrated  true if a stored pitch calibration was found and is
+ *                       in use; false if the ideal table is.
+ * @note   Not ISR-safe. Does not block; queued or dropped like
+ *         log_step_note().
+ */
+void log_startup(uint8_t reset_cause, bool b_calibrated);
+
+/**
+ * @brief  Reports a point of the pitch calibration being stored (info-level
+ *         output).
+ * @param  point  Table entry, 0 to 4.
+ * @param  cv     Its new value, 0 to 4095.
+ * @note   Not ISR-safe. Does not block; queued or dropped like
+ *         log_step_note().
+ */
+void log_cal_point(uint8_t point, uint16_t cv);
 
 /**
  * @brief  Reports the step being played and the pitch of its note

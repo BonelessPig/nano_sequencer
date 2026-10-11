@@ -158,6 +158,60 @@ static void test_error_text_matches_the_printf_format(void)
         (void)snprintf(expected, sizeof(expected),
                        "Pitch CV write failed, status code = %d\r\n", (int)statuses[i]);
         expect_uart(expected);
+
+        fake_uart_clear();
+        log_error(LOG_ERROR_NV_READ, statuses[i]);
+        (void)snprintf(expected, sizeof(expected),
+                       "Calibration read failed, status code = %d\r\n", (int)statuses[i]);
+        expect_uart(expected);
+
+        fake_uart_clear();
+        log_error(LOG_ERROR_NV_WRITE, statuses[i]);
+        (void)snprintf(expected, sizeof(expected),
+                       "Calibration write failed, status code = %d\r\n", (int)statuses[i]);
+        expect_uart(expected);
+    }
+}
+
+
+
+static void test_startup_text_matches_the_printf_format(void)
+{
+    char expected[EXPECTED_CAPACITY];
+
+    (void)logger_init(LOGLVL_DEBUG);
+    // Every combination of the four reset flags, plus the 8-bit extreme
+    for (unsigned int cause = 0U; cause <= 255U; cause += (cause < 16U) ? 1U : 239U)
+    {
+        for (int calibrated = 0; calibrated <= 1; calibrated++)
+        {
+            fake_uart_clear();
+            log_startup((uint8_t)cause, 0 != calibrated);
+            (void)snprintf(expected, sizeof(expected), "Reset = %d Cal = %d\r\n",
+                           (int)cause, calibrated);
+            expect_uart(expected);
+        }
+    }
+}
+
+
+
+static void test_cal_point_text_matches_the_printf_format(void)
+{
+    static const uint16_t values[] = { 0U, 7U, 1000U, 2013U, 4095U, 65535U };
+    char                  expected[EXPECTED_CAPACITY];
+
+    (void)logger_init(LOGLVL_DEBUG);
+    for (unsigned int point = 0U; point <= 255U; point += (point < 5U) ? 1U : 250U)
+    {
+        for (size_t i = 0U; i < (sizeof(values) / sizeof(values[0])); i++)
+        {
+            fake_uart_clear();
+            log_cal_point((uint8_t)point, values[i]);
+            (void)snprintf(expected, sizeof(expected), "Cal point %d = %d\r\n",
+                           (int)point, (int)values[i]);
+            expect_uart(expected);
+        }
     }
 }
 
@@ -182,14 +236,32 @@ static void test_level_filters_messages(void)
     log_error(LOG_ERROR_INIT, ERR_GENERAL);
     expect_uart("");
 
-    // ERROR: errors pass, debug-level step notes and rests do not
+    // ERROR: errors pass; debug-level step notes and rests and the
+    // info-level start-up and calibration lines do not
     (void)logger_init(LOGLVL_ERROR);
     fake_uart_clear();
     log_step_note(1U, 2U);
     log_step_rest(3U);
+    log_startup(1U, true);
+    log_cal_point(2U, 2013U);
     expect_uart("");
     log_error(LOG_ERROR_INIT, ERR_GENERAL);
     expect_uart("Initialization failed, status code = 1\r\n");
+
+    // WARN is still below them
+    (void)logger_init(LOGLVL_WARN);
+    fake_uart_clear();
+    log_startup(1U, true);
+    log_cal_point(2U, 2013U);
+    expect_uart("");
+
+    // INFO: the start-up and calibration lines pass, step notes do not
+    (void)logger_init(LOGLVL_INFO);
+    fake_uart_clear();
+    log_step_note(1U, 2U);
+    log_startup(1U, true);
+    log_cal_point(2U, 2013U);
+    expect_uart("Reset = 1 Cal = 1\r\nCal point 2 = 2013\r\n");
 
     // FATAL is less verbose than ERROR, so errors are dropped too
     (void)logger_init(LOGLVL_FATAL);
@@ -402,6 +474,8 @@ int main(void)
     RUN_TEST(test_step_note_text_matches_the_printf_format);
     RUN_TEST(test_step_rest_text_matches_the_printf_format);
     RUN_TEST(test_error_text_matches_the_printf_format);
+    RUN_TEST(test_startup_text_matches_the_printf_format);
+    RUN_TEST(test_cal_point_text_matches_the_printf_format);
     RUN_TEST(test_unknown_error_id_sends_nothing);
     RUN_TEST(test_level_filters_messages);
     RUN_TEST(test_off_is_never_an_enabled_message_level);
