@@ -8,6 +8,17 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 - `boards/nano_sequencer.js`: which part is on which pin, plus the panel, pot, the DAC's frames, the gate and clock recorders, serial capture, and the EEPROM's contents and the reset flags at power-on (`createBoard(config, { eeprom, resetFlags })`). `boards/cal_record.js` works the calibration record out on its own, so a scenario does not check the firmware against itself.
 - `scenarios/*.test.js`: what each firmware image must do, using Node's built-in test runner. No other dependencies; avr8js is pinned in `package-lock.json`.
 
+- `live/server.js` and `live/page.html`: `make live`, the board run at real speed and shown in a browser. A viewer, not a check.
+
+## The live view
+
+- The server uses `createBoard()` as the scenarios do and adds nothing to the model. Something new to show is exposed by the board first, then sent by the server.
+- The page holds no emulator and no board state of its own: a control is posted to the server and drawn when the `state` event comes back.
+- The server empties the board's records after every slice (`drain()`). A record added to the board has to be added to that list, or a long run fills memory.
+- It is paced by wall time, so nothing measured through it counts; a timing question goes in a scenario.
+- No dependencies beyond Node's own modules, and it listens on 127.0.0.1 only.
+- A pin or part changed on the board is changed in the server and the page in the same piece of work.
+
 ## Writing parts and scenarios
 
 - A part on the SPI bus is the exception to the next rule for its clock and data: avr8js's SPI does not move its pins, so the board hands the part each transfer through `spi.onByte` and the part answers with a byte. Its other lines (load, chip select) are still wires. Assert the SPI mode in a scenario, because the model cannot object to a wrong one.

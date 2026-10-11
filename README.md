@@ -78,7 +78,8 @@ tools/sim/                    # Emulated board (make sim)
 ├── parts/mcp4822.js                  # MCP4822 DAC model
 ├── boards/nano_sequencer.js          # What is wired to which pin
 ├── boards/cal_record.js              # The calibration record, worked out apart from the firmware
-└── scenarios/*.test.js               # What each firmware image must do on that board
+├── scenarios/*.test.js               # What each firmware image must do on that board
+└── live/server.js, page.html         # The same board at real speed, in a browser (make live)
 ```
 
 ## Hardware target
@@ -126,7 +127,7 @@ For development, four optional checks need extra tools on `PATH`:
 
 | Tool | Used for | Needed to |
 |---|---|---|
-| `node` and `npm` (Node.js 22 or later) | Running the firmware images on an emulated board. The first run downloads the [avr8js](https://github.com/wokwi/avr8js) emulator library into `tools/sim/node_modules` | `make sim` |
+| `node` and `npm` (Node.js 22 or later) | Running the firmware images on an emulated board. The first run downloads the [avr8js](https://github.com/wokwi/avr8js) emulator library into `tools/sim/node_modules` | `make sim`, `make live` |
 | A C compiler for your PC (`gcc` on Windows, `cc` elsewhere) | Building the code and its tests for the PC | `make test`, `make coverage` |
 | `gcov` (comes with gcc) | Counting which lines and branches the tests run | `make coverage` |
 | `cppcheck` | Static analysis with its MISRA addon | `make misra` |
@@ -148,6 +149,7 @@ make test       # Build the firmware source for your PC and run the unit tests
 make coverage   # Run the tests instrumented; fails unless line and branch coverage is 100%
 make misra      # Run cppcheck with the MISRA addon
 make sim        # Run both firmware images on an emulated board and check what they do
+make live       # Run one image on that board at real speed and watch it in a browser
 make check      # Both builds and all four checks above; one line each unless one fails
 make clean      # Remove the build/ directory
 ```
@@ -166,6 +168,8 @@ The firmware is compiled with `-std=c99 -Wall -Wextra -Wconversion -Wshadow -Wer
 `make coverage` runs the same tests built with gcc's coverage instrumentation and prints a table per source file. Every file in `core/`, `app/` and `adapters/target/` must have all of its lines run and all of its branches taken, or the command fails. That is measured on the PC build: it shows the logic is exercised, not that register addresses or pulse timing are right on the chip.
 
 `make sim` builds both configurations and runs the two `output.hex` files, unmodified, on an emulated ATmega328P with the 74HC165 chain, the MCP4822 DAC, the tempo pot, recorders on the gate and clock pins and a serial capture modelled around it. The scenarios check the log text against the switches set on the emulated panel, the load pulse and SPI transfers of each panel read and how often it is read, the SPI and timer settings, the length of a step at a given tempo, the width and timing of every gate and clock pulse, that the DAC holds each note's voltage before its gate rises, and that a calibration stored in the emulated EEPROM in calibration mode is played from after a power cycle, all counted in CPU cycles. It checks the real machine code, which the host tests cannot, but against models of the chip and the parts: the board is still the final check.
+
+`make live` builds both configurations, runs one of them on the same emulated board at the pace of a real chip, and prints an address (`http://localhost:8165/`; `LIVE_PORT=` changes the port) to open in a browser. The page shows the panel's 64 switches and the tempo pot, which can be worked while it plays, the step being played, the gate and clock pins, the pitch CV as a figure and a trace, and the serial log; it can play the pitch CV and gate as a tone, switch between the two images, and power-cycle the board with its EEPROM kept or erased, which is how calibration mode is reached. It is for looking, not checking: nothing is asserted, it is paced by the PC's clock, and it is not part of `make check`. It serves this PC only, and Ctrl+C stops it.
 
 `make check` runs both builds, the tests, coverage, the MISRA analysis and the emulated board in one go. A stage that passes prints one line (with the flash and RAM figures, the coverage total or the scenario count); a stage that fails prints its full output. Every stage runs even if an earlier one failed, and the command fails if any did. It needs all the tools in the table above.
 

@@ -12,6 +12,7 @@
 #   make coverage     Run the tests instrumented and report line/branch coverage
 #   make misra        Run cppcheck with the MISRA addon over the source
 #   make sim          Run both firmware images on an emulated board
+#   make live         Run one image on that board at real speed, shown in a browser
 #   make check        Run all of the above checks; one line each unless one fails
 #   make clean       Delete the build/ directory
 #   make flash PORT=COM5   Override any variable below from the command line
@@ -391,6 +392,18 @@ sim: $(SIM_MODULES)
 	$(MAKE) CONFIG=debug $(BUILD_DIR)/debug/output.hex
 	$(MAKE) CONFIG=release $(BUILD_DIR)/release/output.hex
 	$(NODE) --test --test-reporter=spec "$(SIM_DIR)/scenarios/*.test.js"
+
+# `make live` runs one image on the same emulated board at the pace of a real
+# chip and serves a page to watch it and work its panel from: open the address
+# it prints in a browser, and stop it with Ctrl+C. It checks nothing, so it is
+# not part of `make check`. LIVE_PORT picks the port: make live LIVE_PORT=9000
+LIVE_PORT ?= 8165
+
+.PHONY: live
+live: $(SIM_MODULES)
+	$(MAKE) CONFIG=debug $(BUILD_DIR)/debug/output.hex
+	$(MAKE) CONFIG=release $(BUILD_DIR)/release/output.hex
+	$(NODE) $(SIM_DIR)/live/server.js $(LIVE_PORT)
 
 $(SIM_MODULES): $(SIM_DIR)/package-lock.json
 	$(NPM) --prefix $(SIM_DIR) ci

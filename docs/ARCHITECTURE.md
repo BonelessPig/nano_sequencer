@@ -25,7 +25,7 @@ How this was checked: the firmware is compiled with avr-gcc 12.1.0 under `-std=c
 
 ## Hardware
 
-What is wired to the chip, and which way each signal goes. The dotted path exists only in the debug build.
+What is wired to the chip, and which way each signal goes. The dotted path exists only in the debug build. [SCHEMATIC.html](SCHEMATIC.html) has the wiring pin by pin, with a diagram of each chip; open it in a browser.
 
 ```mermaid
 flowchart LR
@@ -857,6 +857,7 @@ What this does not show: the fakes are plain variables, so nothing here checks a
 | `parts/` | `hc165.js`: a 74HC165 chain, its load line a wire and its clock and data taken a byte at a time from the SPI. `mcp4822.js`: the DAC, its chip select a wire and its frames taken from the SPI the same way | No |
 | `boards/` | `nano_sequencer.js`: which part is on which pin, the panel switches, the tempo pot, the frames the DAC took, recorders on the gate and clock pins, serial capture, what the EEPROM holds at power-on and afterwards, the reset flags at power-on. `cal_record.js`: the calibration record worked out independently of the firmware | Yes |
 | `scenarios/` | `debug.test.js`, `release.test.js`: what each image must do. `calibration.test.js`: calibration and its storage, run on both | Yes |
+| `live/` | `server.js`, `page.html`: the board run at real speed and shown in a browser (`make live`, below) | Yes |
 
 The first two folders are kept free of anything specific to this project so they can be lifted out for another one.
 
@@ -870,9 +871,11 @@ The figures the emulator gave are in "The main loop and one tick" above.
 
 What this does not show: the chip and the parts are models. The 74HC165 model follows the datasheet's logic (the load input is level-sensitive) but has no setup, hold or pulse-width limits, nothing analog is modelled, and only the GPIO, ADC, USART, Timer/Counter2, SPI and EEPROM parts of avr8js have been exercised. The emulated EEPROM does enforce the four-cycle window between arming a write and starting it, and takes 3.6 ms a byte, but it never wears, never fails and loses nothing if the run stops mid-write; and the reset flags register holds only what a scenario puts in it, since the emulator has no power-on or reset pin to set them. The gate and clock pins are recorded as logic levels at the instant the port register is written: nothing is said about voltage, rise time or what a load does to them. The emulated SPI does not move its pins: it hands the board whole bytes, and the 74HC165 model answers with eight bits sampled before each shift. So the scenarios show that the firmware asked for mode 0 and made the right transfers after a load pulse, but not that mode 0 reads a real chain correctly. The DAC model is the same kind of thing: it decodes the frame as the datasheet lays it out and multiplies, so it shows the right bits were sent between the right chip select edges and what voltage an ideal part would give. It says nothing of the real output: its accuracy, its settling, or noise on it from the bus running beside it. The emulated clock is exact; the board's 16 MHz resonator is not, and one tick period should be compared against the board. `make sim` is not part of the coverage figure.
 
+**Watching it run.** `make live` starts `live/server.js`, which creates the same board from `boards/nano_sequencer.js`, unchanged, and every 10 ms runs the chip on to where a real one would be by the PC's clock. After each slice it takes what the board recorded (edges on the gate and clock pins, changes of the DAC's output, log lines), sends it to the page as server-sent events with the chip time of each, and empties the records, so a long run does not grow. The page holds no emulator: a switch, the pot or a power cycle is posted to the server, which sets it on the board. A power cycle is a new board, given the old one's EEPROM contents unless asked to erase them. The step shown as playing is counted from the clock output's pulses, so it works for the release image too. The server listens on this PC only (127.0.0.1) and stops the chip while no page is connected. Nothing is asserted and the pacing is wall time, so this shows behaviour and proves nothing: what the page shows arrives up to 10 ms late and in bursts, and the tone it can play is a browser oscillator following the DAC model's figure, not the board's output. If the PC cannot keep up, the chip runs slow and the page says by how much.
+
 ## Build — `Makefile`
 
-`make` compiles every `.c` under `app/`, `core/` and `adapters/target/` (less the logger the configuration does not use) into `build/obj/`, links `build/<config>/output.elf`, converts to Intel HEX, and prints a size report. `make flash` uploads with avrdude at 57600 baud (the old-bootloader Nano setting), with the signature check and verification on. `make test`, `make coverage`, `make misra` and `make sim` are described above and in the README. `make check` runs both builds and those four through `tools/check/run.py`, which prints one line per stage and the full output only of a stage that fails. The Makefile handles Windows, macOS and Linux; only Windows has been exercised.
+`make` compiles every `.c` under `app/`, `core/` and `adapters/target/` (less the logger the configuration does not use) into `build/obj/`, links `build/<config>/output.elf`, converts to Intel HEX, and prints a size report. `make flash` uploads with avrdude at 57600 baud (the old-bootloader Nano setting), with the signature check and verification on. `make test`, `make coverage`, `make misra`, `make sim` and `make live` are described above and in the README. `make check` runs both builds and those four through `tools/check/run.py`, which prints one line per stage and the full output only of a stage that fails. The Makefile handles Windows, macOS and Linux; only Windows has been exercised.
 
 ```mermaid
 flowchart TD

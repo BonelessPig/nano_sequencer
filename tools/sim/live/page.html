@@ -1,0 +1,425 @@
+<!doctype html>
+<!--
+  The page served by server.js (`make live`): the emulated board's panel,
+  outputs and log. It holds no emulator: every switch and the pot are posted
+  to the server, and everything shown comes back from it as events.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sequencer, emulated</title>
+<style>
+:root {
+    color-scheme: light dark;
+    --bg: #f3f1ec;
+    --card: #ffffff;
+    --ink: #22252a;
+    --dim: #6b7078;
+    --line: #d5d2ca;
+    --off: #e4e1d9;
+    --on: #d9822b;
+    --gate: #c0392b;
+    --clock: #2f8f5b;
+    --cv: #2c6fbb;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #17191c;
+        --card: #22252a;
+        --ink: #e6e3dc;
+        --dim: #9197a0;
+        --line: #3a3e45;
+        --off: #33373e;
+        --on: #f0a04b;
+        --gate: #ef6a5b;
+        --clock: #58c48a;
+        --cv: #6aa9ee;
+    }
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.4 system-ui, sans-serif;
+}
+main { max-width: 980px; margin: 0 auto; display: grid; gap: 12px; }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 12px; margin: 0 0 8px; color: var(--dim); text-transform: uppercase;
+     letter-spacing: 0.06em; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+          padding: 12px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.dim { color: var(--dim); }
+.num { font-variant-numeric: tabular-nums; }
+button, select { font: inherit; color: inherit; background: var(--off);
+                 border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; }
+button { cursor: pointer; }
+#steps { display: grid; grid-template-columns: repeat(16, minmax(44px, 1fr)); gap: 6px;
+         overflow-x: auto; }
+.step { display: grid; gap: 4px; justify-items: center; padding: 6px 2px;
+        border-radius: 6px; border: 1px solid transparent; }
+.step.playing { border-color: var(--on); }
+.step.group { margin-left: 6px; }
+.switch { width: 32px; height: 22px; padding: 0; font-size: 11px; color: var(--dim); }
+.switch.on { background: var(--on); border-color: var(--on); color: #1b1b1b; }
+.led { width: 12px; height: 12px; border-radius: 50%; background: var(--off);
+       border: 1px solid var(--line); display: inline-block; }
+.step.playing .led { background: var(--on); }
+#gate-led.lit { background: var(--gate); }
+#clock-led.lit { background: var(--clock); }
+#tempo { flex: 1; min-width: 200px; }
+canvas { width: 100%; height: 190px; display: block; }
+#log { height: 180px; overflow-y: auto; margin: 0; font: 12px/1.5 ui-monospace, monospace;
+       white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+    <div class="row">
+        <h1>Sequencer, emulated</h1>
+        <span class="dim num" id="status">Connecting…</span>
+    </div>
+
+    <section>
+        <h2>Board</h2>
+        <div class="row">
+            <label>Image <select id="config">
+                <option value="debug">debug</option>
+                <option value="release">release</option>
+            </select></label>
+            <label><input type="checkbox" id="keep-eeprom" checked> Keep the EEPROM</label>
+            <button id="power">Power cycle</button>
+            <button id="sound">Sound: off</button>
+        </div>
+    </section>
+
+    <section>
+        <h2>Panel</h2>
+        <div id="steps"></div>
+        <div class="row" style="margin-top: 10px">
+            <label for="tempo">Tempo pot</label>
+            <input type="range" id="tempo" min="0" max="1023" step="1">
+            <span class="num" id="tempo-reading"></span>
+            <span class="num dim" id="bpm"></span>
+        </div>
+        <div class="row" style="margin-top: 10px">
+            <button id="cal-pattern">Set the calibration pattern</button>
+            <span class="dim">Then power cycle. Step 0 picks the point, the pot trims
+                it, and step 15's lowest switch, off and on again, stores it.</span>
+        </div>
+    </section>
+
+    <section>
+        <h2>Outputs</h2>
+        <div class="row">
+            <span><span class="led" id="gate-led"></span> Gate (D4)</span>
+            <span><span class="led" id="clock-led"></span> Clock (D5)</span>
+            <span>Pitch CV <span class="num" id="cv"></span></span>
+        </div>
+        <canvas id="trace"></canvas>
+    </section>
+
+    <section>
+        <h2>Serial log (115200 baud)</h2>
+        <pre id="log"></pre>
+    </section>
+</main>
+
+<script>
+'use strict';
+const STEP_COUNT = 16;
+const NOTE_BITS = 4;
+const STEPS_PER_GROUP = 4;
+const CAL_ENTRY_NOTES = [10, 5, 10, 5]; // On the last four steps
+const STEPS_PER_BEAT = 4;
+const MS_PER_MINUTE = 60000;
+const ADC_STEPS = 1024;
+const ADC_REFERENCE_VOLTS = 5;
+const TRACE_WINDOW_MS = 4000;
+const CV_SCALE_MIN_MV = 1250;   // The trace's full scale, unless the CV is higher
+const CV_SCALE_STEP_MV = 1000;
+const LOG_LINES_MAX = 300;
+const SOUND_BASE_HZ = 130.81;   // What 0 V plays; an octave up per volt
+const SOUND_LEVEL = 0.2;
+const SOUND_EDGE_S = 0.005;
+
+const el = (id) => document.getElementById(id);
+const trace = { cv: [], gate: [], clock: [] }; // Each a list of [ms, value]
+let state = null;       // The last `state` event
+let nowMs = 0;          // Chip time
+let lastClockRiseMs = null;
+let sound = null;
+
+function post(command) {
+    fetch('/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(command),
+    });
+}
+
+// ---- Panel ----
+
+function buildPanel() {
+    for (let step = 0; step < STEP_COUNT; step++) {
+        const column = document.createElement('div');
+        const isGroupStart = (step > 0) && ((step % STEPS_PER_GROUP) === 0);
+
+        column.className = isGroupStart ? 'step group' : 'step';
+        column.id = `step-${step}`;
+        column.innerHTML = `<span class="dim num">${step}</span><span class="led"></span>`;
+        for (let bit = NOTE_BITS - 1; bit >= 0; bit--) {
+            const button = document.createElement('button');
+
+            button.className = 'switch';
+            button.textContent = String(1 << bit);
+            button.dataset.bit = String(bit);
+            button.addEventListener('click', () => {
+                const notes = state.notes.slice();
+
+                notes[step] ^= (1 << bit);
+                post({ notes });
+            });
+            column.append(button);
+        }
+        column.insertAdjacentHTML('beforeend', '<span class="num note"></span>');
+        el('steps').append(column);
+    }
+}
+
+function showPanel() {
+    const volts = ((state.tempo + 0.5) * ADC_REFERENCE_VOLTS) / ADC_STEPS;
+
+    state.notes.forEach((note, step) => {
+        const column = el(`step-${step}`);
+
+        for (const button of column.querySelectorAll('.switch')) {
+            button.classList.toggle('on', ((note >> Number(button.dataset.bit)) & 1) === 1);
+        }
+        // As the firmware logs it: a pitch one below the value, or a rest
+        column.querySelector('.note').textContent = (note === 0) ? 'rest' : String(note - 1);
+    });
+    if (document.activeElement !== el('tempo')) {
+        el('tempo').value = String(state.tempo);
+    }
+    el('tempo-reading').textContent = `${state.tempo} (${volts.toFixed(2)} V)`;
+}
+
+function showStep(playing) {
+    for (let step = 0; step < STEP_COUNT; step++) {
+        el(`step-${step}`).classList.toggle('playing', step === playing);
+    }
+}
+
+// ---- Outputs ----
+
+function showGate(isHigh) {
+    el('gate-led').classList.toggle('lit', isHigh);
+    if (sound !== null) {
+        sound.gain.gain.setTargetAtTime(
+            isHigh ? SOUND_LEVEL : 0, sound.context.currentTime, SOUND_EDGE_S);
+    }
+}
+
+function showCv(millivolts) {
+    el('cv').textContent = `${(millivolts / 1000).toFixed(3)} V`;
+    if (sound !== null) {
+        sound.oscillator.frequency.setValueAtTime(
+            SOUND_BASE_HZ * (2 ** (millivolts / 1000)), sound.context.currentTime);
+    }
+}
+
+function showClock(event) {
+    el('clock-led').classList.toggle('lit', event.v);
+    if (event.v) {
+        showStep(event.step);
+        if (lastClockRiseMs !== null) {
+            const bpm = MS_PER_MINUTE / ((event.t - lastClockRiseMs) * STEPS_PER_BEAT);
+
+            el('bpm').textContent = `${bpm.toFixed(1)} BPM measured`;
+        }
+        lastClockRiseMs = event.t;
+    }
+}
+
+function addLogLine(text) {
+    const log = el('log');
+    const lines = log.textContent.split('\n').slice(-LOG_LINES_MAX);
+
+    lines.push(text);
+    log.textContent = lines.join('\n');
+    log.scrollTop = log.scrollHeight;
+}
+
+function applyEvent(event) {
+    switch (event.k) {
+        case 'gate':
+            trace.gate.push([event.t, event.v ? 1 : 0]);
+            showGate(event.v);
+            break;
+        case 'clock':
+            trace.clock.push([event.t, event.v ? 1 : 0]);
+            showClock(event);
+            break;
+        case 'cv':
+            trace.cv.push([event.t, event.v]);
+            showCv(event.v);
+            break;
+        case 'log':
+            addLogLine(event.v);
+            break;
+        default:
+            break;
+    }
+}
+
+// ---- Trace ----
+
+// Drops what has scrolled off, keeping the one point that says what the
+// level was at the left edge
+function trim(points) {
+    while ((points.length > 1) && (points[1][0] < (nowMs - TRACE_WINDOW_MS))) {
+        points.shift();
+    }
+}
+
+// Draws one signal as steps, in a band of the canvas from top to top + height
+function drawSignal(context, points, colour, top, height, fullScale, width) {
+    const x = (ms) => width * (1 - ((nowMs - ms) / TRACE_WINDOW_MS));
+    const y = (value) => top + (height * (1 - (value / fullScale)));
+
+    trim(points);
+    if (points.length === 0) {
+        return;
+    }
+    context.strokeStyle = colour;
+    context.beginPath();
+    context.moveTo(Math.max(0, x(points[0][0])), y(points[0][1]));
+    for (let i = 1; i < points.length; i++) {
+        context.lineTo(x(points[i][0]), y(points[i - 1][1]));
+        context.lineTo(x(points[i][0]), y(points[i][1]));
+    }
+    context.lineTo(width, y(points[points.length - 1][1]));
+    context.stroke();
+}
+
+function drawTrace() {
+    const canvas = el('trace');
+    const context = canvas.getContext('2d');
+    const scale = window.devicePixelRatio || 1;
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    const style = getComputedStyle(document.documentElement);
+    const colour = (name) => style.getPropertyValue(name).trim();
+    const cvHeight = height * 0.55;
+    const pinHeight = height * 0.12;
+    const cvMax = Math.max(CV_SCALE_MIN_MV, ...trace.cv.map((point) => point[1]));
+    const cvFullScale = (cvMax <= CV_SCALE_MIN_MV)
+        ? CV_SCALE_MIN_MV : Math.ceil(cvMax / CV_SCALE_STEP_MV) * CV_SCALE_STEP_MV;
+
+    if ((canvas.width !== Math.round(width * scale))
+        || (canvas.height !== Math.round(height * scale))) {
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+    }
+    context.setTransform(scale, 0, 0, scale, 0, 0);
+    context.clearRect(0, 0, width, height);
+    context.lineWidth = 1.5;
+    context.font = '11px system-ui, sans-serif';
+    context.fillStyle = colour('--dim');
+    context.fillText(`CV, 0 to ${(cvFullScale / 1000).toFixed(2)} V`, 4, 12);
+    context.fillText('Gate', 4, height * 0.72);
+    context.fillText('Clock', 4, height * 0.90);
+    drawSignal(context, trace.cv, colour('--cv'), 16, cvHeight - 16, cvFullScale, width);
+    drawSignal(context, trace.gate, colour('--gate'), height * 0.66, pinHeight, 1, width);
+    drawSignal(context, trace.clock, colour('--clock'), height * 0.84, pinHeight, 1, width);
+    requestAnimationFrame(drawTrace);
+}
+
+// ---- Sound: the pitch CV as an oscillator, opened by the gate ----
+
+function toggleSound() {
+    if (state === null) {
+        return; // Nothing to play until the server has answered
+    }
+    if (sound === null) {
+        const context = new AudioContext();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+
+        oscillator.type = 'triangle';
+        gain.gain.value = 0;
+        oscillator.connect(gain).connect(context.destination);
+        oscillator.start();
+        sound = { context, oscillator, gain };
+        showCv(state.millivolts);
+        showGate(state.gate);
+    } else {
+        sound.context.close();
+        sound = null;
+    }
+    el('sound').textContent = `Sound: ${(sound === null) ? 'off' : 'on'}`;
+}
+
+// ---- The server ----
+
+function applyState(newState) {
+    state = newState;
+    if (state.fresh) {
+        // A power-up, or this page has only just connected
+        nowMs = state.ms;
+        trace.cv = [[state.ms, state.millivolts]];
+        trace.gate = [[state.ms, state.gate ? 1 : 0]];
+        trace.clock = [[state.ms, state.clock ? 1 : 0]];
+        lastClockRiseMs = null;
+        el('log').textContent = (state.config === 'release')
+            ? '(the release image has no log)' : '';
+        el('bpm').textContent = '';
+        el('config').value = state.config;
+        el('clock-led').classList.toggle('lit', state.clock);
+        showStep(state.step);
+        showGate(state.gate);
+        showCv(state.millivolts);
+    }
+    showPanel();
+}
+
+function applyRun(run) {
+    nowMs = run.ms;
+    run.events.forEach(applyEvent);
+    el('status').textContent = `Running ${state.config}: ${(run.ms / 1000).toFixed(1)} s `
+        + `of chip time, at ${run.speed}% of real speed`;
+}
+
+function connect() {
+    const source = new EventSource('/events');
+
+    source.addEventListener('state', (message) => applyState(JSON.parse(message.data)));
+    source.addEventListener('run', (message) => applyRun(JSON.parse(message.data)));
+    source.onerror = () => {
+        el('status').textContent = 'Not connected: is `make live` still running?';
+    };
+}
+
+buildPanel();
+el('tempo').addEventListener('input', () => post({ tempo: Number(el('tempo').value) }));
+el('power').addEventListener('click', () => {
+    post({ power: el('config').value, keepEeprom: el('keep-eeprom').checked });
+});
+el('sound').addEventListener('click', toggleSound);
+el('cal-pattern').addEventListener('click', () => {
+    const notes = state.notes.slice();
+
+    CAL_ENTRY_NOTES.forEach((note, i) => {
+        notes[STEP_COUNT - CAL_ENTRY_NOTES.length + i] = note;
+    });
+    post({ notes });
+});
+connect();
+requestAnimationFrame(drawTrace);
+</script>
+</body>
+</html>
