@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nano_sequencer schematic</title>
+<style>
+:root {
+    --bg: #fbfaf7; --fg: #1f2328; --muted: #646b73; --line: #d5d2ca; --panel: #ffffff;
+    --spi: #1d5fbf; --out: #1a7f4b; --ana: #a15c00; --pwr: #b3261e; --gnd: #4d545c;
+    --sw: #6b3fa0; --nc: #8f959c;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #15171a; --fg: #e4e6e9; --muted: #9aa1a9; --line: #3a3f45; --panel: #1e2125;
+        --spi: #7fb0ff; --out: #63d096; --ana: #f0b35a; --pwr: #ff8a80; --gnd: #aeb5bd;
+        --sw: #c4a2f2; --nc: #747b83;
+    }
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0; padding: 32px 16px 64px; background: var(--bg); color: var(--fg);
+    font: 16px/1.55 system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+main { max-width: 980px; margin: 0 auto; }
+h1 { font-size: 1.7rem; margin: 0 0 4px; }
+h2 { font-size: 1.2rem; margin: 44px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+p, li { max-width: 72ch; }
+.lede { color: var(--muted); margin-top: 0; }
+a { color: var(--spi); }
+code { font: 0.9em ui-monospace, Consolas, Menlo, monospace; }
+.fig {
+    overflow-x: auto; margin: 16px 0; padding: 12px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px;
+}
+.fig svg { display: block; width: 100%; min-width: 700px; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 0; margin: 12px 0; }
+.legend li { list-style: none; font-size: 0.875rem; color: var(--muted); }
+.legend i {
+    display: inline-block; width: 18px; height: 3px; margin-right: 6px;
+    vertical-align: middle; border-radius: 2px; background: currentColor;
+}
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 0.9rem; margin: 12px 0; }
+th, td { text-align: left; padding: 5px 14px 5px 0; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; }
+td.n { font-variant-numeric: tabular-nums; }
+
+svg text { fill: var(--fg); font: 12px system-ui, "Segoe UI", Roboto, Arial, sans-serif; }
+svg .title { font-size: 13px; font-weight: 600; }
+svg .sub, svg .lbl { fill: var(--muted); font-size: 11px; }
+svg .num { fill: var(--muted); font-size: 10px; }
+svg .box { fill: var(--bg); stroke: var(--fg); stroke-width: 1.5; }
+svg .dash { stroke-dasharray: 5 4; }
+svg .w { fill: none; stroke: var(--fg); stroke-width: 1.6; }
+svg .dot { stroke: none; }
+svg .spi { stroke: var(--spi); color: var(--spi); }
+svg .out { stroke: var(--out); color: var(--out); }
+svg .ana { stroke: var(--ana); color: var(--ana); }
+svg .pwr { stroke: var(--pwr); color: var(--pwr); }
+svg .gnd { stroke: var(--gnd); color: var(--gnd); }
+svg .sw { stroke: var(--sw); color: var(--sw); }
+svg .nc { stroke: var(--nc); color: var(--nc); }
+svg text.spi, svg text.out, svg text.ana, svg text.pwr, svg text.gnd, svg text.sw,
+svg text.nc { fill: currentColor; stroke: none; }
+svg .dot.spi, svg .dot.out, svg .dot.ana { fill: currentColor; }
+.spi { color: var(--spi); } .out { color: var(--out); } .ana { color: var(--ana); }
+.pwr { color: var(--pwr); } .gnd { color: var(--gnd); } .sw { color: var(--sw); }
+.nc { color: var(--nc); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>nano_sequencer schematic</h1>
+<p class="lede">What is wired to the Arduino Nano today, and which pin of each chip it goes to.
+It follows the firmware in <code>adapters/target/</code>; when a pin or part changes there,
+change it here too.</p>
+
+<ul class="legend">
+    <li class="spi"><i></i>SPI bus and load line</li>
+    <li class="out"><i></i>Outputs</li>
+    <li class="ana"><i></i>Analog</li>
+    <li class="sw"><i></i>Panel switches</li>
+    <li class="pwr"><i></i>5 V</li>
+    <li class="gnd"><i></i>Ground</li>
+    <li class="nc"><i></i>Not connected or free</li>
+</ul>
+
+<h2>The whole board</h2>
+<p>Signals only. Every chip also takes 5 V and ground from the Nano, which is powered over
+USB.</p>
+
+<div class="fig">
+<svg viewBox="0 0 960 590" role="img" aria-labelledby="sys-t">
+<title id="sys-t">The Nano, the 74HC165 chain, the MCP4822 DAC, the tempo pot and the two
+logic outputs, with the wires between them</title>
+
+<!-- Arduino Nano -->
+<rect class="box" x="40" y="40" width="200" height="520" rx="6"/>
+<text class="title" x="140" y="64" text-anchor="middle">Arduino Nano</text>
+<text class="sub" x="140" y="80" text-anchor="middle">ATmega328P, 16 MHz</text>
+<text x="232" y="124" text-anchor="end">D12 · PB4 · MISO</text>
+<text x="232" y="199" text-anchor="end">D9 · PB1</text>
+<text x="232" y="229" text-anchor="end">D13 · PB5 · SCK</text>
+<text x="232" y="324" text-anchor="end">D10 · PB2 · SS</text>
+<text x="232" y="374" text-anchor="end">D11 · PB3 · MOSI</text>
+<text x="232" y="454" text-anchor="end">D4 · PD4</text>
+<text x="232" y="484" text-anchor="end">D5 · PD5</text>
+<text x="232" y="534" text-anchor="end">A6 · ADC6</text>
+<text class="sub" x="50" y="454">USB: power,</text>
+<text class="sub" x="50" y="469">upload, and the</text>
+<text class="sub" x="50" y="484">debug log on TX1</text>
+
+<!-- 74HC165 chain -->
+<text class="lbl sw" x="480" y="46" text-anchor="middle">8 switches into A to H</text>
+<text class="lbl sw" x="660" y="46" text-anchor="middle">48 switches</text>
+<text class="lbl sw" x="840" y="46" text-anchor="middle">8 switches into A to H</text>
+<rect class="box" x="420" y="56" width="120" height="100" rx="4"/>
+<text class="title" x="480" y="76" text-anchor="middle">74HC165 chip 0</text>
+<text class="sub" x="480" y="92" text-anchor="middle">steps 0 and 1</text>
+<text x="426" y="124">QH</text>
+<text x="534" y="124" text-anchor="end">SER</text>
+<text class="num" x="455" y="150" text-anchor="middle">SH/LD</text>
+<text class="num" x="505" y="150" text-anchor="middle">CLK</text>
+
+<rect class="box dash" x="600" y="56" width="120" height="100" rx="4"/>
+<text class="title" x="660" y="76" text-anchor="middle">Chips 1 to 6</text>
+<text class="sub" x="660" y="92" text-anchor="middle">steps 2 to 13</text>
+<text x="606" y="124">QH</text>
+<text x="714" y="124" text-anchor="end">SER</text>
+<text class="num" x="635" y="150" text-anchor="middle">SH/LD</text>
+<text class="num" x="685" y="150" text-anchor="middle">CLK</text>
+
+<rect class="box" x="780" y="56" width="120" height="100" rx="4"/>
+<text class="title" x="840" y="76" text-anchor="middle">74HC165 chip 7</text>
+<text class="sub" x="840" y="92" text-anchor="middle">steps 14 and 15</text>
+<text x="786" y="124">QH</text>
+<text x="894" y="124" text-anchor="end">SER</text>
+<text class="num" x="815" y="150" text-anchor="middle">SH/LD</text>
+<text class="num" x="865" y="150" text-anchor="middle">CLK</text>
+
+<!-- Chain data: chip 7 towards the MCU, through 1 k into MISO -->
+<path class="w spi" d="M240 120H330M370 120H420M540 120H600M720 120H780"/>
+<rect class="w spi" x="330" y="113" width="40" height="14"/>
+<text class="lbl" x="350" y="106" text-anchor="middle">1 kΩ</text>
+<text class="lbl" x="250" y="113">data in</text>
+<text class="lbl" x="570" y="113" text-anchor="middle">←</text>
+<text class="lbl" x="750" y="113" text-anchor="middle">←</text>
+<path class="w gnd" d="M900 120H930V136M920 136H940M924 141H936M928 146H932"/>
+<text class="lbl gnd" x="930" y="162" text-anchor="middle">GND</text>
+
+<!-- Load line and SPI clock, to every chip -->
+<path class="w spi" d="M240 195H815V156M455 195V156M635 195V156"/>
+<circle class="dot spi" cx="455" cy="195" r="3.5"/>
+<circle class="dot spi" cx="635" cy="195" r="3.5"/>
+<text class="lbl" x="312" y="188">load, active low</text>
+<path class="w spi" d="M240 225H865V156M505 225V156M685 225V156M300 225V345H420"/>
+<circle class="dot spi" cx="300" cy="225" r="3.5"/>
+<circle class="dot spi" cx="505" cy="225" r="3.5"/>
+<circle class="dot spi" cx="685" cy="225" r="3.5"/>
+<text class="lbl" x="312" y="242">SPI clock, 1 MHz</text>
+
+<!-- MCP4822 -->
+<rect class="box" x="420" y="262" width="120" height="140" rx="4"/>
+<text class="title" x="480" y="282" text-anchor="middle">MCP4822</text>
+<text class="sub" x="480" y="297" text-anchor="middle">12-bit DAC</text>
+<text x="426" y="324">CS</text>
+<text x="426" y="349">SCK</text>
+<text x="426" y="374">SDI</text>
+<text x="534" y="324" text-anchor="end">VOUTA</text>
+<text x="534" y="374" text-anchor="end">LDAC</text>
+<path class="w spi" d="M240 320H420M240 370H420"/>
+<text class="lbl" x="312" y="313">chip select</text>
+<text class="lbl" x="312" y="363">data out</text>
+<path class="w gnd" d="M540 370H570V386M560 386H580M564 391H576M568 396H572"/>
+<text class="lbl gnd" x="570" y="412" text-anchor="middle">GND</text>
+<path class="w ana" d="M540 320H655"/>
+<circle class="w ana" cx="660" cy="320" r="5"/>
+<text x="674" y="318">Pitch CV out, 0 to 4.095 V</text>
+<text class="sub" x="674" y="333">1 V to the octave. No buffer stage yet</text>
+
+<!-- Gate and clock outputs -->
+<path class="w out" d="M240 450H655M240 480H655"/>
+<circle class="w out" cx="660" cy="450" r="5"/>
+<circle class="w out" cx="660" cy="480" r="5"/>
+<text x="674" y="454">Gate out: high while a note is held</text>
+<text x="674" y="484">Clock out: one pulse per step</text>
+<text class="sub" x="674" y="500">Both 0 V or 5 V straight from the pin. No buffer stage yet</text>
+
+<!-- Tempo pot -->
+<path class="w ana" d="M240 530H420"/>
+<rect class="box" x="420" y="512" width="120" height="36" rx="4"/>
+<text class="title" x="480" y="534" text-anchor="middle">Tempo pot</text>
+<text class="lbl" x="312" y="523">wiper</text>
+<text class="sub" x="552" y="534">Ends to 5 V and ground</text>
+</svg>
+</div>
+
+<h2>Arduino Nano</h2>
+<p>Seen from above with the USB socket at the top. Labels inside the outline are the ones
+printed on the board, with the ATmega328P pin name beside the ones the firmware uses.</p>
+<div class="fig" id="nano"></div>
+
+<h2>74HC165 shift register (eight of them)</h2>
+<p>Chip <i>k</i> of the chain, counting from 0 at the chip nearest the Nano. It reads the four
+switches of step 2<i>k</i> on inputs H to E and those of step 2<i>k</i>+1 on D to A, the
+higher letter being the more significant bit. A switch that is on must read high.</p>
+<div class="fig" id="hc165"></div>
+
+<div class="tablewrap">
+<table>
+<tr><th>Chip</th><th>H G F E</th><th>D C B A</th><th>SER (pin 10) from</th>
+    <th>QH (pin 9) to</th></tr>
+<tr><td class="n">0</td><td>step 0</td><td>step 1</td><td>QH of chip 1</td>
+    <td>D12 through 1 kΩ</td></tr>
+<tr><td class="n">1</td><td>step 2</td><td>step 3</td><td>QH of chip 2</td>
+    <td>SER of chip 0</td></tr>
+<tr><td class="n">2</td><td>step 4</td><td>step 5</td><td>QH of chip 3</td>
+    <td>SER of chip 1</td></tr>
+<tr><td class="n">3</td><td>step 6</td><td>step 7</td><td>QH of chip 4</td>
+    <td>SER of chip 2</td></tr>
+<tr><td class="n">4</td><td>step 8</td><td>step 9</td><td>QH of chip 5</td>
+    <td>SER of chip 3</td></tr>
+<tr><td class="n">5</td><td>step 10</td><td>step 11</td><td>QH of chip 6</td>
+    <td>SER of chip 4</td></tr>
+<tr><td class="n">6</td><td>step 12</td><td>step 13</td><td>QH of chip 7</td>
+    <td>SER of chip 5</td></tr>
+<tr><td class="n">7</td><td>step 14</td><td>step 15</td><td>Ground</td>
+    <td>SER of chip 6</td></tr>
+</table>
+</div>
+<p>Input A of chip 7 is the lowest switch of step 15, which is the store switch in calibration
+mode.</p>
+
+<h2>MCP4822 DAC</h2>
+<p>Channel A only, at a gain of 2 from the internal 2.048 V reference, so one step is 1 mV.
+With LDAC tied to ground the output changes as chip select rises.</p>
+<div class="fig" id="mcp4822"></div>
+
+<h2>Check before wiring</h2>
+<ul>
+    <li>The pin numbers of the MCP4822 and the 74HC165 here are the usual DIP pinouts written
+        from memory. Neither has been checked against the datasheet of the part in hand
+        (<a href="ARCHITECTURE.md">ARCHITECTURE.md</a>, open item 10).</li>
+    <li>How the panel switches are wired is not recorded anywhere in the repo. The firmware
+        only needs an input to be high when its switch is on, and a 74HC165 input must never
+        float: a switch to 5 V with a pull-down resistor on each input does both.</li>
+    <li>The tempo pot's value is not recorded either. Its ends go to 5 V and ground because
+        the ADC's reference is AVcc.</li>
+    <li>Only the DAC's 100 nF decoupling capacitor is written down. One across the supply
+        pins of each 74HC165 is normal practice.</li>
+    <li>The 1 kΩ in the MISO line lets an ISP programmer, which uses D11 to D13, win against
+        the chain's output. The serial bootloader does not need it.</li>
+    <li>Do not patch the gate, clock or pitch CV into other equipment until their buffer
+        stages are built: nothing protects those pins
+        (<a href="ARCHITECTURE.md">ARCHITECTURE.md</a>, open items 9 and 10).</li>
+    <li>A1 (PC1) is configured as an output although nothing uses it. Leave it unconnected.</li>
+</ul>
+
+</main>
+<script>
+"use strict";
+// A chip drawn from above. left and right list the pins from the top down as
+// [number or "", name printed inside, what it goes to, colour class].
+function drawChip(id, chip) {
+    const ROW = 24, TOP = chip.usb ? 58 : 40, WIDTH = 760, BODY = 170, STUB = 18;
+    const x0 = (WIDTH - BODY) / 2, x1 = x0 + BODY, cx = WIDTH / 2;
+    const rows = chip.left.length;
+    const height = TOP + rows * ROW + 20;
+    let s = `<svg viewBox="0 0 ${WIDTH} ${height}" role="img" aria-label="${chip.label}">`;
+
+    s += `<text class="title" x="${cx}" y="16" text-anchor="middle">${chip.title}</text>`;
+    s += `<rect class="box" x="${x0}" y="${TOP - 12}" width="${BODY}" ` +
+         `height="${rows * ROW + 20}" rx="5"/>`;
+    if (chip.usb) {
+        s += `<rect class="box" x="${cx - 26}" y="${TOP - 30}" width="52" height="30" rx="3"/>`;
+        s += `<text class="sub" x="${cx}" y="${TOP - 11}" text-anchor="middle">USB</text>`;
+    } else {
+        s += `<path class="w" d="M${cx - 10} ${TOP - 12}a10 10 0 0 0 20 0"/>`;
+    }
+    for (let i = 0; i < rows; i++) {
+        const y = TOP + 12 + i * ROW;
+        s += pin(chip.left[i], x0, y, -1);
+        s += pin(chip.right[i], x1, y, 1);
+    }
+    document.getElementById(id).innerHTML = s + "</svg>";
+
+    function pin(p, x, y, dir) {
+        const [num, name, net, cls] = p;
+        const inner = dir < 0 ? "start" : "end";
+        const outer = dir < 0 ? "end" : "start";
+        return `<path class="w ${cls}" d="M${x} ${y}h${dir * STUB}"/>` +
+            `<text class="num" x="${x + dir * STUB / 2}" y="${y - 4}" ` +
+            `text-anchor="middle">${num}</text>` +
+            `<text x="${x - dir * 8}" y="${y + 4}" text-anchor="${inner}">${name}</text>` +
+            `<text class="${cls}" x="${x + dir * (STUB + 8)}" y="${y + 4}" ` +
+            `text-anchor="${outer}">${net}</text>`;
+    }
+}
+
+drawChip("nano", {
+    title: "Arduino Nano (ATmega328P)", usb: true,
+    label: "Arduino Nano outline with what each header pin goes to",
+    left: [
+        ["", "D13 · PB5", "SCK: CLK of all eight 74HC165s, DAC SCK", "spi"],
+        ["", "3V3", "not connected", "nc"],
+        ["", "REF", "not connected", "nc"],
+        ["", "A0 · PC0", "unused (set as an input)", "nc"],
+        ["", "A1 · PC1", "unused (set as an output)", "nc"],
+        ["", "A2", "free", "nc"],
+        ["", "A3", "free", "nc"],
+        ["", "A4", "free", "nc"],
+        ["", "A5", "free", "nc"],
+        ["", "A6 · ADC6", "tempo pot wiper", "ana"],
+        ["", "A7", "free", "nc"],
+        ["", "5V", "5 V to the 74HC165s, the DAC and the pot", "pwr"],
+        ["", "RST", "not connected", "nc"],
+        ["", "GND", "common ground", "gnd"],
+        ["", "VIN", "not connected", "nc"],
+    ],
+    right: [
+        ["", "D12 · PB4", "MISO: QH of chip 0, through 1 kΩ", "spi"],
+        ["", "D11 · PB3", "MOSI: DAC SDI", "spi"],
+        ["", "D10 · PB2", "SS: DAC chip select", "spi"],
+        ["", "D9 · PB1", "SH/LD of all eight 74HC165s", "spi"],
+        ["", "D8", "free", "nc"],
+        ["", "D7 · PD7", "free", "nc"],
+        ["", "D6 · PD6", "free", "nc"],
+        ["", "D5 · PD5", "clock output", "out"],
+        ["", "D4 · PD4", "gate output", "out"],
+        ["", "D3 · PD3", "free", "nc"],
+        ["", "D2 · PD2", "free", "nc"],
+        ["", "GND", "common ground", "gnd"],
+        ["", "RST", "not connected", "nc"],
+        ["", "RX0 · PD0", "the board's USB serial chip", "nc"],
+        ["", "TX1 · PD1", "debug log, 115200 baud (debug build)", "out"],
+    ],
+});
+
+drawChip("hc165", {
+    title: "74HC165, DIP-16, chip k of the chain",
+    label: "74HC165 pinout with what each pin goes to",
+    left: [
+        [1, "SH/LD", "D9 (PB1), shared by all eight", "spi"],
+        [2, "CLK", "D13 (PB5, SCK), shared by all eight", "spi"],
+        [3, "E", "step 2k switch, bit 0 (lowest)", "sw"],
+        [4, "F", "step 2k switch, bit 1", "sw"],
+        [5, "G", "step 2k switch, bit 2", "sw"],
+        [6, "H", "step 2k switch, bit 3 (highest)", "sw"],
+        [7, "Q̅H", "not connected", "nc"],
+        [8, "GND", "ground", "gnd"],
+    ],
+    right: [
+        [16, "VCC", "5 V", "pwr"],
+        [15, "CLK INH", "ground", "gnd"],
+        [14, "D", "step 2k+1 switch, bit 3 (highest)", "sw"],
+        [13, "C", "step 2k+1 switch, bit 2", "sw"],
+        [12, "B", "step 2k+1 switch, bit 1", "sw"],
+        [11, "A", "step 2k+1 switch, bit 0 (lowest)", "sw"],
+        [10, "SER", "QH of chip k+1; ground on chip 7", "spi"],
+        [9, "QH", "SER of chip k−1; chip 0: 1 kΩ to D12", "spi"],
+    ],
+});
+
+drawChip("mcp4822", {
+    title: "MCP4822, PDIP-8",
+    label: "MCP4822 pinout with what each pin goes to",
+    left: [
+        [1, "VDD", "5 V, with 100 nF to ground at the pin", "pwr"],
+        [2, "CS", "D10 (PB2)", "spi"],
+        [3, "SCK", "D13 (PB5)", "spi"],
+        [4, "SDI", "D11 (PB3)", "spi"],
+    ],
+    right: [
+        [8, "VOUTA", "pitch CV, 0 to 4.095 V", "ana"],
+        [7, "VSS", "ground", "gnd"],
+        [6, "VOUTB", "not connected", "nc"],
+        [5, "LDAC", "ground", "gnd"],
+    ],
+});
+</script>
+</body>
+</html>
