@@ -24,7 +24,7 @@
 #include "run_input_port.h"
 #include "step_input_port.h"
 #include "sync_input_port.h"
-#include "tempo_input_port.h"
+#include "pot_input_port.h"
 #include "timebase_port.h"
 #include "watchdog_port.h"
 
@@ -620,7 +620,7 @@ port_status_t step_input_read(uint8_t *p_raw_bits, uint8_t byte_count)
 
 
 
-port_status_t tempo_input_read(uint16_t *p_raw)
+port_status_t pot_input_read(uint16_t *p_raw)
 {
     port_status_t status = g_tempo_status;
 

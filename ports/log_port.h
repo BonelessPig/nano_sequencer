@@ -22,7 +22,7 @@ typedef enum
 {
     LOG_ERROR_INIT = 0,   // platform_init() failed
     LOG_ERROR_STEP_READ,  // step_input_read() failed
-    LOG_ERROR_TEMPO_READ, // tempo_input_read() failed
+    LOG_ERROR_TEMPO_READ, // pot_input_read() failed
     LOG_ERROR_CV_WRITE,   // cv_output_write() failed
     LOG_ERROR_NV_READ,    // nv_read() of the stored calibration failed
     LOG_ERROR_NV_WRITE,   // nv_write() of the calibration failed

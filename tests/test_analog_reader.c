@@ -39,7 +39,7 @@ static void test_read_returns_the_conversion_result(void)
         start_adc();
         g_fake_adc = readings[i];
 
-        TEST_ASSERT_EQUAL(STATUS_OK, tempo_input_read(&value));
+        TEST_ASSERT_EQUAL(STATUS_OK, pot_input_read(&value));
         TEST_ASSERT_EQUAL(readings[i], value);
     }
 }
@@ -52,7 +52,7 @@ static void test_read_selects_channel_6_with_avcc_reference(void)
 
     start_adc();
     g_fake_admux = 0xFFU; // Stale bits must not survive
-    (void)tempo_input_read(&value);
+    (void)pot_input_read(&value);
 
     TEST_ASSERT_EQUAL(ADMUX_TEMPO, g_fake_admux);
 }
@@ -64,7 +64,7 @@ static void test_read_keeps_the_adc_configuration(void)
     uint16_t value = 0U;
 
     start_adc();
-    (void)tempo_input_read(&value);
+    (void)pot_input_read(&value);
 
     TEST_ASSERT_EQUAL(ADC_ENABLED, g_fake_adcsra); // Start bit cleared itself; the rest unchanged
 }
@@ -79,7 +79,7 @@ static void test_read_waits_for_a_slow_conversion(void)
     g_fake_adc            = 700U;
     g_fake_adc_busy_polls = 50U;
 
-    TEST_ASSERT_EQUAL(STATUS_OK, tempo_input_read(&value));
+    TEST_ASSERT_EQUAL(STATUS_OK, pot_input_read(&value));
     TEST_ASSERT_EQUAL(700, value);
     TEST_ASSERT_EQUAL(0, g_fake_adc_busy_polls); // It kept polling until the end
 }
@@ -94,7 +94,7 @@ static void test_conversion_finishing_on_the_last_poll_succeeds(void)
     g_fake_adc            = 300U;
     g_fake_adc_busy_polls = (uint16_t)(ADC_TIMEOUT_LOOPS - 1U);
 
-    TEST_ASSERT_EQUAL(STATUS_OK, tempo_input_read(&value));
+    TEST_ASSERT_EQUAL(STATUS_OK, pot_input_read(&value));
     TEST_ASSERT_EQUAL(300, value);
 }
 
@@ -108,7 +108,7 @@ static void test_conversion_one_poll_too_slow_times_out(void)
     g_fake_adc            = 300U;
     g_fake_adc_busy_polls = (uint16_t)ADC_TIMEOUT_LOOPS;
 
-    TEST_ASSERT_EQUAL(ERR_TIMEOUT, tempo_input_read(&value));
+    TEST_ASSERT_EQUAL(ERR_TIMEOUT, pot_input_read(&value));
     TEST_ASSERT_EQUAL(UNTOUCHED_VALUE, value);
     TEST_ASSERT_EQUAL(0, g_fake_adc_busy_polls); // Exactly the poll budget was spent
 }
@@ -122,7 +122,7 @@ static void test_stuck_conversion_gives_up_after_the_poll_budget(void)
     start_adc();
     g_fake_adc_busy_polls = UINT16_MAX; // Far longer than the adapter will wait
 
-    TEST_ASSERT_EQUAL(ERR_TIMEOUT, tempo_input_read(&value));
+    TEST_ASSERT_EQUAL(ERR_TIMEOUT, pot_input_read(&value));
     TEST_ASSERT_EQUAL(UNTOUCHED_VALUE, value);
     TEST_ASSERT_EQUAL(UINT16_MAX - ADC_TIMEOUT_LOOPS, g_fake_adc_busy_polls);
 }
@@ -134,7 +134,7 @@ static void test_null_destination_is_rejected_without_starting_a_conversion(void
     start_adc();
     g_fake_admux = 0x11U;
 
-    TEST_ASSERT_EQUAL(ERR_INVALID_PARAM, tempo_input_read(NULL));
+    TEST_ASSERT_EQUAL(ERR_INVALID_PARAM, pot_input_read(NULL));
     TEST_ASSERT_EQUAL(0x11, g_fake_admux);
     TEST_ASSERT_EQUAL(ADC_ENABLED, g_fake_adcsra);
 }

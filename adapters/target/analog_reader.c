@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2026
  *
  */
-#include "tempo_input_port.h"
+#include "pot_input_port.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include "atmega328p_regs.h"
@@ -75,11 +75,11 @@ static port_status_t read_analog_value(uint16_t *p_value, uint8_t channel)
 
 
 /**
- * @brief Reads the tempo pot once (see tempo_input_port.h).
+ * @brief Reads the tempo pot once (see pot_input_port.h).
  * @param p_raw pointer to where the 10-bit reading (0-1023) is stored
  * @return port_status_t status code (STATUS_OK for success)
  */
-port_status_t tempo_input_read(uint16_t *p_raw)
+port_status_t pot_input_read(uint16_t *p_raw)
 {
     return read_analog_value(p_raw, TEMPO_ADC_CHANNEL);
 }

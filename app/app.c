@@ -35,7 +35,7 @@
 #include "run_input_port.h"
 #include "step_input_port.h"
 #include "sync_input_port.h"
-#include "tempo_input_port.h"
+#include "pot_input_port.h"
 #include "timebase_port.h"
 #include "watchdog_port.h"
 
@@ -188,7 +188,7 @@ static void scan_inputs(void)
     g_step_read_status = step_input_read(g_inputs.raw_steps, (uint8_t)PANEL_RAW_BYTE_COUNT);
     g_inputs.b_steps_valid = (STATUS_OK == g_step_read_status);
 
-    g_tempo_read_status = tempo_input_read(&g_inputs.tempo_raw);
+    g_tempo_read_status = pot_input_read(&g_inputs.tempo_raw);
     g_inputs.b_tempo_valid = (STATUS_OK == g_tempo_read_status);
 }
 

@@ -68,7 +68,7 @@ void host_set_platform_status(port_status_t status);
 void host_set_steps(const uint8_t *p_raw_bits, port_status_t status);
 
 /**
- * @brief Sets what tempo_input_read() returns.
+ * @brief Sets what pot_input_read() returns.
  * @param raw     Reading to hand out, 0 to 1023.
  * @param status  Status to return. The reading is only written when it is STATUS_OK.
  */
@@ -274,7 +274,7 @@ uint8_t host_last_step_byte_count(void);
 uint16_t host_step_read_count(void);
 
 /**
- * @brief Number of times tempo_input_read() has been called since host_reset().
+ * @brief Number of times pot_input_read() has been called since host_reset().
  */
 uint16_t host_tempo_read_count(void);
 

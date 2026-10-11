@@ -44,7 +44,7 @@ ports/                        # What the app needs from the outside world (heade
 ├── step_input_port.h                 # Raw step-note bits
 ├── led_output_port.h                 # The sixteen step lights
 ├── watchdog_port.h                   # Telling the watchdog the firmware still runs
-├── tempo_input_port.h                # Raw tempo control position
+├── pot_input_port.h                # Raw tempo control position
 ├── timebase_port.h                   # Elapsed time in 1 ms ticks
 ├── cv_output_port.h                  # The pitch control voltage, in millivolts
 ├── gate_output_port.h                # The gate output's level

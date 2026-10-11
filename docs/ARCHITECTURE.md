@@ -73,7 +73,7 @@ flowchart TD
     subgraph ports["ports/ (headers only)"]
         p_platform["platform_port.h"]
         p_step["step_input_port.h"]
-        p_tempo["tempo_input_port.h"]
+        p_tempo["pot_input_port.h"]
         p_time["timebase_port.h"]
         p_cv["cv_output_port.h"]
         p_gate["gate_output_port.h"]
@@ -147,7 +147,7 @@ Ports are bound at link time: the firmware links `adapters/target/`, the tests l
 | `step_input_port.h` | `step_input_read(p_raw_bits, byte_count)` | `shift_reg_reader.c`: 74HC165 chain, read through the SPI driver `spi.c` |
 | `watchdog_port.h` | `watchdog_kick()` | `watchdog.c`: the MCU's watchdog timer, started by `platform_init()` |
 | `led_output_port.h` | `led_output_write(leds)` | `shift_reg_reader.c` again: two 74HC595s, written as part of the next step input read |
-| `tempo_input_port.h` | `tempo_input_read(p_raw)` | `analog_reader.c`: ADC channel 6 |
+| `pot_input_port.h` | `pot_input_read(p_raw)` | `analog_reader.c`: ADC channel 6 |
 | `timebase_port.h` | `timebase_elapsed_ticks()` | `timebase.c`: Timer/Counter2 interrupting at 1 kHz |
 | `cv_output_port.h` | `cv_output_write(millivolts)` | `cv_output.c`: channel A of an MCP4822 DAC, written through the SPI driver `spi.c` |
 | `gate_output_port.h` | `gate_output_write(b_high)` | `gate_output.c`: PD4 |
@@ -206,7 +206,7 @@ sequenceDiagram
             A->>P: log_step_note() or log_step_rest() if the last tick began a step
             A->>P: clock_input_edge(), reset_input_edge(), run_input_read(), sync_input_read()
             A->>P: midi_output_room()
-            A->>P: step_input_read(), tempo_input_read() every 8th tick
+            A->>P: step_input_read(), pot_input_read() every 8th tick
             A->>C: cal_tick(), and seq_tick() then midi_out_tick() unless in calibration mode
         end
         A->>P: log_poll(), midi_output_poll(), nv_poll()
@@ -258,7 +258,7 @@ flowchart LR
     subgraph gather["2. Gather inputs"]
         tb["timebase_elapsed_ticks<br/>(already read: it started the tick)"]
         sr["step_input_read<br/>every 8th tick"]
-        tr["tempo_input_read<br/>every 8th tick"]
+        tr["pot_input_read<br/>every 8th tick"]
         ti["clock_input_edge, reset_input_edge,<br/>run_input_read, sync_input_read<br/>on every tick"]
         mr["midi_output_room<br/>on every tick"]
     end
@@ -881,7 +881,7 @@ Writes `ADMUX` with AVcc as the reference and channel 6, sets `ADSC` to start a 
 
 ```mermaid
 flowchart TD
-    start(["tempo_input_read"]) --> check{"p_raw is null?"}
+    start(["pot_input_read"]) --> check{"p_raw is null?"}
     check -->|"yes"| bad(["ERR_INVALID_PARAM<br/>nothing written"])
     check -->|"no"| mux["ADMUX: AVcc reference, channel 6"]
     mux --> go["Set ADSC to start one conversion"]
