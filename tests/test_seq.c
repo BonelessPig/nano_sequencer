@@ -164,6 +164,11 @@ static void test_init_sets_the_power_on_state(void)
     TEST_ASSERT_EQUAL(0, state.stage.address.position);
     TEST_ASSERT_EQUAL(0, state.stage.length);
     TEST_ASSERT_EQUAL(0, state.stage.played);
+    TEST_ASSERT(!state.klee.b_loaded);
+    TEST_ASSERT_EQUAL(0, state.chance.address.position);
+    TEST_ASSERT_EQUAL(0, state.cartesian.x_steps);
+    TEST_ASSERT_EQUAL(0, state.euclid.beat);
+    TEST_ASSERT_EQUAL(0xACE1, state.prng.value); // The same seed every time
     TEST_ASSERT_EQUAL(0, state.clock.phase);
     TEST_ASSERT_EQUAL(SEQ_PULSES_PER_STEP, state.step_pulses); // A step is due
     TEST_ASSERT_EQUAL(0, state.gate.pulses_left);              // Gate closed
@@ -1876,7 +1881,7 @@ static void test_mode_switches_choose_the_engine(void)
     // Stage 0 lasts two steps, repeating its note, which only the stage
     // engine acts on: it plays 0 0 1, and the plain engine 0 1 2
     static const uint8_t stage_modes[] = { 0x01U, 0x09U, 0xF9U };
-    static const uint8_t plain_modes[] = { 0x00U, 0x02U, 0x07U, 0xF8U };
+    static const uint8_t plain_modes[] = { 0x00U, 0x06U, 0x07U, 0xF8U };
 
     for (size_t i = 0U; i < (sizeof(stage_modes) / sizeof(stage_modes[0])); i++)
     {
@@ -1905,6 +1910,84 @@ static void test_mode_switches_choose_the_engine(void)
         TEST_ASSERT_EQUAL(1, next_step(&state, &in));
         TEST_ASSERT_EQUAL(2, next_step(&state, &in));
     }
+}
+
+
+
+static void test_mode_two_is_the_klee_engine(void)
+{
+    // Stages 0 and 2 loaded, with values 3 and 4. The register moves a
+    // stage a step: the active pair sits on 3 + 4, then on stages 1 and 3
+    // (0 + 0, a rest), and after sixteen steps it is back
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_250_BPM;
+    set_step(&in, 0U, 0x0BU);
+    set_step(&in, 2U, 0x0CU);
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x02U;
+
+    TEST_ASSERT(0U != ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(0, out.step);
+    TEST_ASSERT(!out.b_rest);
+    TEST_ASSERT_EQUAL(6, out.semitone); // Note value 7 in the chromatic scale
+    TEST_ASSERT(0U != ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(1, out.step);
+    TEST_ASSERT(out.b_rest);
+    for (unsigned int i = 0U; i < 15U; i++)
+    {
+        TEST_ASSERT(0U != ticks_to_next_step(&state, &in, &out));
+    }
+    TEST_ASSERT_EQUAL(0, out.step);
+    TEST_ASSERT_EQUAL(6, out.semitone);
+
+    // A reset loads the register again
+    TEST_ASSERT(0U != ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(1, out.step);
+    in.b_reset = true;
+    TEST_ASSERT(0U != ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(0, out.step);
+    TEST_ASSERT_EQUAL(6, out.semitone);
+}
+
+
+
+static void test_modes_three_to_five_are_the_chance_cartesian_and_euclidean_engines(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    // Chance, shuffling: the steps the generator's seed picks (see
+    // test_engine_chance.c), which a reset does not start again
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_250_BPM;
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x23U;
+    TEST_ASSERT_EQUAL(7, next_step(&state, &in));
+    TEST_ASSERT_EQUAL(6, next_step(&state, &in));
+    in.b_reset = true;
+    TEST_ASSERT_EQUAL(0, next_step(&state, &in));
+    in.b_reset = false;
+
+    // Cartesian, with y moving on every step: the diagonal
+    seq_init(&state);
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x64U;
+    TEST_ASSERT_EQUAL(0, next_step(&state, &in));
+    TEST_ASSERT_EQUAL(5, next_step(&state, &in));
+    TEST_ASSERT_EQUAL(10, next_step(&state, &in));
+
+    // Euclidean, one beat to the bar: step 0 sounds and step 1 is a rest
+    seq_init(&state);
+    (void)memset(in.raw_steps, 0x11, PANEL_STEP_BYTE_COUNT);
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x05U;
+    TEST_ASSERT(0U != ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(0, out.step);
+    TEST_ASSERT(!out.b_rest);
+    TEST_ASSERT(0U != ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(1, out.step);
+    TEST_ASSERT(out.b_rest);
 }
 
 
@@ -1940,7 +2023,7 @@ static void test_a_change_of_engine_starts_its_pattern_from_the_beginning(void)
     TEST_ASSERT_EQUAL(2, next_step(&state, &in));
 
     // A switch that chooses nothing new changes nothing
-    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x02U;
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x06U;
     TEST_ASSERT_EQUAL(3, next_step(&state, &in));
 
     in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x01U;
@@ -2026,6 +2109,93 @@ static void test_a_tie_does_not_shorten_a_longer_gate(void)
 
     TEST_ASSERT_EQUAL(1, gate.rises);
     TEST_ASSERT_EQUAL(200, gate.high_ticks);
+}
+
+
+
+static void test_step_lights_flash_for_the_first_half_of_each_step(void)
+{
+    // 150 BPM: a step is 100 ticks and the clock output is high for 50
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    TEST_ASSERT_EQUAL(0, state.leds);
+    in.tempo_raw = TEMPO_RAW_150_BPM;
+    for (unsigned int step = 0U; step < 18U; step++)
+    {
+        for (unsigned int tick = 0U; tick < 100U; tick++)
+        {
+            (void)memset(&out, POISON_BYTE, sizeof(out));
+            seq_tick(&state, &in, &out);
+            // Step 0 is a rest and is lit all the same
+            TEST_ASSERT_EQUAL((tick < 50U) ? (1U << (step % 16U)) : 0U, out.leds);
+        }
+    }
+}
+
+
+
+static void test_step_lights_show_nothing_for_a_step_that_does_not_begin(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    // A one-shot of two steps: the clock output goes on, the lights do not
+    seq_init(&state);
+    in.tempo_raw          = TEMPO_RAW_150_BPM;
+    in.address.last_step  = 1U;
+    in.address.b_one_shot = true;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(0x0001, out.leds);
+    for (unsigned int tick = 0U; tick < 100U; tick++)
+    {
+        seq_tick(&state, &in, &out);
+    }
+    TEST_ASSERT_EQUAL(0x0002, out.leds);
+    for (unsigned int tick = 0U; tick < 100U; tick++)
+    {
+        seq_tick(&state, &in, &out);
+    }
+    TEST_ASSERT(out.b_clock_out);
+    TEST_ASSERT_EQUAL(0, out.leds);
+
+    // Stopped: nothing, and a start begins with nothing left over
+    seq_init(&state);
+    in.address.b_one_shot = false;
+    seq_tick(&state, &in, &out);
+    in.b_run_button = true;
+    for (unsigned int tick = 0U; tick < 20U; tick++)
+    {
+        seq_tick(&state, &in, &out);
+    }
+    TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, out.transport);
+    TEST_ASSERT_EQUAL(0, out.leds);
+}
+
+
+
+static void test_step_lights_show_the_klee_register(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    seq_outputs_t out;
+
+    // Stages 0 and 2 loaded: both lit, then stages 1 and 3
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_150_BPM;
+    set_step(&in, 0U, 0x0BU);
+    set_step(&in, 2U, 0x0CU);
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x02U;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(0x0005, out.leds);
+    for (unsigned int tick = 0U; tick < 100U; tick++)
+    {
+        seq_tick(&state, &in, &out);
+    }
+    TEST_ASSERT_EQUAL(0x000A, out.leds);
 }
 
 
@@ -2122,11 +2292,16 @@ int main(void)
     RUN_TEST(test_reset_on_the_external_clock_plays_the_first_step_at_the_next_edge);
     RUN_TEST(test_a_start_on_the_external_clock_waits_for_an_edge);
     RUN_TEST(test_mode_switches_choose_the_engine);
+    RUN_TEST(test_mode_two_is_the_klee_engine);
+    RUN_TEST(test_modes_three_to_five_are_the_chance_cartesian_and_euclidean_engines);
     RUN_TEST(test_the_engine_is_chosen_from_the_last_readable_panel);
     RUN_TEST(test_a_change_of_engine_starts_its_pattern_from_the_beginning);
     RUN_TEST(test_reset_sends_the_chosen_engine_back);
     RUN_TEST(test_a_tied_note_is_held_into_the_next_step);
     RUN_TEST(test_a_tie_does_not_shorten_a_longer_gate);
+    RUN_TEST(test_step_lights_flash_for_the_first_half_of_each_step);
+    RUN_TEST(test_step_lights_show_nothing_for_a_step_that_does_not_begin);
+    RUN_TEST(test_step_lights_show_the_klee_register);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();
 }

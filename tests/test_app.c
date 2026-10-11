@@ -320,6 +320,34 @@ static void test_mode_switches_reach_the_core(void)
 
 
 
+static void test_step_lights_are_given_on_every_tick_and_follow_the_step(void)
+{
+    start_app();
+    host_set_elapsed_ticks(0U);
+    app_run_once();
+    TEST_ASSERT_EQUAL(0, host_led_write_count()); // Not between ticks
+
+    // Step 0 begins on the first tick and its light is given on the second
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(1, host_led_write_count());
+    TEST_ASSERT_EQUAL(0, host_leds());
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(0x0001, host_leds());
+
+    // Lit for the first half of the step, then step 1's
+    run_ticks(TICKS_PER_STEP / 2U);
+    TEST_ASSERT_EQUAL(0, host_leds());
+    run_ticks(TICKS_PER_STEP / 2U);
+    TEST_ASSERT_EQUAL(0x0002, host_leds());
+    TEST_ASSERT_EQUAL(2U + TICKS_PER_STEP, host_led_write_count());
+
+    (void)app_init();
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(0, host_leds()); // Nothing left over from before
+}
+
+
+
 static void test_elapsed_ticks_reach_the_core(void)
 {
     // Ten ticks at a time, a 100-tick step begins on every tenth pass. The
@@ -1233,6 +1261,7 @@ int main(void)
     RUN_TEST(test_scan_timing_counts_elapsed_ticks_not_passes);
     RUN_TEST(test_tick_reads_the_whole_chain);
     RUN_TEST(test_mode_switches_reach_the_core);
+    RUN_TEST(test_step_lights_are_given_on_every_tick_and_follow_the_step);
     RUN_TEST(test_elapsed_ticks_reach_the_core);
     RUN_TEST(test_gate_opens_one_tick_after_its_step_begins_and_before_the_log);
     RUN_TEST(test_pitch_cv_is_in_place_before_the_gate_opens);

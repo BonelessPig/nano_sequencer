@@ -27,8 +27,12 @@ static const uint8_t g_pattern[FAKE_SHIFT_CHAIN_BYTES] =
 
 static uint16_t g_transfer_count   = 0U;    // Calls to the spi_transfer stub
 static uint16_t g_failing_transfer = NEVER; // Which call fails, counting from 0
-static uint8_t  g_last_tx          = 0U;    // Byte the adapter last sent
-static uint16_t g_loads_at_first_transfer = 0U; // Load pulses seen before any clock
+#define LED_BYTES     (2U)  // Sent ahead of the load pulse, for the step lights
+#define TRANSFERS_MAX (16U) // More transfers than any read makes
+
+static uint8_t  g_tx[TRANSFERS_MAX];                // Byte sent by each transfer
+static uint16_t g_loads_at_transfer[TRANSFERS_MAX]; // Load pulses seen before each
+static bool     g_b_load_high_at_transfer[TRANSFERS_MAX]; // The load line during each
 
 /**
  * @brief Stands in for the SPI driver: eight clocks of the chain model, or a
@@ -38,12 +42,14 @@ port_status_t spi_transfer(uint8_t tx, uint8_t *p_rx)
 {
     port_status_t status = STATUS_OK;
 
-    if (0U == g_transfer_count)
+    fake_shift_sync();
+    if (g_transfer_count < TRANSFERS_MAX)
     {
-        fake_shift_sync();
-        g_loads_at_first_transfer = g_fake_shift_loads;
+        g_tx[g_transfer_count]                = tx;
+        g_loads_at_transfer[g_transfer_count] = g_fake_shift_loads;
+        g_b_load_high_at_transfer[g_transfer_count] =
+            (0U != (g_fake_portb & FAKE_SHIFT_LOAD_MASK));
     }
-    g_last_tx = tx;
 
     if (g_transfer_count == g_failing_transfer)
     {
@@ -74,8 +80,10 @@ static void start_chain(const uint8_t *p_inputs)
 
     g_transfer_count   = 0U;
     g_failing_transfer = NEVER;
-    g_last_tx          = POISON_BYTE;
-    g_loads_at_first_transfer = 0U;
+    (void)memset(g_tx, POISON_BYTE, sizeof(g_tx));
+    (void)memset(g_loads_at_transfer, 0, sizeof(g_loads_at_transfer));
+    (void)memset(g_b_load_high_at_transfer, 0, sizeof(g_b_load_high_at_transfer));
+    led_output_write(0U); // The adapter keeps what the lights were last given
 }
 
 
@@ -101,11 +109,51 @@ static void test_read_pulses_load_once_then_makes_one_transfer_a_byte(void)
     (void)step_input_read(raw, SHIFT_REG_CHAIN_BYTES);
     fake_shift_sync();
 
+    // Two bytes for the lights, the load pulse, then a transfer a byte
     TEST_ASSERT_EQUAL(1, g_fake_shift_loads);
-    TEST_ASSERT_EQUAL(1, g_loads_at_first_transfer); // Loaded before the first clock
-    TEST_ASSERT_EQUAL(SHIFT_REG_CHAIN_BYTES, g_transfer_count);
-    TEST_ASSERT_EQUAL(SHIFT_REG_CHAIN_BYTES * BITS_PER_BYTE, g_fake_shift_clocks);
-    TEST_ASSERT_EQUAL(0, g_last_tx); // Nothing listens; zeros are sent
+    TEST_ASSERT_EQUAL(0, g_loads_at_transfer[LED_BYTES - 1U]);
+    TEST_ASSERT_EQUAL(1, g_loads_at_transfer[LED_BYTES]); // Loaded before its first clock
+    TEST_ASSERT_EQUAL(LED_BYTES + SHIFT_REG_CHAIN_BYTES, g_transfer_count);
+    TEST_ASSERT_EQUAL((LED_BYTES + SHIFT_REG_CHAIN_BYTES) * BITS_PER_BYTE, g_fake_shift_clocks);
+    for (uint16_t i = LED_BYTES; i < g_transfer_count; i++)
+    {
+        TEST_ASSERT_EQUAL(0, g_tx[i]); // Zeros are sent while reading
+        TEST_ASSERT(g_b_load_high_at_transfer[i]);
+    }
+}
+
+
+
+static void test_lights_are_sent_before_the_load_pulse_that_latches_them(void)
+{
+    uint8_t raw[SHIFT_REG_CHAIN_BYTES];
+
+    // Steps 15 to 8 first, then 7 to 0, with the line idle (high) so that
+    // its next rising edge, the end of the load pulse, is what latches them
+    start_chain(g_pattern);
+    led_output_write(0xA5C3U);
+    TEST_ASSERT_EQUAL(0, g_transfer_count); // Giving the lights sends nothing
+    TEST_ASSERT_EQUAL(STATUS_OK, step_input_read(raw, SHIFT_REG_CHAIN_BYTES));
+    TEST_ASSERT_EQUAL(0xA5, g_tx[0]);
+    TEST_ASSERT_EQUAL(0xC3, g_tx[1]);
+    TEST_ASSERT_EQUAL(0, g_loads_at_transfer[0]);
+    TEST_ASSERT_EQUAL(0, g_loads_at_transfer[1]);
+    TEST_ASSERT(g_b_load_high_at_transfer[0]);
+    TEST_ASSERT(g_b_load_high_at_transfer[1]);
+    TEST_ASSERT_EQUAL(0, memcmp(g_pattern, raw, sizeof(raw))); // The read is unharmed
+
+    // They are sent again with every read, and the latest given are sent
+    g_transfer_count = 0U;
+    (void)step_input_read(raw, SHIFT_REG_CHAIN_BYTES);
+    TEST_ASSERT_EQUAL(0xA5, g_tx[0]);
+    TEST_ASSERT_EQUAL(0xC3, g_tx[1]);
+
+    led_output_write(0x0001U);
+    led_output_write(0x8000U);
+    g_transfer_count = 0U;
+    (void)step_input_read(raw, 1U);
+    TEST_ASSERT_EQUAL(0x80, g_tx[0]);
+    TEST_ASSERT_EQUAL(0x00, g_tx[1]);
 }
 
 
@@ -161,7 +209,7 @@ static void test_short_read_takes_the_nearest_chips_only(void)
 
         TEST_ASSERT_EQUAL(0, memcmp(g_pattern, raw, byte_count));
         TEST_ASSERT_EQUAL(POISON_BYTE, raw[byte_count]); // Nothing written past the request
-        TEST_ASSERT_EQUAL(byte_count, g_transfer_count);
+        TEST_ASSERT_EQUAL(LED_BYTES + byte_count, g_transfer_count);
     }
 }
 
@@ -210,8 +258,8 @@ static void test_every_read_latches_the_inputs_again(void)
 
 static void test_failed_transfer_is_returned_and_the_buffer_left_alone(void)
 {
-    // Whichever transfer fails, first to last
-    for (uint16_t failing = 0U; failing < SHIFT_REG_CHAIN_BYTES; failing++)
+    // Whichever transfer fails, first to last, the two for the lights included
+    for (uint16_t failing = 0U; failing < (LED_BYTES + SHIFT_REG_CHAIN_BYTES); failing++)
     {
         uint8_t raw[SHIFT_REG_CHAIN_BYTES];
 
@@ -226,6 +274,11 @@ static void test_failed_transfer_is_returned_and_the_buffer_left_alone(void)
             TEST_ASSERT_EQUAL(POISON_BYTE, raw[i]);
         }
         TEST_ASSERT(0U != (g_fake_portb & FAKE_SHIFT_LOAD_MASK)); // Load still idle
+
+        // If the lights could not be sent there is no load pulse, which
+        // would have latched half of them
+        fake_shift_sync();
+        TEST_ASSERT_EQUAL((failing < LED_BYTES) ? 0U : 1U, g_fake_shift_loads);
     }
 }
 
@@ -260,6 +313,7 @@ int main(void)
 {
     RUN_TEST(test_full_chain_is_read_nearest_chip_first);
     RUN_TEST(test_read_pulses_load_once_then_makes_one_transfer_a_byte);
+    RUN_TEST(test_lights_are_sent_before_the_load_pulse_that_latches_them);
     RUN_TEST(test_load_is_left_idle_and_other_pins_untouched);
     RUN_TEST(test_port_d_is_not_touched);
     RUN_TEST(test_short_read_takes_the_nearest_chips_only);

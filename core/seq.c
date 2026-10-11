@@ -22,6 +22,13 @@
 #define ENGINE_SELECT_MASK (0x07U)
 #define ENGINE_PLAIN       (0U)
 #define ENGINE_STAGE       (1U)
+#define ENGINE_KLEE        (2U)
+#define ENGINE_CHANCE      (3U)
+#define ENGINE_CARTESIAN   (4U)
+#define ENGINE_EUCLID      (5U)
+
+// Where the random numbers start from at power-on; any value but 0 will do
+#define PRNG_SEED (0xACE1U)
 
 
 
@@ -117,6 +124,10 @@ static void engines_init(seq_state_t *p_state)
 {
     engine_plain_init(&p_state->plain);
     engine_stage_init(&p_state->stage);
+    engine_klee_init(&p_state->klee);
+    engine_chance_init(&p_state->chance);
+    engine_cartesian_init(&p_state->cartesian);
+    engine_euclid_init(&p_state->euclid);
 }
 
 
@@ -138,7 +149,7 @@ static bool engine_step(seq_state_t *p_state, const seq_inputs_t *p_in,
         (uint8_t)(panel_mode_value(p_in->raw_steps) & ENGINE_SELECT_MASK);
     bool            b_step;
 
-    if (engine > ENGINE_STAGE)
+    if (engine > ENGINE_EUCLID)
     {
         engine = (uint8_t)ENGINE_PLAIN;
     }
@@ -150,11 +161,28 @@ static bool engine_step(seq_state_t *p_state, const seq_inputs_t *p_in,
 
     engine_in.p_raw_steps = p_in->raw_steps;
     engine_in.p_address   = &p_in->address;
+    engine_in.p_prng      = &p_state->prng;
 
     switch (engine)
     {
         case ENGINE_STAGE:
             b_step = engine_stage_step(&p_state->stage, &engine_in, p_step);
+            break;
+
+        case ENGINE_KLEE:
+            b_step = engine_klee_step(&p_state->klee, &engine_in, p_step);
+            break;
+
+        case ENGINE_CHANCE:
+            b_step = engine_chance_step(&p_state->chance, &engine_in, p_step);
+            break;
+
+        case ENGINE_CARTESIAN:
+            b_step = engine_cartesian_step(&p_state->cartesian, &engine_in, p_step);
+            break;
+
+        case ENGINE_EUCLID:
+            b_step = engine_euclid_step(&p_state->euclid, &engine_in, p_step);
             break;
 
         default:
@@ -163,6 +191,32 @@ static bool engine_step(seq_state_t *p_state, const seq_inputs_t *p_in,
     }
 
     return b_step;
+}
+
+
+
+/**
+ * @brief  Gives the step lights for a step that has just begun: the light
+ *         of the step itself, or for the Klee engine the active stages of
+ *         its register.
+ * @param  p_state  Sequencer state, after the engine has given the step.
+ * @param  step     The step it gave, 0 to PANEL_STEP_COUNT - 1.
+ * @return One bit a light, bit n for step n.
+ */
+static uint16_t step_leds(const seq_state_t *p_state, uint8_t step)
+{
+    uint16_t leds = p_state->klee.stages;
+
+    if (ENGINE_KLEE != p_state->engine)
+    {
+        leds = 1U;
+        for (uint8_t i = 0U; i < step; i++)
+        {
+            leds = (uint16_t)(leds << 1U);
+        }
+    }
+
+    return leds;
 }
 
 
@@ -184,8 +238,10 @@ static bool begin_step(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outpu
     played.b_tie = false;
 
     // The step takes its turn whether or not its note is readable
+    p_state->leds = 0U;
     if (engine_step(p_state, p_in, &played))
     {
+        p_state->leds         = step_leds(p_state, played.step);
         p_out->b_step_started = true;
         p_out->step           = played.step;
         p_out->b_note_valid   = p_in->b_steps_valid;
@@ -218,6 +274,7 @@ static void start(seq_state_t *p_state, transport_mode_t mode)
     engines_init(p_state);
     gate_init(&p_state->gate);
     p_state->step_pulses = SEQ_PULSES_PER_STEP;
+    p_state->leds        = 0U;
     if (TRANSPORT_EXTERNAL == mode)
     {
         p_state->step_pulses = SEQ_PULSES_PER_STEP - 1U;
@@ -288,6 +345,10 @@ static void run(seq_state_t *p_state, const seq_inputs_t *p_in, transport_mode_t
 
     p_out->b_gate      = gate_advance(&p_state->gate, gate_pulses);
     p_out->b_clock_out = (p_state->step_pulses < SEQ_CLOCK_OUT_PULSES);
+    if (p_out->b_clock_out)
+    {
+        p_out->leds = p_state->leds;
+    }
 }
 
 
@@ -299,6 +360,7 @@ void seq_init(seq_state_t *p_state)
         p_state->last_tempo_raw = 0U;
         p_state->cv             = 0U;
         p_state->engine         = (uint8_t)ENGINE_PLAIN;
+        prng_init(&p_state->prng, (uint16_t)PRNG_SEED);
         transport_init(&p_state->transport);
         start(p_state, TRANSPORT_INTERNAL);
     }
@@ -339,6 +401,7 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
         p_out->semitone       = 0U;
         p_out->b_gate         = false;
         p_out->b_clock_out    = false;
+        p_out->leds           = 0U;
 
         if (TRANSPORT_STOPPED == transport.mode)
         {

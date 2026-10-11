@@ -14,12 +14,17 @@
 #include <stdint.h>
 #include "address.h"
 #include "clock.h"
+#include "engine_cartesian.h"
+#include "engine_chance.h"
+#include "engine_euclid.h"
+#include "engine_klee.h"
 #include "engine_plain.h"
 #include "engine_stage.h"
 #include "gate.h"
 #include "note_map.h"
 #include "panel.h"
 #include "pitch_cal.h"
+#include "prng.h"
 #include "transport.h"
 
 // A step is a sixteenth note: four to the quarter note, 24 clock pulses each
@@ -48,8 +53,15 @@ typedef struct
                                          // mode switches' choice, as seq_tick() says
     engine_plain_state_t plain;          // Where the plain engine has got to
     engine_stage_state_t stage;          // Where the stage engine has got to
+    engine_klee_state_t  klee;           // The Klee engine's register
+    engine_chance_state_t    chance;     // Where the chance engine has got to
+    engine_cartesian_state_t cartesian;  // Where the Cartesian engine has got to
+    engine_euclid_state_t    euclid;     // Where the Euclidean engine has got to
+    prng_state_t         prng;           // The random numbers the engines draw from
     gate_state_t         gate;           // How much of the current note's gate is left
     uint16_t             cv;             // Pitch CV value of the last note played
+    uint16_t             leds;           // Step lights of the step last due: what
+                                         // is lit while the clock output is high
     transport_state_t    transport;      // Whether the pattern runs, and from which clock
 } seq_state_t;
 
@@ -96,6 +108,10 @@ typedef struct
     uint16_t cv;            // Pitch CV value after this tick, 0 to
                             // PITCH_CAL_CV_MAX: that of the last note played,
                             // held through rests. Given on every tick
+    uint16_t leds;          // Step lights after this tick, bit n for step
+                            // n: those of the step that last began, lit
+                            // while the clock output is high. Given on
+                            // every tick
     transport_mode_t transport; // Whether the pattern is stopped, or running
                             // from the internal clock or the external one.
                             // Given on every tick
@@ -107,7 +123,8 @@ typedef struct
  * @brief  Puts the state into its power-on condition: running, so that the
  *         first tick starts the pattern, with no tempo reading yet, so the
  *         tempo is SEQ_BPM_MIN until one arrives. The pitch CV value is 0
- *         until the first note.
+ *         until the first note. The random numbers start from the same
+ *         seed every time, and nothing but this starts them again.
  * @param  p_state  State to initialize. Ignored if null.
  */
 void seq_init(seq_state_t *p_state);
@@ -154,8 +171,12 @@ void seq_init(seq_state_t *p_state);
  *         Which step begins is up to the engine and the addressing
  *         controls in p_in->address (see address.h). The low three mode
  *         switches (see panel.h) choose the engine, as a number: 1 is the
- *         stage engine (engine_stage.h), and 0 and every other value the
- *         plain engine (engine_plain.h). The choice is read when a step
+ *         stage engine (engine_stage.h), 2 the Klee engine (engine_klee.h),
+ *         3 the chance engine (engine_chance.h), 4 the Cartesian engine
+ *         (engine_cartesian.h), 5 the Euclidean engine (engine_euclid.h),
+ *         and 0 and every other value the plain engine (engine_plain.h).
+ *         The other five mode switches are the chosen engine's to give a
+ *         meaning to. The choice is read when a step
  *         begins, from the panel as last read, and a change of engine
  *         starts the new one's pattern from its beginning. When a one-shot
  *         pattern has finished, the clock keeps running and steps keep
@@ -193,6 +214,14 @@ void seq_init(seq_state_t *p_state);
  *         each time a step falls due, whether or not one begins, and falls
  *         SEQ_CLOCK_OUT_PULSES later. While steps are owed after a stall it
  *         stays low.
+ *
+ *         The step lights show the step that last began, for as long as
+ *         the clock output is high, so a light flashes for the first half
+ *         of its step and a step played twice flashes twice. It is the
+ *         light of the step the engine gave, but for the Klee engine, where
+ *         it is every active stage of the register (see engine_klee.h).
+ *         Nothing is lit for a step that fell due and did not begin, nor
+ *         while the pattern is stopped.
  *
  *         The tempo is SEQ_BPM_MIN plus the tempo reading divided by
  *         SEQ_TEMPO_RAW_PER_BPM (30 to 285 BPM over the valid range). If the

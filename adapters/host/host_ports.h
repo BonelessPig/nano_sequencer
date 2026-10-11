@@ -222,6 +222,17 @@ uint16_t host_log_poll_count(void);
 bool host_gate_level(void);
 
 /**
+ * @brief What led_output_write() was last given (0 if never called): one bit
+ *        a step light.
+ */
+uint16_t host_leds(void);
+
+/**
+ * @brief Number of times led_output_write() has been called since host_reset().
+ */
+uint16_t host_led_write_count(void);
+
+/**
  * @brief Number of times gate_output_write() has been called since host_reset().
  */
 uint16_t host_gate_write_count(void);

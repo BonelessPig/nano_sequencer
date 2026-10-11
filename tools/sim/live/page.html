@@ -4,7 +4,9 @@
   outputs and log. It holds no emulator: every switch and the pot are posted
   to the server, and everything shown comes back from it as events. That
   goes for the transport and the step playing too: the server works them
-  out (see server.js) and this page only words them.
+  out (see server.js) and this page only words them. The sixteen step
+  lights are not worked out anywhere: they are what the chip latched into
+  the two 74HC595s, and only a `led` event or a `state` changes them.
 -->
 <html lang="en">
 <head>
@@ -70,9 +72,14 @@ button { cursor: pointer; }
 .switch { width: 32px; height: 22px; padding: 0; font-size: 11px; color: var(--dim); }
 .switch.on { background: var(--on); border-color: var(--on); color: #1b1b1b; }
 .means { font-size: 12px; min-height: 17px; white-space: nowrap; }
-#steps:not(.stage) .means { display: none; }
+#steps:not(.terms) .means { display: none; }
 /* The stage engine: a control's high two switches stand apart from its low two */
 #steps.stage .step.control .switch[data-bit="1"] { margin-top: 6px; }
+/* The Klee engine: a step's pattern switch stands apart from its value */
+#steps.klee .switch[data-bit="2"] { margin-top: 6px; }
+/* The Cartesian engine: the sixteen steps as four rows of four */
+#steps.cartesian { grid-template-columns: repeat(4, minmax(44px, 96px)); }
+#steps.cartesian .step.group { margin-left: 0; }
 .mode-group { display: inline-flex; gap: 4px; padding: 4px; border-radius: 6px;
               border: 1px solid transparent; }
 .mode-group.engine { border-color: var(--on); }
@@ -84,7 +91,7 @@ button { cursor: pointer; }
 #cal-help li { margin-bottom: 4px; }
 .led { width: 12px; height: 12px; border-radius: 50%; background: var(--off);
        border: 1px solid var(--line); display: inline-block; }
-.step.playing .led { background: var(--on); }
+.step .led.lit { background: var(--on); border-color: var(--on); }
 #gate-led.lit { background: var(--gate); }
 #clock-led.lit { background: var(--clock); }
 #tempo, #clock-ms { flex: 1; min-width: 200px; }
@@ -120,22 +127,67 @@ canvas { width: 100%; height: 240px; display: block; }
     <section>
         <h2>Panel</h2>
         <div id="steps"></div>
+        <p class="dim note-text">The light on each step is the board's own
+            step LED, as the chip last latched it into the two 74HC595s:
+            lit for the first half of a step, and dark while stopped and in
+            calibration mode. The outline round a step is the step counted
+            here, which the labels are worked out from; see under the input
+            jacks.</p>
         <div class="row" style="margin-top: 10px">
             <span>Mode switches</span>
             <span class="mode-group" id="modes-spare"></span>
-            <span class="dim">7 to 3 do nothing yet</span>
+            <span class="dim num" id="mode-means"></span>
             <span class="mode-group engine" id="modes-engine"></span>
             <span>2 to 0 choose the engine, as a number:
                 <span class="num" id="engine"></span></span>
+            <span class="dim num" id="place"></span>
         </div>
-        <p class="dim note-text" id="stage-help" hidden>The stage engine plays
+        <p class="dim note-text engine-help" data-engine="2" hidden>The Klee
+            engine sends a pattern of bits round a register of sixteen
+            stages, one stage a step. Each step is a stage: its highest
+            switch (8) is its pattern switch and its low three (4, 2 and 1)
+            its value, 0 to 7. The note is the sum of the values under the
+            active stages, 15 at most, and a sum of 0 is a rest. The pattern
+            switches only count at a load, which copies them into the
+            register: on the first step, and on the step after mode switch 3
+            is moved either way. The values are read on every step. The step
+            lights show the register itself: every active stage is lit, and
+            the pattern can be seen going round, turned over by invert and
+            drifting with chance. That comes from the chip and is not worked
+            out here, where the random numbers are not followed. What is
+            counted here is only how far the register has moved since it was
+            loaded, 0 to 15 and round again, given beside the mode switches;
+            no step is outlined, since none is being played.</p>
+        <p class="dim note-text engine-help" data-engine="3" hidden>The chance
+            engine plays the sixteen steps as the plain engine does, but
+            skips some, which are rests, and with shuffle on picks each step
+            at random. A shuffled step cannot be worked out here: the debug
+            image's log names it and it is outlined from that; the release
+            image has no log, so no step is outlined while shuffle is on.
+            The step lights still show it on both, since they are the
+            chip's own.</p>
+        <p class="dim note-text engine-help" data-engine="4" hidden>The
+            Cartesian engine plays the step at column x of row y of this
+            grid. Both start at 0 and go round from 3 to 0, each moving on
+            every so many steps as the mode switches say. With switches 6 to
+            3 all off that is the sixteen steps in order; other settings
+            trace other paths, some of which never reach every step.</p>
+        <p class="dim note-text engine-help" data-engine="5" hidden>The
+            Euclidean engine plays the sixteen steps in order, but a step
+            sounds only on a beat; any other is a rest. The beats are spread
+            as evenly as a bar of sixteen allows, the first on step 0. The
+            steps marked "beat" are the beats at the present setting; one of
+            them is still a rest if its own switches are all off.</p>
+        <p class="dim note-text engine-help" data-engine="1" hidden>The stage
+            engine plays
             eight stages. Steps 0 to 7 are the stages' notes and steps 8 to 15
             their controls, step 8 for stage 0 and so on. A control's low two
             switches (2 and 1) are the stage's length, 1 to 4 steps; its high
             two (8 and 4) are the gate mode: single plays the note on the
             stage's first step only, repeat on every step, hold once for the
-            whole stage, and rest not at all. The stage playing is lit with
-            its control, which counts its steps.</p>
+            whole stage, and rest not at all. The stage counted as playing
+            is outlined with its control, which counts its steps; the light
+            is on the stage's note.</p>
         <div class="row" style="margin-top: 10px">
             <label for="tempo">Tempo pot</label>
             <input type="range" id="tempo" min="0" max="1023" step="1">
@@ -179,18 +231,31 @@ canvas { width: 100%; height: 240px; display: block; }
             starts it again from the first step. A power cycle leaves the sync
             switch and the clock source as they are, and the board comes up
             running.</p>
-        <p class="dim note-text">The step lit on the panel is counted from the
+        <p class="dim note-text">The step lights on the panel are the chip's
+            own output and are only passed on. The step outlined is another
+            thing: it is counted here from the
             clock output, starting again at 0 after a start or a reset made
             here, and after a change of engine. The debug image also names each
             step in its log, and that is believed over the count. The release
             image has no log, so there the count is all there is, and a reset
-            that lands within a tick or two of a step can leave it one out.
+            that lands within a tick or two of a step can leave
+            it out. A switch is counted from the panel read at which the
+            chip took it, so it does not. Where the outline and the light
+            disagree, the light is right.
             On the stage engine the log names the stage, and which of its
             steps is playing is always counted, from the lengths on the panel
-            as they stood when each stage began.</p>
+            as they stood when each stage began. On the Klee engine what is
+            counted is how far the register has moved since its last load,
+            and the count goes back to 0 when mode switch 3 is moved. On the
+            Cartesian engine the two counters are counted as the firmware
+            counts them, from the mode switches as each step begins. On the
+            chance engine with shuffle on there is nothing to count, and
+            only the log can say which step was picked, or the step lights.
+            Nothing here follows the firmware's random numbers.</p>
         <p class="dim note-text">The engine is taken from the mode switches as
             each step begins, and a change of engine starts the new one's
-            pattern from its beginning.</p>
+            pattern from its beginning. Mode switches 3 to 7 belong to the
+            engine chosen, which reads them on every step.</p>
     </section>
 
     <section id="cal-banner" hidden>
@@ -271,8 +336,40 @@ const MODE_BITS = 8;
 // The low three mode switches choose the engine, as a number. Every number
 // with no engine of its own plays the plain one
 const ENGINE_BITS = 3;
+const ENGINE_PLAIN = 0;
 const ENGINE_STAGE = 1;
-const ENGINE_NAMES = ['plain', 'stage'];
+const ENGINE_KLEE = 2;
+const ENGINE_CHANCE = 3;
+const ENGINE_CARTESIAN = 4;
+const ENGINE_EUCLID = 5;
+const ENGINE_NAMES = ['plain', 'stage', 'Klee', 'chance', 'Cartesian', 'Euclidean'];
+// The class the panel takes for each engine that has terms of its own to
+// read the steps in
+const ENGINE_CLASSES = ['', 'stage', 'klee', '', 'cartesian', 'euclid'];
+// Mode switches 3 to 7 are the chosen engine's own. Klee: 3 load, 4 invert,
+// 5 merge, 6 and 7 the chance as a number; a step's highest switch is its
+// pattern switch and its low three its value
+const KLEE_LOAD_BIT = 3;
+const KLEE_INVERT_BIT = 4;
+const KLEE_MERGE_BIT = 5;
+const KLEE_CHANCE_SHIFT = 6;
+const KLEE_CHANCE_OF = 8;
+const KLEE_PATTERN_SWITCH = 0x08;
+const KLEE_VALUE_MASK = 0x07;
+// Chance: 3 and 4 the skips in four as a number, 5 shuffle
+const CHANCE_SKIP_SHIFT = 3;
+const CHANCE_SKIP_OF = 4;
+const CHANCE_SHUFFLE_BIT = 5;
+// Cartesian: 3 and 4 set how often x moves, 5 and 6 how often y does
+const GRID_SIDE = 4;
+const GRID_X_SHIFT = 3;
+const GRID_Y_SHIFT = 5;
+// Euclidean: 3 to 6 as a number are the beats in a bar of sixteen, less one
+const EUCLID_BEATS_SHIFT = 3;
+const EUCLID_BEATS_MASK = 0x0f;
+const EUCLID_BAR_STEPS = 16;
+const TWO_SWITCH_MASK = 0x03;
+const NO_USE = 'no use';
 // The stage engine: stage n's note is step n and its control step n + 8. A
 // control's low two switches are the length less one, its high two the mode
 const STAGE_COUNT = 8;
@@ -369,40 +466,166 @@ function engineNumber() {
     return state.mode & ((1 << ENGINE_BITS) - 1);
 }
 
+// The engine whose terms the panel is read in: the plain one in calibration
+// mode, and for a number with no engine of its own
+function panelEngine() {
+    const engine = engineNumber();
+
+    return (state.calibrating || (engine >= ENGINE_NAMES.length)) ? ENGINE_PLAIN : engine;
+}
+
 // Whether the panel is to be read as the stage engine reads it
 function isStagePanel() {
-    return !state.calibrating && (engineNumber() === ENGINE_STAGE);
+    return panelEngine() === ENGINE_STAGE;
+}
+
+function isModeOn(bit) {
+    return ((state.mode >> bit) & 1) === 1;
+}
+
+// The number a pair of mode switches makes, the lower of them at `shift`
+function modePair(shift) {
+    return (state.mode >> shift) & TWO_SWITCH_MASK;
+}
+
+function onOrOff(name, bit) {
+    return `${name} ${isModeOn(bit) ? 'on' : 'off'}`;
+}
+
+function everySteps(steps) {
+    return (steps === 1) ? 'every step' : `every ${steps} steps`;
+}
+
+// How many beats the Euclidean engine puts in its bar, 1 to 16
+function euclidBeats() {
+    return ((state.mode >> EUCLID_BEATS_SHIFT) & EUCLID_BEATS_MASK) + 1;
+}
+
+// Whether a step of the bar is a beat. The bar and the pattern start
+// together and are both sixteen long here, so a step keeps its place in it
+function isEuclidBeat(step) {
+    return ((step * euclidBeats()) % EUCLID_BAR_STEPS) < euclidBeats();
+}
+
+// What mode switches 7 to 3 mean to an engine and how they stand, highest
+// first: a list of [the switches, what they say]
+function modeMeanings(engine) {
+    switch (engine) {
+        case ENGINE_KLEE: {
+            const chance = modePair(KLEE_CHANCE_SHIFT);
+
+            return [
+                [[7, 6], (chance === 0)
+                    ? 'chance off' : `chance ${chance} in ${KLEE_CHANCE_OF}`],
+                [[5], onOrOff('merge', KLEE_MERGE_BIT)],
+                [[4], onOrOff('invert', KLEE_INVERT_BIT)],
+                [[3], 'load, at the step after it is moved either way'],
+            ];
+        }
+        case ENGINE_CHANCE: {
+            const skip = modePair(CHANCE_SKIP_SHIFT);
+
+            return [
+                [[7, 6], NO_USE],
+                [[5], onOrOff('shuffle', CHANCE_SHUFFLE_BIT)],
+                [[4, 3], (skip === 0) ? 'skip off' : `skip ${skip} in ${CHANCE_SKIP_OF}`],
+            ];
+        }
+        case ENGINE_CARTESIAN:
+            return [
+                [[7], NO_USE],
+                [[6, 5], `y moves ${everySteps(GRID_SIDE - modePair(GRID_Y_SHIFT))}`],
+                [[4, 3], `x moves ${everySteps(modePair(GRID_X_SHIFT) + 1)}`],
+            ];
+        case ENGINE_EUCLID:
+            return [
+                [[7], NO_USE],
+                [[6, 5, 4, 3], `${euclidBeats()} ${(euclidBeats() === 1) ? 'beat' : 'beats'}`
+                    + ` in a bar of ${EUCLID_BAR_STEPS}`],
+            ];
+        default:
+            return [[[7, 6, 5, 4, 3], `${NO_USE} on this engine`]];
+    }
+}
+
+// Names a run of mode switches: "5", "7, 6" or "6 to 3"
+function switchesText(switches) {
+    const last = switches[switches.length - 1];
+
+    if (switches.length === 1) {
+        return String(last);
+    }
+    return `${switches[0]}${(switches.length === 2) ? ', ' : ' to '}${last}`;
+}
+
+// Words mode switches 7 to 3 for the engine chosen, beside them and in the
+// tip each one shows
+function showModeMeanings() {
+    const meanings = modeMeanings(panelEngine());
+
+    el('mode-means').textContent = meanings
+        .map(([switches, text]) => `${switchesText(switches)}: ${text}`).join(' · ');
+    for (const [switches, text] of meanings) {
+        for (const bit of switches) {
+            el('modes-spare').querySelector(`[data-bit="${bit}"]`).title =
+                `Mode switch ${bit}: ${text}`;
+        }
+    }
 }
 
 function showModes() {
     const engine = engineNumber();
     const name = (engine < ENGINE_NAMES.length)
         ? ENGINE_NAMES[engine] : `plain (no engine ${engine} yet)`;
+    const panelClass = ENGINE_CLASSES[panelEngine()];
 
     for (const button of document.querySelectorAll('.mode-group .switch')) {
-        button.classList.toggle('on', ((state.mode >> Number(button.dataset.bit)) & 1) === 1);
+        button.classList.toggle('on', isModeOn(Number(button.dataset.bit)));
     }
     el('engine').textContent = `${engine}, ${name}`;
-    el('steps').classList.toggle('stage', isStagePanel());
-    el('stage-help').hidden = !isStagePanel();
+    for (const engineClass of ENGINE_CLASSES.filter((each) => each !== '')) {
+        el('steps').classList.toggle(engineClass, engineClass === panelClass);
+    }
+    el('steps').classList.toggle('terms', panelClass !== '');
+    for (const help of document.querySelectorAll('.engine-help')) {
+        help.hidden = Number(help.dataset.engine) !== panelEngine();
+    }
+    showModeMeanings();
 }
 
-// The two lines under a step that say what it is to the stage engine: which
-// stage's note, or which stage's control and its gate mode. They are empty
-// for the plain engine. A control's length goes in its top line, which
-// showStep() writes because it counts while the stage plays
-function showStageMeaning(column, step) {
-    const [, mode] = column.querySelectorAll('.means');
-    const stage = step % STAGE_COUNT;
-    const isControl = step >= STAGE_COUNT;
-    let text = '';
+// The two lines under a step that say what it is to the engine chosen, top
+// then bottom; both empty for an engine that reads a step as the plain one
+// does. Stage: which stage's note, or a control's length (which counts
+// while the stage plays) and gate mode. Klee: the pattern switch and the
+// value. Cartesian: the column and row. Euclidean: whether it is a beat
+function stepTerms(step, isPlaying) {
+    const note = state.notes[step];
 
-    column.classList.toggle('control', isControl);
-    if (isStagePanel()) {
-        text = isControl
-            ? STAGE_MODES[state.notes[step] >> STAGE_MODE_SHIFT] : `stage ${stage}`;
+    switch (panelEngine()) {
+        case ENGINE_STAGE:
+            return (step < STAGE_COUNT) ? ['', `stage ${step}`] : [
+                stageLengthText(step - STAGE_COUNT, isPlaying),
+                STAGE_MODES[note >> STAGE_MODE_SHIFT],
+            ];
+        case ENGINE_KLEE:
+            return [((note & KLEE_PATTERN_SWITCH) !== 0) ? 'pat on' : 'pat off',
+                `value ${note & KLEE_VALUE_MASK}`];
+        case ENGINE_CARTESIAN:
+            return ['', `x ${step % GRID_SIDE}, y ${Math.floor(step / GRID_SIDE)}`];
+        case ENGINE_EUCLID:
+            return ['', isEuclidBeat(step) ? 'beat' : '–'];
+        default:
+            return ['', ''];
     }
-    mode.textContent = text;
+}
+
+// What a step's switches play, as the firmware logs it: a pitch one below
+// the value, or a rest. Nothing for the Klee engine, where a note is a sum
+function noteText(note) {
+    if (panelEngine() === ENGINE_KLEE) {
+        return '';
+    }
+    return (note === 0) ? 'rest' : String(note - 1);
 }
 
 function showPanel() {
@@ -414,9 +637,8 @@ function showPanel() {
         for (const button of column.querySelectorAll('.switch')) {
             button.classList.toggle('on', ((note >> Number(button.dataset.bit)) & 1) === 1);
         }
-        // As the firmware logs it: a pitch one below the value, or a rest
-        column.querySelector('.note').textContent = (note === 0) ? 'rest' : String(note - 1);
-        showStageMeaning(column, step);
+        column.querySelector('.note').textContent = noteText(note);
+        column.classList.toggle('control', isStagePanel() && (step >= STAGE_COUNT));
     });
     showModes();
     if (document.activeElement !== el('tempo')) {
@@ -495,21 +717,52 @@ function stageLengthText(stage, isPlaying) {
     return (steps === 1) ? '1 step' : `${steps} steps`;
 }
 
-// No step is lit while stopped: the pattern will start again from step 0.
-// On the stage engine the step is a stage, lit with its control
+// What is said beside the mode switches of the step counted, where an
+// outline cannot say it: on the Klee engine the step is how far the
+// register has moved, and the server sends -1 for a step it cannot name
+function placeText(step) {
+    if (state.calibrating || (state.transport === TRANSPORT_STOPPED)) {
+        return '';
+    }
+    if (panelEngine() === ENGINE_KLEE) {
+        return (step < 0) ? '' : `register moved ${step} since its load`;
+    }
+    if ((panelEngine() === ENGINE_CHANCE) && isModeOn(CHANCE_SHUFFLE_BIT) && (step < 0)) {
+        return 'step not known: shuffled, and this image has no log';
+    }
+    return '';
+}
+
+// Outlines the step counted by the server. None is outlined while stopped:
+// the pattern will start again from step 0. Nor when the server sends -1,
+// nor on the Klee engine, where the count is not a step; see placeText().
+// On the stage engine the step is a stage, outlined with its control
 function showStep() {
-    const playing = (state.transport === TRANSPORT_STOPPED) ? -1 : state.step;
+    const isCounted = (state.transport !== TRANSPORT_STOPPED)
+        && (panelEngine() !== ENGINE_KLEE);
+    const playing = isCounted ? state.step : -1;
     const isStage = isStagePanel();
+
+    el('place').textContent = placeText(state.step);
 
     for (let step = 0; step < STEP_COUNT; step++) {
         const column = el(`step-${step}`);
         const isControl = isStage && (step >= STAGE_COUNT);
         const isPlaying = (step === playing)
             || (isControl && ((step - STAGE_COUNT) === playing));
+        const [top, bottom] = column.querySelectorAll('.means');
 
         column.classList.toggle('playing', isPlaying);
-        column.querySelector('.means').textContent = isControl
-            ? stageLengthText(step - STAGE_COUNT, isPlaying) : '';
+        [top.textContent, bottom.textContent] = stepTerms(step, isPlaying);
+    }
+}
+
+// The sixteen step lights, as the chip last latched them: bit n of the
+// value is the light of step n. Nothing else on the page lights them
+function showLeds() {
+    for (let step = 0; step < STEP_COUNT; step++) {
+        el(`step-${step}`).querySelector('.led')
+            .classList.toggle('lit', ((state.leds >> step) & 1) === 1);
     }
 }
 
@@ -565,6 +818,10 @@ function applyEvent(event) {
         case 'cv':
             trace.cv.push([event.t, event.v]);
             showCv(event.v);
+            break;
+        case 'led':
+            state.leds = event.v;
+            showLeds();
             break;
         case 'log':
             addLogLine(event.v);
@@ -733,6 +990,7 @@ function applyState(newState) {
     showPanel();
     showTransport();
     showStep();
+    showLeds();
 }
 
 function applyRun(run) {

@@ -268,7 +268,9 @@ TEST_APP = $(HOST_DIR)/test_app$(EXE)
 # Tests for the core alone, one program per core module. tests/test_<name>.c
 # is linked with every core source; add new ones to this list.
 CORE_TESTS = test_seq test_clock test_panel test_address test_note_map \
-             test_engine_plain test_engine_stage test_gate test_pitch_cal test_cal_record \
+             test_engine_plain test_engine_stage test_engine_klee \
+             test_engine_chance test_engine_cartesian test_engine_euclid \
+             test_prng test_gate test_pitch_cal test_cal_record \
              test_cal test_debounce test_transport
 TEST_CORE := $(patsubst %,$(HOST_DIR)/%$(EXE),$(CORE_TESTS))
 

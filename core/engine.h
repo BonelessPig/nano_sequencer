@@ -34,6 +34,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "address.h"
+#include "prng.h"
 
 /**
  * @brief What an engine is given when a step is due.
@@ -44,6 +45,9 @@ typedef struct
                                          // (see panel.h); the latest readable
                                          // ones if the panel could not be read
     const address_config_t *p_address;   // The addressing controls
+    prng_state_t           *p_prng;      // The random numbers every engine
+                                         // draws from; moved on by a draw. If
+                                         // null, nothing is left to chance
 } engine_inputs_t;
 
 /**

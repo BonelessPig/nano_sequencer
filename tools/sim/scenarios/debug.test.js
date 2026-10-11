@@ -7,6 +7,7 @@ const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 
 const PANEL = [1, 4, 7, 10, 13, 0, 3, 6, 9, 12, 15, 2, 5, 8, 11, 14];
 const CLOCKS_PER_READ = 72;    // 16 steps of 4 bits and 8 mode switches
+const CLOCKS_PER_LED_WRITE = 16; // The step lights, sent ahead of each read
 const CLOCKS_PER_CV_WRITE = 16; // One DAC frame, sent on every tick
 const SCAN_PERIOD_TICKS = 8;
 const SCAN_PERIOD_MS = 8;      // The panel and pot are read every 8 ticks
@@ -77,7 +78,7 @@ test('reads the panel every 8 ms, with 72 clock pulses', () => {
     // frames sent before the next load, having no chip select of its own
     for (const read of board.panelReads.slice(0, readCount)) {
         assert.equal(read.clocks,
-            CLOCKS_PER_READ + (SCAN_PERIOD_TICKS * CLOCKS_PER_CV_WRITE));
+            CLOCKS_PER_READ + (SCAN_PERIOD_TICKS * CLOCKS_PER_CV_WRITE) + CLOCKS_PER_LED_WRITE);
     }
     for (const periodMs of board.panelReadPeriodsMs()) {
         assertNear(periodMs, SCAN_PERIOD_MS, SCAN_JITTER_MAX_MS, 'panel read period');

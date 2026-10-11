@@ -27,7 +27,8 @@
  *         byte_count outside 1 to 9; ERR_TIMEOUT if the hardware did not
  *         answer. The buffer is only written on success.
  * @note   Not ISR-safe. Blocks for the duration of the read (well under a
- *         millisecond on the target).
+ *         millisecond on the target). The step lights take up what they
+ *         were last given as part of this read (see led_output_port.h).
  */
 port_status_t step_input_read(uint8_t *p_raw_bits, uint8_t byte_count);
 

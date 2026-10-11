@@ -1,8 +1,10 @@
 /**
  * @file   shift_reg_reader.c
- * @brief  Target implementation of the step input port: reads the 74HC165
- *         shift register chain that holds the step notes and the mode
- *         switches, over the SPI bus.
+ * @brief  Target implementation of the step input port and the LED output
+ *         port, which share the SPI bus and one control line: reads the
+ *         74HC165 shift register chain that holds the step notes and the
+ *         mode switches, and on the way writes the two 74HC595s that drive
+ *         the sixteen step lights.
  * @author BonelessPig
  *
  * The chain's clock is the bus clock (PB5, SCK) and its output, QH of the
@@ -11,11 +13,22 @@
  * loaded and moves to the next on each rising clock edge, which is the edge
  * SPI mode 0 samples on, so each transfer reads eight bits in order.
  *
+ * The two 74HC595s take their data from the bus data output (PB3, MOSI),
+ * the far one from the near one's serial output, and shift on the same
+ * clock. They have no chip select, so every byte sent on the bus goes
+ * through them; what counts is what they hold when their latch input rises,
+ * and that input is PB1 as well. So a read first sends the two bytes the
+ * lights are to show, and the rising edge that ends the 74HC165 load pulse
+ * puts them on the 74HC595 outputs. Everything sent afterwards (the zeros of
+ * the read, the DAC's frames) passes through unseen until the next read
+ * sends the lights again.
+ *
  * @copyright Copyright (c) 2026
  *
  */
 #include "step_input_port.h"
 #include <stddef.h>
+#include "led_output_port.h"
 #include "atmega328p_regs.h"
 #include "bits.h"
 #include "port_status.h"
@@ -25,9 +38,47 @@
 // one for the mode switches (9 x 8 bits = 72 bits)
 #define SHIFT_REG_CHAIN_BYTES (9U)
 
-#define SHIFT_LOAD_BIT BIT_1 // PB1: SH/LD (active-low load pulse)
+// PB1: SH/LD of the 74HC165s (active-low load pulse) and the latch clock
+// of the 74HC595s (rising edge)
+#define SHIFT_LOAD_BIT BIT_1
 
-#define SHIFT_FILL_BYTE (0U) // Sent while reading; nothing on the bus listens
+#define SHIFT_FILL_BYTE (0U) // Sent while reading; nothing on the bus keeps it
+
+#define LED_HIGH_BYTE_SHIFT (8U)
+#define LED_LOW_BYTE_MASK   (0x00FFU)
+
+// What the step lights are to show; sent ahead of the next load pulse
+static uint16_t g_step_leds = 0U;
+
+
+
+void led_output_write(uint16_t leds)
+{
+    g_step_leds = leds;
+}
+
+
+
+/**
+ * @brief  Sends the 74HC595s what the step lights are to show: steps 15 to
+ *         8, then 7 to 0, the highest first, so that step 0 ends up on
+ *         output QA of the chip nearest the MCU and step 15 on QH of the
+ *         far one. Nothing shows until the latch input next rises.
+ * @return STATUS_OK, or the SPI driver's status if a transfer failed.
+ */
+static port_status_t send_leds(void)
+{
+    uint8_t       unused = 0U;
+    port_status_t status =
+        spi_transfer((uint8_t)(g_step_leds >> LED_HIGH_BYTE_SHIFT), &unused);
+
+    if (STATUS_OK == status)
+    {
+        status = spi_transfer((uint8_t)(g_step_leds & LED_LOW_BYTE_MASK), &unused);
+    }
+
+    return status;
+}
 
 
 
@@ -57,8 +108,12 @@ port_status_t step_input_read(uint8_t *p_raw_bits, uint8_t byte_count)
         uint8_t bytes[SHIFT_REG_CHAIN_BYTES];
         uint8_t count = 0U;
 
-        PORTB &= (uint8_t)~SHIFT_LOAD_BIT; // Latch parallel inputs
-        PORTB |= SHIFT_LOAD_BIT;  // Return to shift mode
+        status = send_leds();
+        if (STATUS_OK == status)
+        {
+            PORTB &= (uint8_t)~SHIFT_LOAD_BIT; // Latch parallel inputs
+            PORTB |= SHIFT_LOAD_BIT;  // Return to shift mode; the lights change
+        }
 
         while ((STATUS_OK == status) && (count < byte_count))
         {

@@ -22,6 +22,7 @@
 #include "clock_output_port.h"
 #include "cv_output_port.h"
 #include "gate_output_port.h"
+#include "led_output_port.h"
 #include "log_port.h"
 #include "nv_port.h"
 #include "platform_port.h"
@@ -112,7 +113,8 @@ static void save_calibration(void)
  * @brief  Acts on what the previous tick computed. The pitch CV, the gate
  *         and the clock output are set first, on every tick, so that their
  *         edges are not held up by the log; the pitch goes ahead of the gate
- *         so that it is in place when the note starts. Then saves the
+ *         so that it is in place when the note starts. The step lights are
+ *         given next; they show at the next input scan. Then saves the
  *         calibration if a point of it was stored, logs the transport if it
  *         changed, and, when a step began, logs it (or the failed step
  *         read), and with it a failed tempo read and a failed write of the
@@ -124,6 +126,7 @@ static void apply_outputs(void)
 
     gate_output_write(g_outputs.b_gate);
     clock_output_write(g_outputs.b_clock_out);
+    led_output_write(g_outputs.leds);
 
     if (g_cal_outputs.b_stored)
     {
@@ -283,6 +286,7 @@ static void reset_tick_state(void)
     g_outputs.b_gate         = false;
     g_outputs.b_clock_out    = false;
     g_outputs.cv             = 0U;
+    g_outputs.leds           = 0U;
     g_outputs.transport           = TRANSPORT_INTERNAL;
     g_outputs.b_transport_changed = false;
 

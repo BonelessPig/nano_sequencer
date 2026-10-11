@@ -7,6 +7,7 @@ const { test } = require('node:test');
 const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 
 const CLOCKS_PER_READ = 72;     // 16 steps of 4 bits, 8 mode switches
+const CLOCKS_PER_LED_WRITE = 16; // The step lights, sent ahead of each read
 const CLOCKS_PER_CV_WRITE = 16; // One DAC frame, sent on every tick
 const SCAN_PERIOD_TICKS = 8;
 const SCAN_PERIOD_MS = 8;       // The panel and pot are read every 8 ticks
@@ -247,14 +248,18 @@ test('the pitch CV changes only when a note begins, and holds through a rest', (
     assert.equal(Math.max(...board.cvWrites.map((write) => write.millivolts)), 1167);
 });
 
-test('reads the chain in nine transfers of zeros', () => {
+test('reads the chain in nine transfers of zeros, after two bytes for the lights', () => {
     const board = releaseBoard();
 
     board.runUntilPanelReads(3, RUN_LIMIT_MS);
 
-    // Two complete reads and no more: nine bytes each, all zeros sent
-    assert.equal(board.spiSent.length, 18);
-    assert.deepEqual(board.spiSent, new Array(18).fill(0));
+    // Two complete reads and the start of a third. Each is two bytes for
+    // the step lights, then the load pulse, then nine bytes of zeros. No
+    // light is lit before the first read; step 0's is by the second
+    assert.equal(board.spiSent.length, 11 + 11 + 2);
+    assert.deepEqual(board.spiSent.slice(0, 11), new Array(11).fill(0));
+    assert.deepEqual(board.spiSent.slice(11, 13), [0x00, 0x01]);
+    assert.deepEqual(board.spiSent.slice(13, 22), new Array(9).fill(0));
 });
 
 test('reads the panel every 8 ms, with 72 clock pulses', () => {
@@ -267,7 +272,7 @@ test('reads the panel every 8 ms, with 72 clock pulses', () => {
     // it is also clocked by the eight DAC frames sent before the next load
     for (const read of board.panelReads.slice(0, readCount)) {
         assert.equal(read.clocks,
-            CLOCKS_PER_READ + (SCAN_PERIOD_TICKS * CLOCKS_PER_CV_WRITE));
+            CLOCKS_PER_READ + (SCAN_PERIOD_TICKS * CLOCKS_PER_CV_WRITE) + CLOCKS_PER_LED_WRITE);
     }
     for (const periodMs of board.panelReadPeriodsMs()) {
         assert.ok(Math.abs(periodMs - SCAN_PERIOD_MS) <= SCAN_JITTER_MAX_MS,

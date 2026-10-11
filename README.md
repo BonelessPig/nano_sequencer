@@ -23,6 +23,11 @@ core/                         # Pure sequencer logic; also compiles on a PC
 ├── engine.h                          # The engine interface: what every engine is given and hands back
 ├── engine_plain.c / engine_plain.h   # The plain engine: each step's switches are its note value
 ├── engine_stage.c / engine_stage.h   # The stage engine: eight stages with a length and a gate mode
+├── engine_klee.c / engine_klee.h     # The Klee engine: bits round a register, the note their sum
+├── engine_chance.c / engine_chance.h # The chance engine: steps skipped or shuffled at random
+├── engine_cartesian.c / .h           # The Cartesian engine: a 4 by 4 grid and two counters
+├── engine_euclid.c / engine_euclid.h # The Euclidean engine: beats spread evenly over a bar
+├── prng.c / prng.h                   # The random numbers the engines draw from
 ├── address.c / address.h             # address_next(): direction, first and last step, one-shot, reset
 ├── note_map.c / note_map.h           # note_map_semitone(): note value to pitch through a scale and root
 ├── gate.c / gate.h                   # gate_advance(): how long a note is held, in clock pulses; ties
@@ -34,6 +39,7 @@ ports/                        # What the app needs from the outside world (heade
 ├── port_status.h                     # Shared status/error codes
 ├── platform_port.h                   # One-time platform bring-up
 ├── step_input_port.h                 # Raw step-note bits
+├── led_output_port.h                 # The sixteen step lights
 ├── tempo_input_port.h                # Raw tempo control position
 ├── timebase_port.h                   # Elapsed time in 1 ms ticks
 ├── cv_output_port.h                  # The pitch control voltage, in millivolts
@@ -51,7 +57,7 @@ adapters/
 │   ├── init.c                        # Platform bring-up (logger, registers, SPI, edge inputs, timebase)
 │   ├── register_init.c / .h          # I/O direction + ADC setup
 │   ├── analog_reader.c               # Tempo input: ADC channel read
-│   ├── shift_reg_reader.c            # Step input: 74HC165 shift register chain read, over SPI
+│   ├── shift_reg_reader.c            # Step input and step lights: 74HC165 and 74HC595 chains, over SPI
 │   ├── spi.c / spi.h                 # SPI driver: the MCU as bus master, used by the adapters above
 │   ├── timebase.c / .h               # Timebase: Timer/Counter2 at 1 kHz, the only interrupt
 │   ├── cv_output.c                   # Pitch CV output: MCP4822 DAC, over SPI
@@ -89,6 +95,7 @@ tools/sim/                    # Emulated board (make sim)
 ├── lib/pin_recorder.js               # Edges and pulses on one output pin
 ├── lib/edge_flag.js                  # A flag that latches an edge on an input pin, interrupt on or off
 ├── parts/hc165.js                    # 74HC165 chain model
+├── parts/hc595.js                    # 74HC595 chain model
 ├── parts/mcp4822.js                  # MCP4822 DAC model
 ├── parts/clock_source.js             # Something that sends pulses: a clock, a reset
 ├── parts/switch.js                   # A switch or button, with bounce
@@ -179,8 +186,8 @@ There are two build configurations, chosen with `CONFIG=`. They differ only in w
 
 | | Logging | Output | Flash | Static RAM |
 |---|---|---|---:|---:|
-| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 6692 bytes | 631 bytes |
-| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 5616 bytes | 177 bytes |
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 8132 bytes | 653 bytes |
+| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 7056 bytes | 199 bytes |
 
 `CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`). The tests, the coverage check and the static analysis always cover both loggers.
 

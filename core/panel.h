@@ -40,7 +40,9 @@ uint8_t panel_step_value(const uint8_t *p_raw_steps, uint8_t step);
 
 /**
  * @brief  Gives the eight mode switches as they are read: the byte that
- *         follows the steps' bytes, each bit one switch, 1 being on.
+ *         follows the steps' bytes, each bit one switch, 1 being on. The
+ *         low three choose the engine (see seq.h) and the other five are
+ *         the chosen engine's own.
  * @param  p_raw_steps  The panel's raw bytes, PANEL_RAW_BYTE_COUNT of them.
  * @return The mode switches, 0 to 255. 0 if p_raw_steps is null.
  */

@@ -7,7 +7,8 @@
  *
  *   GET  /         The page.
  *   GET  /events   A stream of server-sent events: `state` (the panel, which
- *                  image is running, its mode and the output levels) when a page
+ *                  image is running, its mode, the output levels and the
+ *                  step lights) when a page
  *                  connects and when a control changes, and `run` every
  *                  slice with the chip time and what happened in it.
  *   POST /control  One change, as JSON:
@@ -30,7 +31,12 @@
  * Two things shown are worked out here, not read from the chip: the
  * transport and the step that is playing. Both follow the log where there is
  * one and what this server did to the controls where there is not; see
- * predictRunPress(), nextStep() and record().
+ * predictRunPress(), nextStep() and record(). The step is sent as -1 when
+ * it cannot be worked out: the chance engine shuffling, on an image with no
+ * log. Nothing here follows the firmware's random numbers.
+ *
+ * The sixteen step lights are not worked out: `leds` in the state and the
+ * `led` events are what the two 74HC595s last latched, bit n for step n.
  */
 const fs = require('node:fs');
 const http = require('node:http');
@@ -53,10 +59,24 @@ const MAX_MODE = 255;
 const ENGINE_MASK = 0x07;
 const ENGINE_PLAIN = 0;
 const ENGINE_STAGE = 1;
+const ENGINE_KLEE = 2;
+const ENGINE_CHANCE = 3;
+const ENGINE_CARTESIAN = 4;
+const ENGINE_EUCLID = 5;
 // The stage engine: stage n's note is step n and its control step n + 8,
 // whose low two switches are the stage's length in steps, less one
 const STAGE_COUNT = 8;
 const STAGE_LENGTH_MASK = 0x03;
+// Mode switches 3 to 7 are the chosen engine's own. Those that decide which
+// step is next: the Klee engine's load switch, the chance engine's shuffle
+// switch, and the Cartesian engine's two settings of two switches each
+const KLEE_LOAD = 0x08;
+const CHANCE_SHUFFLE = 0x20;
+const GRID_SIDE = 4;
+const GRID_X_SHIFT = 3;
+const GRID_Y_SHIFT = 5;
+const GRID_SETTING_MASK = 0x03;
+const STEP_UNKNOWN = -1;         // No step can be named, so none is lit
 const MAX_TEMPO_READING = 1023;
 const MAX_BODY_BYTES = 1024;
 const START_NOTES = [1, 8, 13, 8, 4, 8, 11, 0, 1, 8, 13, 8, 6, 9, 13, 0];
@@ -91,6 +111,15 @@ let outputs = null;
 let isCalibrating = false; // Powered up with the calibration entry pattern set
 let isFirstStepDue = false; // The next step to begin is the pattern's first
 let stepEngine = ENGINE_PLAIN; // The engine that gave the last step counted
+// What else is kept of an engine's place, beside the last step counted: the
+// chance engine's place in the order (which it keeps while it shuffles), the
+// Cartesian engine's two counters as they stand for the step to come, and
+// the Klee engine's load switch as it was on the last step
+const place = { order: 0, x: 0, y: 0, xSteps: 0, ySteps: 0, isLoadOn: false };
+// The mode switches and step switches as the chip last read them, which is
+// what a step is worked out from: the firmware reads the panel every 8 ms,
+// so a switch moved just before a step is not in that step. See record()
+const seen = { mode: 0, notes: START_NOTES };
 let runUpDueMs = null;     // Chip time at which the run button is let go
 let runFreeMs = 0;         // Chip time from which it may be pressed again
 let timer = null;
@@ -130,11 +159,14 @@ function powerUp(config, eeprom) {
         stageStep: 0,   // The stage engine: which step of its stage, from 1,
         stageSteps: 0,  // and how many steps the stage lasts
         millivolts: 0,
+        leds: 0,        // The step lights as last latched, bit n for step n
         transport: isCalibrating ? null : runningTransport(),
         transportFrom: 'controls',
     };
     isFirstStepDue = true;
     stepEngine = ENGINE_PLAIN;
+    seen.mode = panel.mode;
+    seen.notes = panel.notes;
     runUpDueMs = null;
     runFreeMs = 0;
     wallStartMs = performance.now();
@@ -143,15 +175,72 @@ function powerUp(config, eeprom) {
 
 /** The engine the mode switches choose, as the firmware takes them. */
 function chosenEngine() {
-    const engine = panel.mode & ENGINE_MASK;
+    const engine = seen.mode & ENGINE_MASK;
 
-    return (engine === ENGINE_STAGE) ? ENGINE_STAGE : ENGINE_PLAIN;
+    return (engine <= ENGINE_EUCLID) ? engine : ENGINE_PLAIN;
 }
 
-/** Starts counting a stage's steps, its length taken from the panel now. */
+/** Counts a step towards a Cartesian counter's next move; true if it is due. */
+function isGridMoveDue(counted, period) {
+    place[counted]++;
+    if (place[counted] < period) {
+        return false;
+    }
+    place[counted] = 0;
+    return true;
+}
+
+/**
+ * The Cartesian engine: gives the step at column x of row y and moves the
+ * two counters on, x every 1 to 4 steps and y every 4 to 1, as mode switches
+ * 3, 4 and 5, 6 say now.
+ */
+function nextGridStep(isFirst) {
+    const xSetting = (seen.mode >> GRID_X_SHIFT) & GRID_SETTING_MASK;
+    const ySetting = (seen.mode >> GRID_Y_SHIFT) & GRID_SETTING_MASK;
+    let step = 0;
+
+    if (isFirst) {
+        Object.assign(place, { x: 0, y: 0, xSteps: 0, ySteps: 0 });
+    }
+    step = (place.y * GRID_SIDE) + place.x;
+    if (isGridMoveDue('xSteps', xSetting + 1)) {
+        place.x = (place.x + 1) % GRID_SIDE;
+    }
+    if (isGridMoveDue('ySteps', GRID_SIDE - ySetting)) {
+        place.y = (place.y + 1) % GRID_SIDE;
+    }
+    return step;
+}
+
+/**
+ * The Klee engine: gives how many times the register has moved since it was
+ * last loaded, which is what the firmware calls the step. A load is the
+ * first step, and the step after mode switch 3 is moved either way. What
+ * the register holds is not followed here.
+ */
+function nextKleePosition(isFirst) {
+    const isLoadOn = (seen.mode & KLEE_LOAD) !== 0;
+    const isLoad = isFirst || (isLoadOn !== place.isLoadOn);
+
+    place.isLoadOn = isLoadOn;
+    return isLoad ? 0 : (outputs.step + 1) % STEP_COUNT;
+}
+
+/**
+ * The chance engine: gives the next step in order, or none that can be
+ * named while mode switch 5 has it picking each step at random. The place
+ * in the order is kept through that, as the firmware keeps it.
+ */
+function nextChanceStep(isFirst) {
+    place.order = isFirst ? 0 : (place.order + 1) % STEP_COUNT;
+    return ((seen.mode & CHANCE_SHUFFLE) !== 0) ? STEP_UNKNOWN : place.order;
+}
+
+/** Starts counting a stage's steps, its length as the chip last read it. */
 function beginStage(stage) {
     outputs.stageStep = 1;
-    outputs.stageSteps = (panel.notes[STAGE_COUNT + stage] & STAGE_LENGTH_MASK) + 1;
+    outputs.stageSteps = (seen.notes[STAGE_COUNT + stage] & STAGE_LENGTH_MASK) + 1;
     return stage;
 }
 
@@ -160,8 +249,10 @@ function beginStage(stage) {
  * firmware's engines would have it. A pattern starts from its beginning
  * after a start or a reset made here, and when the engine chosen is not the
  * one that gave the last step. The plain engine then goes on a step a
- * pulse; the stage engine stays on a stage for as many pulses as the stage
- * has steps, and names the stage, 0 to 7, each time.
+ * pulse, and so does the Euclidean one, which only rests on some of them;
+ * the stage engine stays on a stage for as many pulses as the stage has
+ * steps, and names the stage, 0 to 7, each time. The others have a function
+ * each, above. The chance engine's answer can be STEP_UNKNOWN.
  */
 function nextStep() {
     const engine = chosenEngine();
@@ -169,16 +260,47 @@ function nextStep() {
 
     stepEngine = engine;
     isFirstStepDue = false;
-    if (engine === ENGINE_PLAIN) {
-        outputs.stageStep = 0;
-        outputs.stageSteps = 0;
-        return isFirst ? 0 : (outputs.step + 1) % STEP_COUNT;
+    if (engine === ENGINE_STAGE) {
+        if (!isFirst && (outputs.stageStep < outputs.stageSteps)) {
+            outputs.stageStep++;
+            return outputs.step;
+        }
+        return beginStage(isFirst ? 0 : (outputs.step + 1) % STAGE_COUNT);
     }
-    if (!isFirst && (outputs.stageStep < outputs.stageSteps)) {
-        outputs.stageStep++;
-        return outputs.step;
+    outputs.stageStep = 0;
+    outputs.stageSteps = 0;
+    switch (engine) {
+        case ENGINE_KLEE:
+            return nextKleePosition(isFirst);
+        case ENGINE_CHANCE:
+            return nextChanceStep(isFirst);
+        case ENGINE_CARTESIAN:
+            return nextGridStep(isFirst);
+        default:
+            return isFirst ? 0 : (outputs.step + 1) % STEP_COUNT;
     }
-    return beginStage(isFirst ? 0 : (outputs.step + 1) % STAGE_COUNT);
+}
+
+/**
+ * Puts the count right from a step the log has named, which was not the
+ * one counted, as far as can be told: a stage is taken to be on its first
+ * step, and the Cartesian counters to have only just come to that step.
+ */
+function followLog(step) {
+    if (stepEngine === ENGINE_STAGE) {
+        beginStage(step % STAGE_COUNT);
+    } else if (stepEngine === ENGINE_CARTESIAN) {
+        Object.assign(place, {
+            x: step % GRID_SIDE, y: Math.floor(step / GRID_SIDE) % GRID_SIDE,
+            xSteps: 0, ySteps: 0,
+        });
+        nextGridStep(false);
+    } else if ((stepEngine === ENGINE_CHANCE)
+        && ((seen.mode & CHANCE_SHUFFLE) === 0)) {
+        place.order = step % STEP_COUNT;
+    } else {
+        // The others count on from the step shown
+    }
 }
 
 /**
@@ -187,12 +309,13 @@ function nextStep() {
  *
  * The step playing is counted from the clock output, which pulses once a
  * step; see nextStep(). The debug image also names each step in its log,
- * just after the pulse, and that is believed over the count.
+ * just after the pulse, and that is believed over the count. A step sent
+ * as STEP_UNKNOWN is one the count cannot name, which only the log can.
  */
 function record(item, events) {
     const t = board.machine.cyclesToMs(item.cycle);
     const setStep = (step) => {
-        outputs.step = step % STEP_COUNT;
+        outputs.step = (step === STEP_UNKNOWN) ? step : step % STEP_COUNT;
         events.push({
             t, k: 'step', v: outputs.step,
             n: outputs.stageStep, of: outputs.stageSteps,
@@ -218,6 +341,19 @@ function record(item, events) {
                 events.push({ t, k: 'cv', v: item.value });
             }
             break;
+        case 'read':
+            // The chip has read the panel. The controls only change between
+            // slices, so it read them as they stand now
+            seen.mode = panel.mode;
+            seen.notes = panel.notes;
+            break;
+        case 'led':
+            // The lights are latched at every panel read, 8 ms apart
+            if (item.value !== outputs.leds) {
+                outputs.leds = item.value;
+                events.push({ t, k: 'led', v: item.value });
+            }
+            break;
         case 'log': {
             const transport = TRANSPORT_LINE.exec(item.value);
             const step = STEP_LINE.exec(item.value);
@@ -229,11 +365,8 @@ function record(item, events) {
                 events.push({ t, k: 'transport', v: outputs.transport, from: 'log' });
             }
             if ((step !== null) && (Number(step[1]) !== outputs.step)) {
-                // The count was out. A stage named here is on its first
-                // step, as far as can be told
-                if (stepEngine === ENGINE_STAGE) {
-                    beginStage(Number(step[1]) % STAGE_COUNT);
-                }
+                // The count was out, or could not name the step
+                followLog(Number(step[1]));
                 setStep(Number(step[1]));
             }
             break;
@@ -258,6 +391,8 @@ function drain() {
     board.gate.edges.forEach((edge) => add(edge.cycle, 'gate', edge.high));
     board.clockOut.edges.forEach((edge) => add(edge.cycle, 'clock', edge.high));
     board.cvWrites.forEach((write) => add(write.cycle, 'cv', write.millivolts));
+    board.ledLatches.forEach((latch) => add(latch.cycle, 'led', latch.value));
+    board.panelReads.forEach((read) => add(read.cycle, 'read'));
     board.clockIn.rises.forEach((cycle) => add(cycle, 'clockin'));
     board.resetIn.rises.forEach((cycle) => add(cycle, 'resetin'));
     for (const line of [...serial.lines, ...serial.notices]) {
@@ -269,7 +404,7 @@ function drain() {
 
     for (const list of [board.gate.edges, board.clockOut.edges, board.cvWrites,
         board.cvIgnoredFrames, board.panelReads, board.spiSent,
-        board.clockIn.rises, board.resetIn.rises,
+        board.ledLatches, board.clockIn.rises, board.resetIn.rises,
         serial.lines, serial.notices]) {
         list.length = 0;
     }

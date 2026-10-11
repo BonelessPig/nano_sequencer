@@ -14,6 +14,7 @@
 #include "clock_output_port.h"
 #include "cv_output_port.h"
 #include "gate_output_port.h"
+#include "led_output_port.h"
 #include "nv_port.h"
 #include "platform_port.h"
 #include "reset_cause_port.h"
@@ -42,6 +43,8 @@ static uint8_t       g_elapsed_ticks = 0U;
 static uint16_t      g_log_poll_count = 0U;
 
 static bool          g_b_gate_high = false;
+static uint16_t      g_host_leds = 0U;
+static uint16_t      g_led_write_count = 0U;
 static uint16_t      g_gate_write_count = 0U;
 static uint16_t      g_gate_rise_count = 0U;
 static uint16_t      g_event_count_at_gate_rise = 0U;
@@ -119,6 +122,8 @@ void host_reset(void)
     g_event_count          = 0U;
 
     g_b_gate_high              = false;
+    g_host_leds                = 0U;
+    g_led_write_count          = 0U;
     g_gate_write_count         = 0U;
     g_gate_rise_count          = 0U;
     g_event_count_at_gate_rise = 0U;
@@ -383,6 +388,20 @@ bool host_gate_level(void)
 
 
 
+uint16_t host_leds(void)
+{
+    return g_host_leds;
+}
+
+
+
+uint16_t host_led_write_count(void)
+{
+    return g_led_write_count;
+}
+
+
+
 uint16_t host_gate_write_count(void)
 {
     return g_gate_write_count;
@@ -525,6 +544,14 @@ port_status_t cv_output_write(uint16_t millivolts)
         // Scripted failure: the voltage stays as it was
     }
     return status;
+}
+
+
+
+void led_output_write(uint16_t leds)
+{
+    g_led_write_count++;
+    g_host_leds = leds;
 }
 
 

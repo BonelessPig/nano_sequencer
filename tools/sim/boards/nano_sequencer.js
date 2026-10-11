@@ -4,7 +4,9 @@
  * nine 74HC165s on the SPI bus (clock on SCK, data on MISO) and their load
  * line on PB1: eight for the 16 steps and, farthest from the MCU, one for
  * the eight mode switches. An MCP4822 DAC on the same bus (clock on SCK, data on MOSI)
- * with its chip select on PB2, the tempo pot on ADC channel 6, the gate
+ * with its chip select on PB2, two 74HC595s on the bus as well (clock on
+ * SCK, data on MOSI) driving the sixteen step lights, their latch clock on
+ * PB1 with the 74HC165 load line, the tempo pot on ADC channel 6, the gate
  * output on PD4, the clock output on PD5, and USART0 going to a PC. Scenarios set the panel and
  * the pot, run the firmware, and read back what it did. Nothing is wired to
  * Timer/Counter2; the firmware uses it for its 1 kHz tick. The chip's own
@@ -21,6 +23,7 @@ const { createAtmega328p } = require('../lib/machine');
 const { attachPinRecorder } = require('../lib/pin_recorder');
 const { attachClockSource } = require('../parts/clock_source');
 const { attachHc165Chain } = require('../parts/hc165');
+const { attachHc595Chain } = require('../parts/hc595');
 const { attachMcp4822 } = require('../parts/mcp4822');
 const { attachSwitch } = require('../parts/switch');
 
@@ -28,6 +31,7 @@ const CLOCK_HZ = 16000000;
 const STEP_COUNT = 16;
 const NOTE_BITS = 4;
 const MODE_BITS = 8;
+const LED_CHIPS = 2;
 const TEMPO_ADC_CHANNEL = 6;
 const ADC_REFERENCE_VOLTS = 5;
 const ADC_STEPS = 1024;
@@ -86,6 +90,8 @@ function createBoard(config, options = {}) {
 
     const chain = attachHc165Chain(machine.cpu, machine.portB, SHIFT_REG_LOAD_PIN, panelBits);
     const dac = attachMcp4822(machine.cpu, machine.portB, DAC_SELECT_PIN);
+    // The step lights: bit n of the chain's outputs is the light of step n
+    const leds = attachHc595Chain(machine.cpu, machine.portB, SHIFT_REG_LOAD_PIN, LED_CHIPS);
     const gate = attachPinRecorder(machine.cpu, machine.portD, GATE_PIN);
     const clockOut = attachPinRecorder(machine.cpu, machine.portD, CLOCK_OUT_PIN);
 
@@ -116,7 +122,10 @@ function createBoard(config, options = {}) {
         }));
     }
 
-    // Both parts see every transfer. The chain has no chip select: it is
+    // Every part sees every transfer. The step lights' chain has no chip
+    // select either and takes in every byte sent, the DAC's frames too; only
+    // what it holds when its latch clock rises is ever shown.
+    // The 74HC165 chain has no chip select: it is
     // clocked eight times whoever the transfer is for, and what it shifts
     // out is the only thing on MISO, arriving when the transfer ends. The
     // DAC takes the byte only while it is selected. spiSent keeps the bytes
@@ -128,6 +137,7 @@ function createBoard(config, options = {}) {
             spiSent.push(sent);
         }
         dac.shiftByte(sent);
+        leds.shiftByte(sent);
         machine.cpu.addClockEvent(
             () => machine.spi.completeTransfer(received), machine.spi.transferCycles);
     };
@@ -158,6 +168,7 @@ function createBoard(config, options = {}) {
         spiSent,
         cvWrites: dac.writes,
         cvIgnoredFrames: dac.ignored,
+        ledLatches: leds.latches,
         gate,
         clockOut,
         clockIn,
@@ -205,6 +216,21 @@ function createBoard(config, options = {}) {
         /** Sets the sync switch on (the external clock) or off. */
         setSyncSwitch(on) {
             syncSwitch.set(on);
+        },
+
+        /**
+         * The step lights as they stood at a cycle, bit n for step n: what
+         * the last latch before it showed, or 0 if there was none.
+         */
+        ledsAt(cycle) {
+            let value = 0;
+            for (const latch of leds.latches) {
+                if (latch.cycle >= cycle) {
+                    break;
+                }
+                value = latch.value;
+            }
+            return value;
         },
 
         /** Completed gate pulses: when each rose and how long it was high. */
