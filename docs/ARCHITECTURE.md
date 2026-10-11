@@ -1707,6 +1707,12 @@ In the debug build, after a watchdog reset, the first step's gate rises about 0.
 
 The pattern starts on the internal clock, so with a master clock already running at power-on step 0 begins at once and the first edge then begins step 1. A stop and a start puts the two in step: the start waits for the master's next edge. Without the sync switch there is no way to know at power-on that a clock is coming; a jack with a switch contact on a spare pin (PD3) would tell.
 
+### 23. The figures in this document are kept by hand
+
+The flash used by each part and the paragraphs on what each phase cost ("Where the flash goes"), the static RAM and how it divides, the number of host tests in each program and in each area, and the number of scenarios in each file are all written here by hand, and have to be measured again and rewritten whenever the firmware changes. They were last measured on 2026-10-11, for the first stage of the modulation, from `avr-nm -S -l --size-sort` on the three `output.elf` files grouped by source file, a count of `RUN_TEST` in each test source, and `node --test` on each scenario file.
+
+A script or a make target that prints those tables would make keeping them one command, and would leave nothing here to drift. Until there is one, treat any figure here as right for the date above and measure before relying on it. The per-phase cost paragraphs are the part least worth keeping by hand: a total per phase would say most of it.
+
 ## What the output stage will need
 
 - **Step advance**: done. The engine holds the position in the pattern; `seq_outputs_t` says when a step begins, which one, and its pitch or that it is a rest, and the app logs it.

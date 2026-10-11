@@ -4,6 +4,16 @@ Written 2026-10-10 from four research passes (existing sequencers, hardware emul
 
 Each claim that matters is marked **verified** (read from a datasheet or primary manual, or run on this machine), or **unverified** (from memory or a secondary source; check before relying on it). The full list of unverified items is in [section 8](#8-not-verified).
 
+## Next
+
+Read this section to know what comes next; the rest of the document is the record behind it. Keep it to a screen, and bring it up to date at the end of each piece of work.
+
+- **Next piece of work: modulation, stage 2, step position.** The LFO offsets the step played, by the amount at selector position 4. It touches addressing in every engine. Decision 146 has the order of the stages after it: the DAC's channel B as a level and envelope output, vibrato, an LFO of the sequencer's own, profiles with their button, and a status light.
+- **After the modulation: MIDI in**, the second piece of phase 10 (decision 117), and then phase 11.
+- **To settle before starting stage 2:** whether the offset is in steps of the pattern or places in the range, and what it does in the engines that do not step through sixteen places (stage, Klee, Cartesian).
+- **Waiting on the board, not on firmware:** everything from phase 1 on is unrun on hardware. Section 8 lists what to check, and ARCHITECTURE.md's open items the order to check it in.
+- **Start each piece of work in a fresh session**, from this section and the decisions it names. A long session costs more in every step than anything else does (section 6).
+
 ## 1. Summary
 
 - **Where it goes.** A 16-step CV/gate sequencer with one pitch output, gate, clock in and out, reset, and a set of selectable sequencing engines (plain, Metropolis-style, Klee-style, random) that all reinterpret the same 64 panel switches. Every engine is pure core logic, so it is cheap to add and fully host-testable.
@@ -401,6 +411,16 @@ Still to do, as later phases add them:
 - **A `firmware-checker` subagent on a small model** for the full check run, returning only failures. Not worth it for a single `make`.
 - **Deny `make flash`** in settings, which turns a written rule into an enforced one.
 - **`/clear` between unrelated tasks**; the code and ARCHITECTURE.md carry the state.
+
+Added on 2026-10-11, from what the first stage of the modulation cost. That one session built six steps, and its length was the largest cost: every step carries the whole conversation. None of these is done yet but the first.
+
+- **A "Next" section at the top of this file** (done), so that asking what is next does not mean reading all of it, which is about 29,000 tokens.
+- **A fresh session for each piece of work**, started from that section.
+- **Generate the figures in ARCHITECTURE.md.** The flash and RAM by part, the test counts and the scenario counts are kept by hand and were measured again and rewritten in every phase. A script or a make target that prints those tables from the three images and the test sources would make that one command (ARCHITECTURE.md open item 23).
+- **A quiet `make test`**, printing failures and a total only. Its full output is a compiler command line per program, a few thousand tokens when a filter lets it through.
+- **Run coverage, the analysis and the emulated board side by side in `make check`.** They do not depend on each other and take about 45 s each, so the check could come down from three minutes to about one.
+- **One kind of line ending in the working tree.** It is a mix of LF and CRLF today, and an edit that matches text across lines fails on the files that are CRLF.
+- **Settle what changes behaviour before the work starts**, as the questions ahead of the modulation did. Removing the sync switch meant reworking about forty host tests and thirteen scenarios; knowing that first would not have saved the work, but it would have been one decision and not a surprise.
 
 One caution from the documentation: whether a read deny also blocks `cat` through the shell is not confirmed. Check with `/context` after the change.
 
