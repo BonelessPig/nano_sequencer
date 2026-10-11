@@ -125,6 +125,7 @@ button { cursor: pointer; }
        border: 1px solid var(--line); display: inline-block; }
 .step .led.lit { background: var(--on); border-color: var(--on); }
 #gate-led.lit { background: var(--gate); }
+#level-led { background: var(--on); border-color: var(--line); opacity: 0; }
 #clock-led.lit { background: var(--clock); }
 #tempo, #clock-ms { flex: 1; min-width: 200px; }
 #run.down { background: var(--on); border-color: var(--on); color: #1b1b1b; }
@@ -377,12 +378,60 @@ canvas { width: 100%; height: 240px; display: block; }
         </details>
 
         <div class="row spaced">
-            <label for="tempo">Tempo pot</label>
+            <label for="selector">Selector</label>
+            <select id="selector"></select>
+            <label for="tempo">Pot (A6)</label>
             <input type="range" id="tempo" min="0" max="1023" step="1">
             <span class="num" id="tempo-reading"></span>
+            <span><span class="led" id="level-led"></span> Level light (D6)
+                <span class="num dim" id="level-reading"></span></span>
+        </div>
+        <div class="row spaced">
             <span class="num" id="tempo-means"></span>
             <span class="num dim" id="bpm"></span>
         </div>
+        <div class="row spaced">
+            <label for="lfo">LFO input (A7)</label>
+            <input type="range" id="lfo" min="0" max="1023" step="1">
+            <span class="num" id="lfo-reading"></span>
+            <button id="lfo-centre">Centre</button>
+        </div>
+        <details>
+            <summary>The selector, the pot and the LFO</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Selector</th>
+                    <td>An 8-way coded rotary switch that says which of
+                        eight amounts the pot sets. Position 0 is the
+                        tempo. The others each hold how much of the LFO
+                        goes to one thing; 0 is off. Positions 4 to 7 hold
+                        an amount and do nothing with it yet.</td></tr>
+                <tr><th>Pot</th>
+                    <td>After the selector moves, the pot changes nothing
+                        until it has been turned to meet the amount that
+                        position holds. So a position passed through on
+                        the way is left alone, and to give a new position
+                        an amount the pot goes down to 0 and then up.</td></tr>
+                <tr><th>Level light</th>
+                    <td>As bright as the amount the selector is on, so it
+                        shows where the pot has to go to meet it.</td></tr>
+                <tr><th>LFO input</th>
+                    <td>The reading the chip takes from the modulation
+                        input's stage, read as each step begins. At its
+                        centre, 512, which is also what it reads with
+                        nothing plugged in, it moves nothing.</td></tr>
+                <tr><th>1 Note</th>
+                    <td>Moves each note by up to seven places in the scale,
+                        up while the LFO is above its centre and down while
+                        below. Never makes or moves a rest.</td></tr>
+                <tr><th>2 Gate length</th>
+                    <td>Makes each gate up to half a step longer, where it
+                        ties into the next note, or shorter, down to one
+                        clock pulse.</td></tr>
+                <tr><th>3 Step chance</th>
+                    <td>While the LFO is above its centre, makes steps drop
+                        out at random, the more the further it goes.</td></tr>
+            </table></div>
+        </details>
         <div class="row spaced">
             <button id="run">Run button (D7)</button>
             <span id="transport"></span>
@@ -857,6 +906,14 @@ const SOUND_EDGE_S = 0.005;
 // What the tempo pot's reading means, as the firmware takes it: a tempo on
 // the internal clock, and one of seven ratios to the external clock
 const BPM_MIN = 30;
+const LFO_CENTRE = 512;   // Where the modulation input moves nothing
+const LFO_DEAD_ZONE = 16; // How far from it still moves nothing
+// What each selector position's amount is for; 4 to 7 do nothing yet
+const SELECTOR_NAMES = [
+    '0 Tempo', '1 Note', '2 Gate length', '3 Step chance',
+    '4 Step position (not built)', '5 Amplitude (not built)',
+    '6 Attack/release (not built)', '7 Vibrato (not built)',
+];
 const READING_PER_BPM = 4;
 const READING_PER_RATIO = 147;
 const RATIOS = [
@@ -1201,6 +1258,11 @@ function showPanel() {
     }
     el('tempo-reading').textContent = `${state.tempo} (${volts.toFixed(2)} V)`;
     el('tempo-means').textContent = tempoMeaning();
+    el('selector').value = String(state.selector);
+    if (document.activeElement !== el('lfo')) {
+        el('lfo').value = String(state.lfo);
+    }
+    el('lfo-reading').textContent = lfoMeaning();
     el('run').classList.toggle('down', state.runDown);
     el('clock-on').checked = state.clockOn;
     el('clock-pulse').disabled = state.clockOn; // The jack is already taken
@@ -1211,18 +1273,36 @@ function showPanel() {
     }
 }
 
-// What the pot does just now, from the clock the pattern is on. The
-// firmware takes a new ratio at its next sync edge
+// Where the LFO input stands, as the firmware takes it: nothing within 16
+// of the centre, and the rest as a part of its swing either way
+function lfoMeaning() {
+    const swing = state.lfo - LFO_CENTRE;
+    const percent = Math.round((Math.abs(swing) / LFO_CENTRE) * 100);
+
+    if (Math.abs(swing) < LFO_DEAD_ZONE) {
+        return `${state.lfo}: at its centre, moving nothing`;
+    }
+    return `${state.lfo}: ${percent}% ${swing > 0 ? 'above' : 'below'} its centre`;
+}
+
+// What the pot does just now, from where the selector is and the clock the
+// pattern is on. The firmware takes a new ratio at its next sync edge. The
+// tempo given is where the pot stands, which is the tempo only once the pot
+// has met it
 function tempoMeaning() {
     const part = Math.min(RATIOS.length - 1, Math.floor(state.tempo / READING_PER_RATIO));
 
     if (state.calibrating) {
-        return 'trims the calibration point';
+        return 'The pot trims the calibration point';
+    }
+    if (state.selector !== 0) {
+        return `The pot sets: ${SELECTOR_NAMES[state.selector]}, once it has met the amount `
+            + 'held (the level light)';
     }
     if (state.transport !== TRANSPORT_EXTERNAL) {
-        return `sets ${BPM_MIN + Math.floor(state.tempo / READING_PER_BPM)} BPM`;
+        return `The pot is at ${BPM_MIN + Math.floor(state.tempo / READING_PER_BPM)} BPM`;
     }
-    return `sets ${RATIOS[part][0]}: ${RATIOS[part][1]}`;
+    return `The pot is at ${RATIOS[part][0]}: ${RATIOS[part][1]}`;
 }
 
 // What the clock source's rate comes to with its pattern: a swung clock
@@ -1686,6 +1766,8 @@ function applyState(newState) {
 function applyRun(run) {
     nowMs = run.ms;
     run.events.forEach(applyEvent);
+    el('level-led').style.opacity = String(run.level);
+    el('level-reading').textContent = `${Math.round(run.level * 100)}%`;
     el('status').textContent = `Running ${state.config}: ${(run.ms / 1000).toFixed(1)} s `
         + `of chip time, at ${run.speed}% of real speed`;
 }
@@ -1702,6 +1784,16 @@ function connect() {
 
 buildPanel();
 el('tempo').addEventListener('input', () => post({ tempo: Number(el('tempo').value) }));
+SELECTOR_NAMES.forEach((name, position) => {
+    const option = document.createElement('option');
+
+    option.value = String(position);
+    option.textContent = name;
+    el('selector').append(option);
+});
+el('selector').addEventListener('change', () => post({ selector: Number(el('selector').value) }));
+el('lfo').addEventListener('input', () => post({ lfo: Number(el('lfo').value) }));
+el('lfo-centre').addEventListener('click', () => post({ lfo: LFO_CENTRE }));
 function powerCycle() {
     post({ power: el('config').value, keepEeprom: el('keep-eeprom').checked });
 }

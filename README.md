@@ -39,6 +39,7 @@ core/                         # Pure sequencer logic; also compiles on a PC
 ├── errlog.c / errlog.h               # The crash log as stored bytes: a ring of records
 ├── crc8.c / crc8.h                   # The checksum those two carry
 ├── midi_out.c / midi_out.h           # midi_out_tick(): the MIDI bytes for a tick: clock, Start, Stop, notes
+├── mod.c / mod.h                     # mod_depth(): how far an LFO and an amount move a value, or a chance
 └── panel.c / panel.h                 # panel_step_value(): one step's four switches from the raw bytes
 ports/                        # What the app needs from the outside world (headers only)
 ├── port_status.h                     # Shared status/error codes
@@ -59,12 +60,13 @@ ports/                        # What the app needs from the outside world (heade
 ├── reset_cause_port.h                # Why the processor last started
 ├── breadcrumb_port.h                 # Where the firmware had got to, kept through a reset
 ├── midi_output_port.h                # MIDI out, as bytes (queued; never blocks the loop)
+├── mod_input_port.h                  # The modulation input (an LFO), as read
 └── log_port.h                        # Diagnostic output (queued; never blocks the loop)
 adapters/
 ├── target/                   # The ports implemented for the ATmega328P
 │   ├── init.c                        # Platform bring-up (logger, registers, SPI, edge inputs, MIDI, watchdog, timebase)
 │   ├── register_init.c / .h          # I/O direction + ADC setup
-│   ├── analog_reader.c               # Tempo input: ADC channel read
+│   ├── analog_reader.c               # The pot and the modulation input: ADC channel reads
 │   ├── shift_reg_reader.c            # Step input and step lights: 74HC165 and 74HC595 chains, over SPI
 │   ├── spi.c / spi.h                 # SPI driver: the MCU as bus master, used by the adapters above
 │   ├── timebase.c / .h               # Timebase: Timer/Counter2 at 1 kHz, the only interrupt
@@ -138,7 +140,10 @@ The wiring is drawn pin by pin, with a diagram of each chip, in [docs/SCHEMATIC.
 - Gate output: `PORTD4` (D4), high while a note is held, which is half a step. Clock output: `PORTD5` (D5), high for the first half of every step. Both are 0 V / 5 V logic straight from the MCU, with no buffer or protection yet
 - Clock input: `PORTB0` (D8, ICP1). Reset input: `PORTD2` (D2, INT0). Each jack is meant to reach its pin through a transistor that pulls the pin low while the jack is high, so the firmware looks for a falling edge at the pin; the flag that latches it is polled once a millisecond and no interrupt is used. That input stage is not built yet
 - Run button: `PORTD7` (D7) to ground. All three of these inputs use the MCU's own pull-ups
-- Other digital I/O configured in `register_init.c`: `PORTC0` as input, `PORTC1` as output; neither is used yet. `PORTD6` is free
+- Pot: ADC channel 6 (A6). It sets whichever of eight amounts the selector is on, and only once it has been turned to meet the amount held there. Position 0 is the tempo; 1 to 3 are how much of the LFO goes to the note, the gate length and the chance of a step dropping out; 4 to 7 hold an amount and do nothing yet
+- Modulation input (an LFO): ADC channel 7 (A7), read every 8 ms. Its input stage, which has to put the LFO's centre at half the supply, is not designed or built; with the pin at half the supply nothing is modulated
+- Level light: `PORTD6` (D6, OC0A), an LED whose brightness is the amount the selector is on, by pulse width from Timer/Counter0 at 977 Hz
+- Other digital I/O configured in `register_init.c`: `PORTC0` as input, `PORTC1` as output; neither is used yet. `PORTD3` is free
 
 ## Dependencies
 

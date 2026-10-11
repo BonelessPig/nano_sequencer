@@ -15,6 +15,7 @@
 
 #define ADC_ENABLED     (0x87U)   // ADCSRA as register_init leaves it
 #define ADMUX_TEMPO     (0x46U)   // AVcc reference, channel 6
+#define ADMUX_MOD       (0x47U)   // AVcc reference, channel 7
 #define UNTOUCHED_VALUE (0xBEEFU) // Marks a result variable the adapter must not write
 
 /**
@@ -55,6 +56,33 @@ static void test_read_selects_channel_6_with_avcc_reference(void)
     (void)pot_input_read(&value);
 
     TEST_ASSERT_EQUAL(ADMUX_TEMPO, g_fake_admux);
+}
+
+
+
+static void test_the_modulation_input_is_channel_7_read_the_same_way(void)
+{
+    uint16_t value = UNTOUCHED_VALUE;
+
+    start_adc();
+    g_fake_admux = 0xFFU; // Stale bits must not survive
+    g_fake_adc   = 777U;
+    TEST_ASSERT_EQUAL(STATUS_OK, mod_input_read(&value));
+    TEST_ASSERT_EQUAL(777, value);
+    TEST_ASSERT_EQUAL(ADMUX_MOD, g_fake_admux);
+    TEST_ASSERT_EQUAL(ADC_ENABLED, g_fake_adcsra);
+
+    // The pot is still channel 6 afterwards: each read sets its own
+    (void)pot_input_read(&value);
+    TEST_ASSERT_EQUAL(ADMUX_TEMPO, g_fake_admux);
+
+    // And it fails as the pot does
+    start_adc();
+    value                 = UNTOUCHED_VALUE;
+    g_fake_adc_busy_polls = UINT16_MAX;
+    TEST_ASSERT_EQUAL(ERR_TIMEOUT, mod_input_read(&value));
+    TEST_ASSERT_EQUAL(UNTOUCHED_VALUE, value);
+    TEST_ASSERT_EQUAL(ERR_INVALID_PARAM, mod_input_read(NULL));
 }
 
 
@@ -167,6 +195,7 @@ int main(void)
 {
     RUN_TEST(test_read_returns_the_conversion_result);
     RUN_TEST(test_read_selects_channel_6_with_avcc_reference);
+    RUN_TEST(test_the_modulation_input_is_channel_7_read_the_same_way);
     RUN_TEST(test_read_keeps_the_adc_configuration);
     RUN_TEST(test_read_waits_for_a_slow_conversion);
     RUN_TEST(test_conversion_finishing_on_the_last_poll_succeeds);

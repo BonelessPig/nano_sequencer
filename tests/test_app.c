@@ -1577,6 +1577,81 @@ static void test_the_pot_sets_the_tempo_only_while_the_selector_is_on_it(void)
 
 
 
+/**
+ * @brief Gives one of the bank's amounts a value: the selector to its
+ *        position, the pot down to meet the 0 it holds, and up. 20 ticks.
+ */
+static void set_amount(uint8_t position, uint16_t amount)
+{
+    set_selector_and_pot(position, 0U);
+    run_ticks(10U);
+    set_selector_and_pot(position, amount);
+    run_ticks(10U);
+}
+
+
+
+static void test_the_lfo_and_the_note_amount_reach_the_sequencer(void)
+{
+    // Step 0 as it is set. The LFO is read with the panel, every scan
+    start_app();
+    run_ticks(2U);
+    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
+    TEST_ASSERT_EQUAL(host_step_read_count(), host_mod_read_count());
+
+    // Position 1 is the note. Full amount and the LFO at its top is seven
+    // places up, which takes step 1's 14 to the top note
+    set_amount(1U, 1023U);
+    host_set_mod(1023U, STATUS_OK);
+    run_ticks(TICKS_PER_STEP);
+    expect_event(1U, HOST_EVENT_STEP_NOTE, 1U, 14U);
+
+    // At its bottom, seven down: step 2's 13 is 6
+    host_set_mod(0U, STATUS_OK);
+    run_ticks(TICKS_PER_STEP);
+    expect_event(2U, HOST_EVENT_STEP_NOTE, 2U, 5U);
+
+    // An LFO that cannot be read moves nothing, and nothing is logged of it
+    host_set_mod(1023U, ERR_TIMEOUT);
+    run_ticks(TICKS_PER_STEP);
+    expect_event(3U, HOST_EVENT_STEP_NOTE, 3U, 11U);
+    TEST_ASSERT_EQUAL(4, host_event_count());
+}
+
+
+
+static void test_positions_2_and_3_are_the_gate_length_and_the_chance(void)
+{
+    uint16_t rises;
+
+    // Position 2, full amount, the LFO at its top: a gate of a whole step,
+    // which ties, so it rises once more and stays up
+    start_app();
+    run_ticks(2U);
+    set_amount(2U, 1023U);
+    host_set_mod(1023U, STATUS_OK);
+    run_ticks(2U * TICKS_PER_STEP);
+    rises = host_gate_rise_count();
+    TEST_ASSERT_EQUAL(2, rises);
+    run_ticks(3U * TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(rises, host_gate_rise_count());
+    TEST_ASSERT(host_gate_level());
+    TEST_ASSERT_EQUAL(6, host_event_count()); // Steps 0 to 5 have begun
+
+    // Position 3, the same: a step drops out on any draw but 0, and the
+    // random numbers begin 135, 35, 70, 220
+    set_amount(3U, 1023U);
+    run_ticks(4U * TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(10, host_event_count());
+    for (uint16_t step = 6U; step < 10U; step++)
+    {
+        expect_event(step, HOST_EVENT_STEP_REST, step, 0U);
+    }
+    TEST_ASSERT(!host_gate_level());
+}
+
+
+
 static void test_the_level_light_shows_the_amount_the_selector_is_on(void)
 {
     // Written on every tick, a tick behind: nothing has been worked out
@@ -2050,6 +2125,8 @@ int main(void)
     RUN_TEST(test_the_reset_input_sends_the_pattern_back_to_its_start);
     RUN_TEST(test_init_starts_a_stopped_pattern_running_again);
     RUN_TEST(test_the_pot_sets_the_tempo_only_while_the_selector_is_on_it);
+    RUN_TEST(test_the_lfo_and_the_note_amount_reach_the_sequencer);
+    RUN_TEST(test_positions_2_and_3_are_the_gate_length_and_the_chance);
     RUN_TEST(test_the_level_light_shows_the_amount_the_selector_is_on);
     RUN_TEST(test_the_level_light_is_dark_in_calibration_mode);
     RUN_TEST(test_calibration_mode_leaves_the_transport_alone);

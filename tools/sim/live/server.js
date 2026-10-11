@@ -18,7 +18,10 @@
  *                  { notes: [16 values, 0 to 15] }
  *                  { mode: 0 to 255 }           The eight mode switches, a
  *                                               bit a switch.
- *                  { tempo: 0 to 1023 }
+ *                  { tempo: 0 to 1023 }             The pot.
+ *                  { selector: 0 to 7 }             What the pot sets.
+ *                  { lfo: 0 to 1023 }               The modulation input,
+ *                                               512 its centre.
  *                  { run: 'press' }             One press of the run button.
  *                  { pulse: 'clock' | 'reset' } One pulse on that input jack.
  *                  { clockOn: true | false }    The clock source plugged
@@ -103,6 +106,9 @@ const GRID_Y_SHIFT = 5;
 const GRID_SETTING_MASK = 0x03;
 const STEP_UNKNOWN = -1;         // No step can be named, so none is lit
 const MAX_TEMPO_READING = 1023;
+const MAX_SELECTOR = 7;
+const MAX_LFO_READING = 1023;
+const LFO_CENTRE_READING = 512; // An LFO at its centre, or none plugged in
 const MAX_BODY_BYTES = 1024;
 const START_NOTES = [1, 8, 13, 8, 4, 8, 11, 0, 1, 8, 13, 8, 6, 9, 13, 0];
 const START_TEMPO_READING = 480; // 150 BPM
@@ -135,6 +141,8 @@ const panel = {
     notes: START_NOTES.slice(),
     mode: 0,
     tempo: START_TEMPO_READING,
+    selector: 0,
+    lfo: LFO_CENTRE_READING,
     clockOn: false,
     clockMs: START_CLOCK_MS,
     clockPattern: CLOCK_PATTERNS[0], // Steady
@@ -186,6 +194,8 @@ function powerUp(config, eeprom) {
     board.setNotes(panel.notes);
     board.setModeSwitches(panel.mode);
     board.setTempoReading(panel.tempo);
+    board.setSelector(panel.selector);
+    board.setLfoReading(panel.lfo);
     // Whatever is plugged into the clock input carries on; the run button
     // is up, and the firmware starts on its own clock
     hasExternalEdge = false;
@@ -704,7 +714,11 @@ function runSlice() {
     }
     events = drain();
     addCrashLogChange(events);
-    broadcast('run', { ms: chipMs(), speed: measureSpeed(nowMs), events });
+    // The level light is switched too fast to send edge by edge: what goes
+    // out is how much of the slice it was on for
+    broadcast('run', {
+        ms: chipMs(), speed: measureSpeed(nowMs), level: board.takeLevel(), events,
+    });
     if (events.some((event) => event.k === 'watchdog')) {
         // The mode, the transport and the count of resets have changed
         broadcast('state', stateMessage(false));
@@ -815,6 +829,12 @@ function applyCommand(command) {
     } else if (isWholeNumberUpTo(command.tempo, MAX_TEMPO_READING)) {
         panel.tempo = command.tempo;
         board.setTempoReading(panel.tempo);
+    } else if (isWholeNumberUpTo(command.selector, MAX_SELECTOR)) {
+        panel.selector = command.selector;
+        board.setSelector(panel.selector);
+    } else if (isWholeNumberUpTo(command.lfo, MAX_LFO_READING)) {
+        panel.lfo = command.lfo;
+        board.setLfoReading(panel.lfo);
     } else if (command.run === 'press') {
         pressRun();
     } else if ((command.pulse === 'clock') || (command.pulse === 'reset')) {

@@ -30,6 +30,7 @@
 #include "level_output_port.h"
 #include "log_port.h"
 #include "midi_output_port.h"
+#include "mod_input_port.h"
 #include "nv_port.h"
 #include "platform_port.h"
 #include "reset_cause_port.h"
@@ -50,7 +51,10 @@
 // What each slot of the amount bank sets, by the position of the selector
 // that chooses it. The tempo is position 0, which is what a board with no
 // selector wired reads, so that its pot is still the tempo
-#define SLOT_TEMPO (0U)
+#define SLOT_TEMPO       (0U)
+#define SLOT_TRANSPOSE   (1U) // How far the LFO moves a note in the scale
+#define SLOT_GATE_LENGTH (2U) // How far it moves the gate length
+#define SLOT_CHANCE      (3U) // How often it makes a step drop out
 
 // The pitch CV is nominally 1 V to the octave from 0 V at the lowest pitch.
 // That is the ideal calibration table, used until a measured one is stored,
@@ -192,10 +196,10 @@ static void apply_outputs(void)
 
 
 /**
- * @brief  Reads the panel into the snapshot and the pot beside it; the
- *         panel read brings the mode switches and the selector with it. A
- *         failed read clears that input's valid flag and leaves its data as
- *         it was.
+ * @brief  Reads the panel and the LFO into the snapshot and the pot
+ *         beside it; the panel read brings the mode switches and the
+ *         selector with it. A failed read clears that input's valid flag
+ *         and leaves its data as it was.
  */
 static void scan_inputs(void)
 {
@@ -204,6 +208,8 @@ static void scan_inputs(void)
 
     g_tempo_read_status = pot_input_read(&g_pot_raw);
     g_b_pot_valid       = (STATUS_OK == g_tempo_read_status);
+
+    g_inputs.mod.b_lfo_valid = (STATUS_OK == mod_input_read(&g_inputs.mod.lfo));
 }
 
 
@@ -261,9 +267,10 @@ static void run_midi_out(void)
 
 /**
  * @brief  Lets the pot set the amount the selector chooses, and hands the
- *         sequencer the one it uses: the tempo. The bank always has a
- *         tempo to give, so it is always valid. The level light is given
- *         the amount the selector is on.
+ *         sequencer the ones it uses: the tempo, and how much of the LFO
+ *         goes to each thing it moves. The bank always has a tempo to
+ *         give, so it is always valid. The level light is given the amount
+ *         the selector is on.
  */
 static void run_bank(void)
 {
@@ -276,7 +283,10 @@ static void run_bank(void)
 
     g_inputs.tempo_raw     = bank_amount(&g_bank, (uint8_t)SLOT_TEMPO);
     g_inputs.b_tempo_valid = true;
-    g_level                = bank_level(&g_bank);
+    g_inputs.mod.transpose   = bank_amount(&g_bank, (uint8_t)SLOT_TRANSPOSE);
+    g_inputs.mod.gate_length = bank_amount(&g_bank, (uint8_t)SLOT_GATE_LENGTH);
+    g_inputs.mod.chance      = bank_amount(&g_bank, (uint8_t)SLOT_CHANCE);
+    g_level                  = bank_level(&g_bank);
 }
 
 
@@ -362,6 +372,11 @@ static void reset_tick_state(void)
     g_inputs.b_reset       = false;
     g_inputs.b_clock_edge  = false;
     g_inputs.b_run_button  = false;
+    g_inputs.mod.lfo         = 0U;
+    g_inputs.mod.b_lfo_valid = false;
+    g_inputs.mod.transpose   = 0U;
+    g_inputs.mod.gate_length = 0U;
+    g_inputs.mod.chance      = 0U;
     set_fixed_controls();
 
     g_outputs.b_step_started = false;

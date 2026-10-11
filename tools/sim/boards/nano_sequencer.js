@@ -44,6 +44,8 @@ const BITS_PER_CHIP = 8;
 const SELECTOR_POSITIONS = 8; // The low three inputs of the tenth chip
 const LED_CHIPS = 2;
 const TEMPO_ADC_CHANNEL = 6;
+const MOD_ADC_CHANNEL = 7;    // The modulation input: an LFO, through its input stage
+const MOD_CENTRE_READING = 512; // What it reads with nothing plugged in
 const ADC_REFERENCE_VOLTS = 5;
 const ADC_STEPS = 1024;
 const SHIFT_REG_LOAD_PIN = 1; // On port B
@@ -148,6 +150,10 @@ function createBoard(config, options = {}) {
     // The run button closes its pin to ground
     const runButton = attachSwitch(
         machine.cpu, (closed) => machine.portD.setPin(RUN_BUTTON_PIN, !closed));
+
+    // No LFO: the modulation input sits at its centre
+    machine.adc.channelValues[MOD_ADC_CHANNEL] =
+        ((MOD_CENTRE_READING + 0.5) * ADC_REFERENCE_VOLTS) / ADC_STEPS;
 
     // Nothing plugged in and the button up: every pin high
     machine.inputCapture1.setPin(true);
@@ -469,6 +475,16 @@ function createBoard(config, options = {}) {
         setTempoReading(reading) {
             const volts = ((reading + 0.5) * ADC_REFERENCE_VOLTS) / ADC_STEPS;
             machine.adc.channelValues[TEMPO_ADC_CHANNEL] = volts;
+        },
+
+        /**
+         * Sets the modulation input so the firmware reads exactly this
+         * value, 0 to 1023: what the LFO's input stage puts on the pin. 512
+         * is an LFO at its centre, or none.
+         */
+        setLfoReading(reading) {
+            machine.adc.channelValues[MOD_ADC_CHANNEL] =
+                ((reading + 0.5) * ADC_REFERENCE_VOLTS) / ADC_STEPS;
         },
 
         /** Runs until the firmware has read the panel this many times. */

@@ -21,6 +21,7 @@
 #include "engine_plain.h"
 #include "engine_stage.h"
 #include "gate.h"
+#include "mod.h"
 #include "note_map.h"
 #include "panel.h"
 #include "pitch_cal.h"
@@ -66,6 +67,22 @@ typedef struct
 } seq_state_t;
 
 /**
+ * @brief The modulation: a slow signal from outside (an LFO), and how much
+ *        of it is let through to each thing it can move. Read when a step
+ *        begins.
+ */
+typedef struct
+{
+    uint16_t lfo;         // The signal, 0 to 1023, with 512 its centre, where
+                          // it moves nothing (see mod.h)
+    bool     b_lfo_valid; // false if lfo could not be read; it is then taken
+                          // to be at its centre
+    uint16_t transpose;   // Amount for the note, 0 to 1023; 0 is off
+    uint16_t gate_length; // Amount for the gate length, the same
+    uint16_t chance;      // Amount for the chance of a step dropping out
+} seq_mod_t;
+
+/**
  * @brief One snapshot of the outside world, gathered before a tick.
  */
 typedef struct
@@ -84,6 +101,7 @@ typedef struct
     bool              b_clock_edge;  // true if an edge arrived on the external clock
                                      // since the previous tick
     bool              b_run_button;  // true while the run button is held down, as read
+    seq_mod_t         mod;           // The LFO and its three amounts
 } seq_inputs_t;
 
 /**
@@ -244,6 +262,20 @@ void seq_init(seq_state_t *p_state);
  *         pulses are given; the pattern does not move, and the next start
  *         begins a whole step all the same. Once an edge has come, none
  *         falls.
+ *
+ *         The LFO in p_in->mod moves three things, each by its own
+ *         amount, and each as the LFO reads on the tick the step begins
+ *         (see mod.h for how a reading and an amount make a depth). With an
+ *         amount of 0, or the LFO at its centre or not valid, nothing is
+ *         moved. The note value is shifted by up to 7 places in the scale,
+ *         up while the LFO is above its centre and down while it is below,
+ *         and kept within 1 to 15, so it never becomes a rest and a rest is
+ *         never moved. The gate length is shifted by up to half a step
+ *         either way and kept within 1 pulse to a whole step, which ties.
+ *         And while the LFO is above its centre a step that holds a note
+ *         may drop out, becoming a rest, as often as the depth says: 255
+ *         times in 256 at the most. That is drawn from the same random
+ *         numbers the engines use, and only when the chance is not 0.
  *
  *         The tempo is SEQ_BPM_MIN plus the tempo reading divided by
  *         SEQ_TEMPO_RAW_PER_BPM (30 to 285 BPM over the valid range). If the

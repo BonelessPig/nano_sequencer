@@ -30,6 +30,13 @@
 // Where the random numbers start from at power-on; any value but 0 will do
 #define PRNG_SEED (0xACE1U)
 
+// How far the LFO moves things at its fullest: a note by this many places in
+// the scale, and a gate's length by this many pulses, kept to at least one
+#define MOD_NOTE_RANGE  (7U)
+#define MOD_NOTE_MIN    (1U)
+#define MOD_GATE_RANGE  (SEQ_PULSES_PER_STEP / 2U)
+#define MOD_GATE_MIN    (1U)
+
 
 
 /**
@@ -222,6 +229,76 @@ static uint16_t step_leds(const seq_state_t *p_state, uint8_t step)
 
 
 /**
+ * @brief  Works out how far the LFO, as it reads now, moves one of the
+ *         things it modulates. An LFO that could not be read is taken to be
+ *         at its centre, which moves nothing.
+ * @param  p_in     Inputs for this tick.
+ * @param  amount   That thing's amount, 0 to 1023.
+ * @param  p_depth  Receives the depth.
+ */
+static void mod_for(const seq_inputs_t *p_in, uint16_t amount, mod_depth_t *p_depth)
+{
+    const uint16_t lfo = p_in->mod.b_lfo_valid ? p_in->mod.lfo
+                                               : (uint16_t)MOD_SIGNAL_CENTRE;
+
+    mod_depth(amount, lfo, p_depth);
+}
+
+
+
+/**
+ * @brief  Gives a step's note value as the LFO leaves it: dropped out, by
+ *         chance, or moved in the scale. A rest is left a rest, and no
+ *         chance is drawn for it.
+ * @param  p_state  Sequencer state; a chance moves the random numbers on.
+ * @param  p_in     Inputs for this tick.
+ * @param  note     The note value the engine gave.
+ * @return The note value to play: 0 for a rest, or 1 to 15.
+ */
+static uint8_t modulated_note(seq_state_t *p_state, const seq_inputs_t *p_in, uint8_t note)
+{
+    mod_depth_t depth     = { 0U, false };
+    uint8_t     modulated = note;
+
+    if (NOTE_MAP_REST != note)
+    {
+        mod_for(p_in, p_in->mod.chance, &depth);
+        if (mod_chance(&depth, &p_state->prng))
+        {
+            modulated = (uint8_t)NOTE_MAP_REST;
+        }
+        else
+        {
+            mod_for(p_in, p_in->mod.transpose, &depth);
+            modulated = mod_shift(note, &depth, (uint8_t)MOD_NOTE_RANGE,
+                                  (uint8_t)MOD_NOTE_MIN, (uint8_t)NOTE_MAP_NOTE_MAX);
+        }
+    }
+
+    return modulated;
+}
+
+
+
+/**
+ * @brief  Gives the gate length as the LFO leaves it.
+ * @param  p_in  Inputs for this tick.
+ * @return The length in pulses: the control's own if the LFO moves nothing,
+ *         and otherwise 1 to SEQ_PULSES_PER_STEP.
+ */
+static uint8_t modulated_gate_length(const seq_inputs_t *p_in)
+{
+    mod_depth_t depth = { 0U, false };
+
+    mod_for(p_in, p_in->mod.gate_length, &depth);
+
+    return mod_shift(p_in->gate.length, &depth, (uint8_t)MOD_GATE_RANGE,
+                     (uint8_t)MOD_GATE_MIN, (uint8_t)SEQ_PULSES_PER_STEP);
+}
+
+
+
+/**
  * @brief  Begins the step that is due, if the engine has one to play, and
  *         works out its pitch and, for a note, the pitch CV value.
  * @param  p_state  Sequencer state; the engine moves on.
@@ -247,8 +324,9 @@ static bool begin_step(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outpu
         p_out->b_note_valid   = p_in->b_steps_valid;
         if (p_in->b_steps_valid)
         {
-            p_out->b_rest = !note_map_semitone(&p_in->note_map, played.note,
-                                               &p_out->semitone);
+            const uint8_t note = modulated_note(p_state, p_in, played.note);
+
+            p_out->b_rest = !note_map_semitone(&p_in->note_map, note, &p_out->semitone);
             if (!p_out->b_rest)
             {
                 p_state->cv = pitch_cal_cv(&p_in->pitch_cal, p_out->semitone);
@@ -328,7 +406,7 @@ static void run(seq_state_t *p_state, const seq_inputs_t *p_in, transport_mode_t
         gate_config_t gate;
 
         p_state->step_pulses = (uint16_t)(p_state->step_pulses - SEQ_PULSES_PER_STEP);
-        gate.length          = p_in->gate.length;
+        gate.length          = modulated_gate_length(p_in);
         if (begin_step(p_state, p_in, p_out) && (gate.length < SEQ_PULSES_PER_STEP))
         {
             // A tied note lasts until the next step begins, at least

@@ -15,6 +15,7 @@
 #include "log_port.h"
 #include "port_status.h"
 
+#define HOST_MOD_CENTRE     (512U) // The modulation input with nothing on it
 #define HOST_RAW_STEP_BYTES (10U) // Size of the scripted step-input buffer
 #define HOST_MAX_EVENTS     (64U) // Output-port calls recorded before further ones are dropped
 #define HOST_NV_BYTES       (64U) // Size of the faked non-volatile storage
@@ -73,6 +74,19 @@ void host_set_steps(const uint8_t *p_raw_bits, port_status_t status);
  * @param status  Status to return. The reading is only written when it is STATUS_OK.
  */
 void host_set_tempo(uint16_t raw, port_status_t status);
+
+/**
+ * @brief Sets what mod_input_read() returns. After host_reset() it is
+ *        HOST_MOD_CENTRE, a signal that moves nothing.
+ * @param raw     Reading to hand out, 0 to 1023.
+ * @param status  Status to return. The reading is only written when it is STATUS_OK.
+ */
+void host_set_mod(uint16_t raw, port_status_t status);
+
+/**
+ * @brief Number of times mod_input_read() has been called since host_reset().
+ */
+uint16_t host_mod_read_count(void);
 
 /**
  * @brief Sets the status cv_output_write() returns. The voltage is only

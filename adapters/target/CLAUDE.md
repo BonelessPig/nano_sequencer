@@ -59,6 +59,12 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 - That a flag latches with its interrupt off has not been tried on the chip, and the emulator's model of it was written here (`docs/ROADMAP.md` section 8).
 - `run_input.c` (PD7) reads a pin that is low while the contact is closed. It debounces nothing; the core does.
 
+## The ADC
+
+- `analog_reader.c` owns the ADC and implements two ports on it: the pot (`pot_input_port.h`, channel 6) and the modulation input (`mod_input_port.h`, channel 7). Each read sets the channel itself, so neither depends on what the other left.
+- A read waits for its conversion, about 0.1 ms, bounded by a poll budget. Both are read in the 8 ms scan, one after the other, so a scan tick is about 0.2 ms longer than the rest; the outputs are applied before it, so no edge moves. Something read on every tick would add its conversion to every tick.
+- The modulation input's stage has to put a signal at its centre, or no signal at all, at half the reference: a reading of 512. The firmware takes anything within 16 of that as nothing. The stage is not designed (`docs/ROADMAP.md` section 8).
+
 ## The level light
 
 - `level_output.c` implements `level_output_port.h` and owns Timer/Counter0; nothing else includes `atmega328p_timer0_regs.h`. The timer runs fast PWM, 8 bits, system clock / 64 (977 Hz), with no interrupt, and its compare output A is PD6.
@@ -96,7 +102,7 @@ The ports implemented for the ATmega328P. This is the only folder that touches h
 ## Pins
 
 - The 74HC165 chain is ten chips: eight for the steps, one for the mode switches and, farthest from the MCU, one whose low three inputs are the selector. Another chip goes on the far end, so the bytes already read keep their places; it costs a constant in `shift_reg_reader.c`, the port header's range and the two fakes.
-- In use: PB1 (74HC165 load), PB5 (SCK, the clock of the chain and the DAC), PB4 (MISO, the chain's data, through 1 kΩ), PB3 (MOSI, the data of the DAC and of the step lights' 74HC595s), PB2 (SS, the DAC's chip select, idle high), PD4 (gate output), PD5 (clock output), ADC channel 6 (tempo pot), PB0 (clock input), PD2 (reset input), PD7 (run button), and PD1 as the USART's transmit pin: the log in the debug build, MIDI out in the midi build (PD0 is then its receive input, which nothing reads). Timer/Counter2 is the 1 kHz tick and drives no pin, and the EEPROM has none either. Timer/Counter1 runs only for its capture flag, and Timer/Counter0 only for the level light.
+- In use: PB1 (74HC165 load), PB5 (SCK, the clock of the chain and the DAC), PB4 (MISO, the chain's data, through 1 kΩ), PB3 (MOSI, the data of the DAC and of the step lights' 74HC595s), PB2 (SS, the DAC's chip select, idle high), PD4 (gate output), PD5 (clock output), ADC channel 6 (the pot), ADC channel 7 (the modulation input), PB0 (clock input), PD2 (reset input), PD7 (run button), and PD1 as the USART's transmit pin: the log in the debug build, MIDI out in the midi build (PD0 is then its receive input, which nothing reads). Timer/Counter2 is the 1 kHz tick and drives no pin, and the EEPROM has none either. Timer/Counter1 runs only for its capture flag, and Timer/Counter0 only for the level light.
 - The MCP4822 is used on channel A at a gain of 2 from its internal reference (1 mV a step), with LDAC tied low. Its frame layout and pinout have been checked against the datasheet (`docs/ROADMAP.md` section 8).
 - PD3 is free, and left an input with its pull-up on so that it does not float. PD6 is the level light, driven by Timer/Counter0. PC0 and PC1 are given a direction but are unused and free.
 - An input pin's direction and pull-up are set in `register_init.c` too. All three inputs use the MCU's own pull-ups.
