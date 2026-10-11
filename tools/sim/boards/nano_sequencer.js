@@ -1,8 +1,9 @@
 'use strict';
 /**
  * The sequencer board as it is wired today: an ATmega328P at 16 MHz with
- * eight 74HC165s on the SPI bus (clock on SCK, data on MISO) and their load
- * line on PB1, an MCP4822 DAC on the same bus (clock on SCK, data on MOSI)
+ * nine 74HC165s on the SPI bus (clock on SCK, data on MISO) and their load
+ * line on PB1: eight for the 16 steps and, farthest from the MCU, one for
+ * the eight mode switches. An MCP4822 DAC on the same bus (clock on SCK, data on MOSI)
  * with its chip select on PB2, the tempo pot on ADC channel 6, the gate
  * output on PD4, the clock output on PD5, and USART0 going to a PC. Scenarios set the panel and
  * the pot, run the firmware, and read back what it did. Nothing is wired to
@@ -26,6 +27,7 @@ const { attachSwitch } = require('../parts/switch');
 const CLOCK_HZ = 16000000;
 const STEP_COUNT = 16;
 const NOTE_BITS = 4;
+const MODE_BITS = 8;
 const TEMPO_ADC_CHANNEL = 6;
 const ADC_REFERENCE_VOLTS = 5;
 const ADC_STEPS = 1024;
@@ -56,6 +58,7 @@ function createBoard(config, options = {}) {
     const hexPath = path.join(BUILD_DIR, config, 'output.hex');
     const machine = createAtmega328p(hexPath, CLOCK_HZ);
     const notes = new Array(STEP_COUNT).fill(0);
+    let modeSwitches = 0;
     // lines holds the step lines, which most scenarios count and time;
     // notices holds every other line (start-up, calibration, errors)
     const serial = { bytes: 0, lines: [], notices: [] };
@@ -66,13 +69,17 @@ function createBoard(config, options = {}) {
     machine.eepromMemory.set(options.eeprom || []);
     machine.cpu.data[MCUSR] = options.resetFlags || 0;
 
-    // Step 0's most significant bit is the first bit out of the chain
+    // Step 0's most significant bit is the first bit out of the chain, and
+    // the mode switches follow the last step, highest switch first
     function panelBits() {
         const bits = [];
         for (const note of notes) {
             for (let bit = NOTE_BITS - 1; bit >= 0; bit--) {
                 bits.push((note >> bit) & 1);
             }
+        }
+        for (let bit = MODE_BITS - 1; bit >= 0; bit--) {
+            bits.push((modeSwitches >> bit) & 1);
         }
         return bits;
     }
@@ -235,6 +242,19 @@ function createBoard(config, options = {}) {
             for (let step = 0; step < STEP_COUNT; step++) {
                 notes[step] = newNotes[step];
             }
+        },
+
+        /**
+         * Sets the eight mode switches, as a number 0 to 255 with a bit a
+         * switch. The lowest three choose the engine.
+         */
+        setModeSwitches(value) {
+            modeSwitches = value & ((1 << MODE_BITS) - 1);
+        },
+
+        /** The mode switches as they are set, 0 to 255. */
+        modeSwitches() {
+            return modeSwitches;
         },
 
         /**

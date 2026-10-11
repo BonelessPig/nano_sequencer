@@ -69,6 +69,14 @@ button { cursor: pointer; }
 .step.group { margin-left: 6px; }
 .switch { width: 32px; height: 22px; padding: 0; font-size: 11px; color: var(--dim); }
 .switch.on { background: var(--on); border-color: var(--on); color: #1b1b1b; }
+.means { font-size: 12px; min-height: 17px; white-space: nowrap; }
+#steps:not(.stage) .means { display: none; }
+/* The stage engine: a control's high two switches stand apart from its low two */
+#steps.stage .step.control .switch[data-bit="1"] { margin-top: 6px; }
+.mode-group { display: inline-flex; gap: 4px; padding: 4px; border-radius: 6px;
+              border: 1px solid transparent; }
+.mode-group.engine { border-color: var(--on); }
+#engine { font-weight: 600; }
 #cal-banner { border-color: var(--on); }
 #cal-banner h2 { color: var(--on); }
 #cal-banner p, #cal-banner ul { margin: 0 0 6px; }
@@ -112,6 +120,22 @@ canvas { width: 100%; height: 240px; display: block; }
     <section>
         <h2>Panel</h2>
         <div id="steps"></div>
+        <div class="row" style="margin-top: 10px">
+            <span>Mode switches</span>
+            <span class="mode-group" id="modes-spare"></span>
+            <span class="dim">7 to 3 do nothing yet</span>
+            <span class="mode-group engine" id="modes-engine"></span>
+            <span>2 to 0 choose the engine, as a number:
+                <span class="num" id="engine"></span></span>
+        </div>
+        <p class="dim note-text" id="stage-help" hidden>The stage engine plays
+            eight stages. Steps 0 to 7 are the stages' notes and steps 8 to 15
+            their controls, step 8 for stage 0 and so on. A control's low two
+            switches (2 and 1) are the stage's length, 1 to 4 steps; its high
+            two (8 and 4) are the gate mode: single plays the note on the
+            stage's first step only, repeat on every step, hold once for the
+            whole stage, and rest not at all. The stage playing is lit with
+            its control, which counts its steps.</p>
         <div class="row" style="margin-top: 10px">
             <label for="tempo">Tempo pot</label>
             <input type="range" id="tempo" min="0" max="1023" step="1">
@@ -157,10 +181,16 @@ canvas { width: 100%; height: 240px; display: block; }
             running.</p>
         <p class="dim note-text">The step lit on the panel is counted from the
             clock output, starting again at 0 after a start or a reset made
-            here. The debug image also names each step in its log, and that is
-            believed over the count. The release image has no log, so there
-            the count is all there is, and a reset that lands within a tick
-            or two of a step can leave it one out.</p>
+            here, and after a change of engine. The debug image also names each
+            step in its log, and that is believed over the count. The release
+            image has no log, so there the count is all there is, and a reset
+            that lands within a tick or two of a step can leave it one out.
+            On the stage engine the log names the stage, and which of its
+            steps is playing is always counted, from the lengths on the panel
+            as they stood when each stage began.</p>
+        <p class="dim note-text">The engine is taken from the mode switches as
+            each step begins, and a change of engine starts the new one's
+            pattern from its beginning.</p>
     </section>
 
     <section id="cal-banner" hidden>
@@ -237,6 +267,18 @@ canvas { width: 100%; height: 240px; display: block; }
 const STEP_COUNT = 16;
 const NOTE_BITS = 4;
 const STEPS_PER_GROUP = 4;
+const MODE_BITS = 8;
+// The low three mode switches choose the engine, as a number. Every number
+// with no engine of its own plays the plain one
+const ENGINE_BITS = 3;
+const ENGINE_STAGE = 1;
+const ENGINE_NAMES = ['plain', 'stage'];
+// The stage engine: stage n's note is step n and its control step n + 8. A
+// control's low two switches are the length less one, its high two the mode
+const STAGE_COUNT = 8;
+const STAGE_LENGTH_MASK = 0x03;
+const STAGE_MODE_SHIFT = 2;
+const STAGE_MODES = ['single', 'repeat', 'hold', 'rest'];
 const CAL_ENTRY_NOTES = [10, 5, 10, 5]; // On the last four steps
 const STEPS_PER_BEAT = 4;
 const MS_PER_MINUTE = 60000;
@@ -306,9 +348,61 @@ function buildPanel() {
             });
             column.append(button);
         }
-        column.insertAdjacentHTML('beforeend', '<span class="num note"></span>');
+        column.insertAdjacentHTML('beforeend', '<span class="num note"></span>'
+            + '<span class="num dim means"></span><span class="num dim means"></span>');
         el('steps').append(column);
     }
+    for (let bit = MODE_BITS - 1; bit >= 0; bit--) {
+        const button = document.createElement('button');
+
+        button.className = 'switch';
+        button.textContent = String(bit);
+        button.dataset.bit = String(bit);
+        button.title = `Mode switch ${bit}`;
+        button.addEventListener('click', () => post({ mode: state.mode ^ (1 << bit) }));
+        el((bit < ENGINE_BITS) ? 'modes-engine' : 'modes-spare').append(button);
+    }
+}
+
+// The number the low three mode switches make
+function engineNumber() {
+    return state.mode & ((1 << ENGINE_BITS) - 1);
+}
+
+// Whether the panel is to be read as the stage engine reads it
+function isStagePanel() {
+    return !state.calibrating && (engineNumber() === ENGINE_STAGE);
+}
+
+function showModes() {
+    const engine = engineNumber();
+    const name = (engine < ENGINE_NAMES.length)
+        ? ENGINE_NAMES[engine] : `plain (no engine ${engine} yet)`;
+
+    for (const button of document.querySelectorAll('.mode-group .switch')) {
+        button.classList.toggle('on', ((state.mode >> Number(button.dataset.bit)) & 1) === 1);
+    }
+    el('engine').textContent = `${engine}, ${name}`;
+    el('steps').classList.toggle('stage', isStagePanel());
+    el('stage-help').hidden = !isStagePanel();
+}
+
+// The two lines under a step that say what it is to the stage engine: which
+// stage's note, or which stage's control and its gate mode. They are empty
+// for the plain engine. A control's length goes in its top line, which
+// showStep() writes because it counts while the stage plays
+function showStageMeaning(column, step) {
+    const [, mode] = column.querySelectorAll('.means');
+    const stage = step % STAGE_COUNT;
+    const isControl = step >= STAGE_COUNT;
+    let text = '';
+
+    column.classList.toggle('control', isControl);
+    if (isStagePanel()) {
+        text = isControl
+            ? STAGE_MODES[state.notes[step] >> STAGE_MODE_SHIFT] : `stage ${stage}`;
+    }
+    mode.textContent = text;
 }
 
 function showPanel() {
@@ -322,7 +416,9 @@ function showPanel() {
         }
         // As the firmware logs it: a pitch one below the value, or a rest
         column.querySelector('.note').textContent = (note === 0) ? 'rest' : String(note - 1);
+        showStageMeaning(column, step);
     });
+    showModes();
     if (document.activeElement !== el('tempo')) {
         el('tempo').value = String(state.tempo);
     }
@@ -388,12 +484,32 @@ function showTransport() {
     el('transport-from').textContent = from;
 }
 
-// No step is lit while stopped: the pattern will start again from step 0
+// What a stage's control says of its length: how many steps, or which of
+// them is playing
+function stageLengthText(stage, isPlaying) {
+    const steps = (state.notes[STAGE_COUNT + stage] & STAGE_LENGTH_MASK) + 1;
+
+    if (isPlaying && (state.stageSteps > 0)) {
+        return `${state.stageStep} of ${state.stageSteps}`;
+    }
+    return (steps === 1) ? '1 step' : `${steps} steps`;
+}
+
+// No step is lit while stopped: the pattern will start again from step 0.
+// On the stage engine the step is a stage, lit with its control
 function showStep() {
     const playing = (state.transport === TRANSPORT_STOPPED) ? -1 : state.step;
+    const isStage = isStagePanel();
 
     for (let step = 0; step < STEP_COUNT; step++) {
-        el(`step-${step}`).classList.toggle('playing', step === playing);
+        const column = el(`step-${step}`);
+        const isControl = isStage && (step >= STAGE_COUNT);
+        const isPlaying = (step === playing)
+            || (isControl && ((step - STAGE_COUNT) === playing));
+
+        column.classList.toggle('playing', isPlaying);
+        column.querySelector('.means').textContent = isControl
+            ? stageLengthText(step - STAGE_COUNT, isPlaying) : '';
     }
 }
 
@@ -455,6 +571,8 @@ function applyEvent(event) {
             break;
         case 'step':
             state.step = event.v;
+            state.stageStep = event.n;
+            state.stageSteps = event.of;
             showStep();
             break;
         case 'transport':

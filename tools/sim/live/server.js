@@ -12,6 +12,8 @@
  *                  slice with the chip time and what happened in it.
  *   POST /control  One change, as JSON:
  *                  { notes: [16 values, 0 to 15] }
+ *                  { mode: 0 to 255 }           The eight mode switches, a
+ *                                               bit a switch.
  *                  { tempo: 0 to 1023 }
  *                  { sync: true | false }       The sync switch.
  *                  { run: 'press' }             One press of the run button.
@@ -28,7 +30,7 @@
  * Two things shown are worked out here, not read from the chip: the
  * transport and the step that is playing. Both follow the log where there is
  * one and what this server did to the controls where there is not; see
- * predictRunPress() and record().
+ * predictRunPress(), nextStep() and record().
  */
 const fs = require('node:fs');
 const http = require('node:http');
@@ -45,6 +47,16 @@ const SPEED_WINDOW_MS = 1000;
 const EEPROM_BYTES = 1024;
 const POWER_ON_RESET = 0x01;
 const MAX_NOTE = 15;
+const MAX_MODE = 255;
+// The low three mode switches choose the engine, as a number. Every number
+// with no engine of its own plays the plain one
+const ENGINE_MASK = 0x07;
+const ENGINE_PLAIN = 0;
+const ENGINE_STAGE = 1;
+// The stage engine: stage n's note is step n and its control step n + 8,
+// whose low two switches are the stage's length in steps, less one
+const STAGE_COUNT = 8;
+const STAGE_LENGTH_MASK = 0x03;
 const MAX_TEMPO_READING = 1023;
 const MAX_BODY_BYTES = 1024;
 const START_NOTES = [1, 8, 13, 8, 4, 8, 11, 0, 1, 8, 13, 8, 6, 9, 13, 0];
@@ -67,6 +79,7 @@ const STEP_LINE = /^Step (\d+) /;
 const panel = {
     config: CONFIGS[0],
     notes: START_NOTES.slice(),
+    mode: 0,
     tempo: START_TEMPO_READING,
     sync: false,
     clockOn: false,
@@ -77,6 +90,7 @@ let board = null;
 let outputs = null;
 let isCalibrating = false; // Powered up with the calibration entry pattern set
 let isFirstStepDue = false; // The next step to begin is the pattern's first
+let stepEngine = ENGINE_PLAIN; // The engine that gave the last step counted
 let runUpDueMs = null;     // Chip time at which the run button is let go
 let runFreeMs = 0;         // Chip time from which it may be pressed again
 let timer = null;
@@ -95,6 +109,7 @@ function runningTransport() {
 function powerUp(config, eeprom) {
     board = createBoard(config, { eeprom, resetFlags: POWER_ON_RESET });
     board.setNotes(panel.notes);
+    board.setModeSwitches(panel.mode);
     board.setTempoReading(panel.tempo);
     // A toggle switch stays where it was and whatever is plugged into the
     // clock input carries on; the run button is up
@@ -112,15 +127,58 @@ function powerUp(config, eeprom) {
         gate: false,
         clock: false,
         step: -1,
+        stageStep: 0,   // The stage engine: which step of its stage, from 1,
+        stageSteps: 0,  // and how many steps the stage lasts
         millivolts: 0,
         transport: isCalibrating ? null : runningTransport(),
         transportFrom: 'controls',
     };
     isFirstStepDue = true;
+    stepEngine = ENGINE_PLAIN;
     runUpDueMs = null;
     runFreeMs = 0;
     wallStartMs = performance.now();
     speed = { wallMs: wallStartMs, chipMs: 0, percent: 100 };
+}
+
+/** The engine the mode switches choose, as the firmware takes them. */
+function chosenEngine() {
+    const engine = panel.mode & ENGINE_MASK;
+
+    return (engine === ENGINE_STAGE) ? ENGINE_STAGE : ENGINE_PLAIN;
+}
+
+/** Starts counting a stage's steps, its length taken from the panel now. */
+function beginStage(stage) {
+    outputs.stageStep = 1;
+    outputs.stageSteps = (panel.notes[STAGE_COUNT + stage] & STAGE_LENGTH_MASK) + 1;
+    return stage;
+}
+
+/**
+ * Says which step the clock pulse that has just risen belongs to, as the
+ * firmware's engines would have it. A pattern starts from its beginning
+ * after a start or a reset made here, and when the engine chosen is not the
+ * one that gave the last step. The plain engine then goes on a step a
+ * pulse; the stage engine stays on a stage for as many pulses as the stage
+ * has steps, and names the stage, 0 to 7, each time.
+ */
+function nextStep() {
+    const engine = chosenEngine();
+    const isFirst = isFirstStepDue || (engine !== stepEngine);
+
+    stepEngine = engine;
+    isFirstStepDue = false;
+    if (engine === ENGINE_PLAIN) {
+        outputs.stageStep = 0;
+        outputs.stageSteps = 0;
+        return isFirst ? 0 : (outputs.step + 1) % STEP_COUNT;
+    }
+    if (!isFirst && (outputs.stageStep < outputs.stageSteps)) {
+        outputs.stageStep++;
+        return outputs.step;
+    }
+    return beginStage(isFirst ? 0 : (outputs.step + 1) % STAGE_COUNT);
 }
 
 /**
@@ -128,15 +186,17 @@ function powerUp(config, eeprom) {
  * and adds what the page should be told to `events`.
  *
  * The step playing is counted from the clock output, which pulses once a
- * step, starting again from 0 when this server has done something that
- * sends the pattern back to its first step. The debug image also names each
- * step in its log, just after the pulse, and that is believed over the count.
+ * step; see nextStep(). The debug image also names each step in its log,
+ * just after the pulse, and that is believed over the count.
  */
 function record(item, events) {
     const t = board.machine.cyclesToMs(item.cycle);
     const setStep = (step) => {
         outputs.step = step % STEP_COUNT;
-        events.push({ t, k: 'step', v: outputs.step });
+        events.push({
+            t, k: 'step', v: outputs.step,
+            n: outputs.stageStep, of: outputs.stageSteps,
+        });
     };
 
     switch (item.kind) {
@@ -148,8 +208,7 @@ function record(item, events) {
             outputs.clock = item.value;
             events.push({ t, k: 'clock', v: item.value });
             if (item.value) {
-                setStep(isFirstStepDue ? 0 : outputs.step + 1);
-                isFirstStepDue = false;
+                setStep(nextStep());
             }
             break;
         case 'cv':
@@ -169,7 +228,12 @@ function record(item, events) {
                 outputs.transportFrom = 'log';
                 events.push({ t, k: 'transport', v: outputs.transport, from: 'log' });
             }
-            if (step !== null) {
+            if ((step !== null) && (Number(step[1]) !== outputs.step)) {
+                // The count was out. A stage named here is on its first
+                // step, as far as can be told
+                if (stepEngine === ENGINE_STAGE) {
+                    beginStage(Number(step[1]) % STAGE_COUNT);
+                }
                 setStep(Number(step[1]));
             }
             break;
@@ -367,6 +431,9 @@ function applyCommand(command) {
     if (isNotes(command.notes)) {
         panel.notes = command.notes;
         board.setNotes(panel.notes);
+    } else if (isWholeNumberUpTo(command.mode, MAX_MODE)) {
+        panel.mode = command.mode;
+        board.setModeSwitches(panel.mode);
     } else if (isWholeNumberUpTo(command.tempo, MAX_TEMPO_READING)) {
         panel.tempo = command.tempo;
         board.setTempoReading(panel.tempo);

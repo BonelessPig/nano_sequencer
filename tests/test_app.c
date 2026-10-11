@@ -85,7 +85,10 @@ static void start_app_keeping_storage(void)
  */
 static void set_calibration_panel(uint8_t point, bool b_store_on)
 {
-    uint8_t raw[HOST_RAW_STEP_BYTES] = { 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0xA5U, 0xA4U };
+    uint8_t raw[HOST_RAW_STEP_BYTES] =
+    {
+        0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0xA5U, 0xA4U, 0x00U
+    };
 
     raw[0] = (uint8_t)(point << 4U);
     if (b_store_on)
@@ -292,6 +295,27 @@ static void test_tick_reads_the_whole_chain(void)
     start_app();
     run_ticks(1U);
     TEST_ASSERT_EQUAL(PANEL_RAW_BYTE_COUNT, host_last_step_byte_count());
+}
+
+
+
+static void test_mode_switches_reach_the_core(void)
+{
+    // The descending notes with the mode switches choosing the stage
+    // engine, and stage 0 set to repeat its note over two steps
+    static const uint8_t stages[HOST_RAW_STEP_BYTES] =
+    {
+        0xFEU, 0xDCU, 0xBAU, 0x98U, 0x56U, 0x54U, 0x32U, 0x10U, 0x01U
+    };
+
+    start_app();
+    host_set_steps(stages, STATUS_OK);
+    run_ticks(2U + (2U * TICKS_PER_STEP));
+
+    TEST_ASSERT_EQUAL(3, host_event_count());
+    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
+    expect_event(1U, HOST_EVENT_STEP_NOTE, 0U, 14U);
+    expect_event(2U, HOST_EVENT_STEP_NOTE, 1U, 13U);
 }
 
 
@@ -1208,6 +1232,7 @@ int main(void)
     RUN_TEST(test_inputs_are_read_every_eighth_tick);
     RUN_TEST(test_scan_timing_counts_elapsed_ticks_not_passes);
     RUN_TEST(test_tick_reads_the_whole_chain);
+    RUN_TEST(test_mode_switches_reach_the_core);
     RUN_TEST(test_elapsed_ticks_reach_the_core);
     RUN_TEST(test_gate_opens_one_tick_after_its_step_begins_and_before_the_log);
     RUN_TEST(test_pitch_cv_is_in_place_before_the_gate_opens);

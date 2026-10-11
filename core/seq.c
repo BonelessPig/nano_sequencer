@@ -17,6 +17,12 @@
 #define SYNC_PART_UNITY   (3U)
 #define SYNC_PART_MAX     (6U)
 
+// The low three mode switches choose the engine, as a number. Every number
+// with no engine of its own is the plain one
+#define ENGINE_SELECT_MASK (0x07U)
+#define ENGINE_PLAIN       (0U)
+#define ENGINE_STAGE       (1U)
+
 
 
 /**
@@ -104,24 +110,81 @@ static uint8_t pulses_due(seq_state_t *p_state, const seq_inputs_t *p_in,
 
 
 /**
+ * @brief  Sends every engine back to the start of its pattern.
+ * @param  p_state  Sequencer state; the choice of engine is kept.
+ */
+static void engines_init(seq_state_t *p_state)
+{
+    engine_plain_init(&p_state->plain);
+    engine_stage_init(&p_state->stage);
+}
+
+
+
+/**
+ * @brief  Asks the engine the mode switches choose for the step to play. An
+ *         engine that was not the one to play the last step starts its
+ *         pattern from the beginning.
+ * @param  p_state  Sequencer state; the engine moves on.
+ * @param  p_in     Inputs for this tick.
+ * @param  p_step   Receives the step, if there is one.
+ * @return true if there is a step to play.
+ */
+static bool engine_step(seq_state_t *p_state, const seq_inputs_t *p_in,
+                        engine_step_t *p_step)
+{
+    engine_inputs_t engine_in;
+    uint8_t         engine =
+        (uint8_t)(panel_mode_value(p_in->raw_steps) & ENGINE_SELECT_MASK);
+    bool            b_step;
+
+    if (engine > ENGINE_STAGE)
+    {
+        engine = (uint8_t)ENGINE_PLAIN;
+    }
+    if (engine != p_state->engine)
+    {
+        engines_init(p_state);
+        p_state->engine = engine;
+    }
+
+    engine_in.p_raw_steps = p_in->raw_steps;
+    engine_in.p_address   = &p_in->address;
+
+    switch (engine)
+    {
+        case ENGINE_STAGE:
+            b_step = engine_stage_step(&p_state->stage, &engine_in, p_step);
+            break;
+
+        default:
+            b_step = engine_plain_step(&p_state->plain, &engine_in, p_step);
+            break;
+    }
+
+    return b_step;
+}
+
+
+
+/**
  * @brief  Begins the step that is due, if the engine has one to play, and
  *         works out its pitch and, for a note, the pitch CV value.
  * @param  p_state  Sequencer state; the engine moves on.
  * @param  p_in     Inputs for this tick.
  * @param  p_out    Outputs, already cleared; filled in if a step begins.
+ * @return true if a note begins that is held into the step after it.
  */
-static void begin_step(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_out)
+static bool begin_step(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_out)
 {
-    engine_inputs_t engine_in;
-    engine_step_t   played;
+    engine_step_t played;
 
-    engine_in.p_raw_steps = p_in->raw_steps;
-    engine_in.p_address   = &p_in->address;
-    played.step           = 0U;
-    played.note           = 0U;
+    played.step  = 0U;
+    played.note  = 0U;
+    played.b_tie = false;
 
     // The step takes its turn whether or not its note is readable
-    if (engine_plain_step(&p_state->engine, &engine_in, &played))
+    if (engine_step(p_state, p_in, &played))
     {
         p_out->b_step_started = true;
         p_out->step           = played.step;
@@ -136,6 +199,8 @@ static void begin_step(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outpu
             }
         }
     }
+
+    return played.b_tie;
 }
 
 
@@ -150,7 +215,7 @@ static void begin_step(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outpu
 static void start(seq_state_t *p_state, transport_mode_t mode)
 {
     clock_init(&p_state->clock);
-    engine_plain_init(&p_state->engine);
+    engines_init(p_state);
     gate_init(&p_state->gate);
     p_state->step_pulses = SEQ_PULSES_PER_STEP;
     if (TRANSPORT_EXTERNAL == mode)
@@ -184,7 +249,7 @@ static void run(seq_state_t *p_state, const seq_inputs_t *p_in, transport_mode_t
 
     if (p_in->b_reset)
     {
-        engine_plain_init(&p_state->engine);
+        engines_init(p_state);
     }
 
     pulses               = pulses_due(p_state, p_in, mode, elapsed_ticks);
@@ -200,13 +265,20 @@ static void run(seq_state_t *p_state, const seq_inputs_t *p_in, transport_mode_t
     }
     else if (p_state->step_pulses >= SEQ_PULSES_PER_STEP)
     {
+        gate_config_t gate;
+
         p_state->step_pulses = (uint16_t)(p_state->step_pulses - SEQ_PULSES_PER_STEP);
-        begin_step(p_state, p_in, p_out);
+        gate.length          = p_in->gate.length;
+        if (begin_step(p_state, p_in, p_out) && (gate.length < SEQ_PULSES_PER_STEP))
+        {
+            // A tied note lasts until the next step begins, at least
+            gate.length = (uint8_t)SEQ_PULSES_PER_STEP;
+        }
 
         // The boundary ends the last step's gate, and only a pitch opens
         // another. Its length counts from the boundary, so only the
         // pulses already into the new step come off it
-        gate_begin(&p_state->gate, &p_in->gate, p_out->b_note_valid && !p_out->b_rest);
+        gate_begin(&p_state->gate, &gate, p_out->b_note_valid && !p_out->b_rest);
         gate_pulses = p_state->step_pulses;
     }
     else
@@ -226,6 +298,7 @@ void seq_init(seq_state_t *p_state)
     {
         p_state->last_tempo_raw = 0U;
         p_state->cv             = 0U;
+        p_state->engine         = (uint8_t)ENGINE_PLAIN;
         transport_init(&p_state->transport);
         start(p_state, TRANSPORT_INTERNAL);
     }

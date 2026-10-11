@@ -68,7 +68,7 @@ static seq_inputs_t make_counting_inputs(void)
 {
     seq_inputs_t in = make_valid_inputs();
 
-    for (uint8_t byte_index = 0U; byte_index < PANEL_RAW_BYTE_COUNT; byte_index++)
+    for (uint8_t byte_index = 0U; byte_index < PANEL_STEP_BYTE_COUNT; byte_index++)
     {
         const uint8_t even_step = (uint8_t)(byte_index * 2U);
         in.raw_steps[byte_index] = (uint8_t)((uint8_t)(even_step << PANEL_VALUE_BITS)
@@ -158,8 +158,12 @@ static void test_init_sets_the_power_on_state(void)
     (void)memset(&state, POISON_BYTE, sizeof(state));
     seq_init(&state);
     TEST_ASSERT_EQUAL(0, state.last_tempo_raw);
-    TEST_ASSERT_EQUAL(0, state.engine.address.position);
-    TEST_ASSERT(!state.engine.address.b_finished);
+    TEST_ASSERT_EQUAL(0, state.plain.address.position);
+    TEST_ASSERT(!state.plain.address.b_finished);
+    TEST_ASSERT_EQUAL(0, state.engine); // The plain engine
+    TEST_ASSERT_EQUAL(0, state.stage.address.position);
+    TEST_ASSERT_EQUAL(0, state.stage.length);
+    TEST_ASSERT_EQUAL(0, state.stage.played);
     TEST_ASSERT_EQUAL(0, state.clock.phase);
     TEST_ASSERT_EQUAL(SEQ_PULSES_PER_STEP, state.step_pulses); // A step is due
     TEST_ASSERT_EQUAL(0, state.gate.pulses_left);              // Gate closed
@@ -217,7 +221,7 @@ static void test_ticks_between_steps_report_nothing(void)
     seq_outputs_t out;
 
     seq_init(&state);
-    (void)memset(in.raw_steps, 0xFF, sizeof(in.raw_steps));
+    (void)memset(in.raw_steps, 0xFF, PANEL_STEP_BYTE_COUNT);
     seq_tick(&state, &in, &out); // Step 0 begins
 
     (void)memset(&out, POISON_BYTE, sizeof(out));
@@ -227,7 +231,7 @@ static void test_ticks_between_steps_report_nothing(void)
     TEST_ASSERT(!out.b_rest);
     TEST_ASSERT_EQUAL(0, out.step);
     TEST_ASSERT_EQUAL(0, out.semitone);
-    TEST_ASSERT_EQUAL(1, state.engine.address.position); // Step 1 is still to come
+    TEST_ASSERT_EQUAL(1, state.plain.address.position); // Step 1 is still to come
 }
 
 
@@ -330,7 +334,7 @@ static void test_steps_follow_in_order_and_wrap(void)
         TEST_ASSERT((0U == expected_step) == out.b_rest);
         TEST_ASSERT_EQUAL((0U == expected_step) ? 0U : (expected_step - 1U), out.semitone);
         TEST_ASSERT_EQUAL((expected_step + 1U) % PANEL_STEP_COUNT,
-                          state.engine.address.position);
+                          state.plain.address.position);
     }
 }
 
@@ -807,7 +811,7 @@ static void test_gate_opens_with_a_pitch_for_its_length(void)
 
     seq_init(&state);
     in.tempo_raw = TEMPO_RAW_150_BPM;
-    (void)memset(in.raw_steps, 0x11, sizeof(in.raw_steps)); // Every step a pitch
+    (void)memset(in.raw_steps, 0x11, PANEL_STEP_BYTE_COUNT); // Every step a pitch
     (void)memset(&out, POISON_BYTE, sizeof(out));
     seq_tick(&state, &in, &out); // Step 0 begins
     TEST_ASSERT(out.b_gate);     // The gate opens on the tick the step begins
@@ -841,7 +845,7 @@ static void test_gate_length_is_counted_in_pulses(void)
         seq_init(&state);
         in.tempo_raw   = TEMPO_RAW_150_BPM;
         in.gate.length = lengths[i];
-        (void)memset(in.raw_steps, 0x11, sizeof(in.raw_steps));
+        (void)memset(in.raw_steps, 0x11, PANEL_STEP_BYTE_COUNT);
         run_and_trace(&state, &in, 100U, &gate, &clock_out); // All of step 0
         TEST_ASSERT(!gate.b_level);
         gate.high_ticks = 0U;
@@ -927,7 +931,7 @@ static void test_gate_length_is_read_when_the_step_begins(void)
 
     seq_init(&state);
     in.tempo_raw = TEMPO_RAW_150_BPM;
-    (void)memset(in.raw_steps, 0x11, sizeof(in.raw_steps));
+    (void)memset(in.raw_steps, 0x11, PANEL_STEP_BYTE_COUNT);
     run_and_trace(&state, &in, 10U, &gate, &clock_out);
 
     // Changed while step 0 is held: that note keeps the length it began with
@@ -953,7 +957,7 @@ static void test_gate_of_a_late_step_counts_from_when_it_was_due(void)
 
     seq_init(&state);
     in.tempo_raw = TEMPO_RAW_250_BPM;
-    (void)memset(in.raw_steps, 0x11, sizeof(in.raw_steps));
+    (void)memset(in.raw_steps, 0x11, PANEL_STEP_BYTE_COUNT);
     in.elapsed_ticks = 0U;
     seq_tick(&state, &in, &out); // Tick 0: step 0
 
@@ -1023,7 +1027,7 @@ static void test_clock_out_runs_on_when_a_one_shot_has_finished(void)
     in.gate.length        = SEQ_PULSES_PER_STEP; // Tied, so only the end closes it
     in.address.last_step  = 1U;
     in.address.b_one_shot = true;
-    (void)memset(in.raw_steps, 0x11, sizeof(in.raw_steps));
+    (void)memset(in.raw_steps, 0x11, PANEL_STEP_BYTE_COUNT);
 
     // Two steps play as one gate, which ends when the third falls due
     run_and_trace(&state, &in, 199U, &gate, &clock_out);
@@ -1048,7 +1052,7 @@ static void test_reset_does_not_cut_a_held_note(void)
 
     seq_init(&state);
     in.tempo_raw = TEMPO_RAW_150_BPM;
-    (void)memset(in.raw_steps, 0x11, sizeof(in.raw_steps));
+    (void)memset(in.raw_steps, 0x11, PANEL_STEP_BYTE_COUNT);
     run_and_trace(&state, &in, 10U, &gate, &clock_out);
 
     in.b_reset = true;
@@ -1292,7 +1296,7 @@ static void test_run_button_stops_the_pattern_at_once(void)
 
     seq_init(&state);
     in.tempo_raw = TEMPO_RAW_150_BPM;
-    (void)memset(in.raw_steps, 0x77, sizeof(in.raw_steps)); // Every step a pitch
+    (void)memset(in.raw_steps, 0x77, PANEL_STEP_BYTE_COUNT); // Every step a pitch
     (void)run_ticks(&state, &in, &out, 10U);
     cv = out.cv;
     TEST_ASSERT(cv > 0U);
@@ -1462,7 +1466,7 @@ static void test_external_gate_and_clock_out_are_half_the_measured_step(void)
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
     in.b_sync_switch = true;
-    (void)memset(in.raw_steps, 0x11, sizeof(in.raw_steps));
+    (void)memset(in.raw_steps, 0x11, PANEL_STEP_BYTE_COUNT);
     run_and_trace(&state, &in, 5U, &gate, &clock_out);
 
     // The first step has no spacing to go by: it is taken as 20 ticks
@@ -1600,7 +1604,7 @@ static void test_an_early_edge_gets_a_tick_of_low_before_its_step(void)
     seq_init(&state);
     in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
     in.b_sync_switch = true;
-    (void)memset(in.raw_steps, 0x33, sizeof(in.raw_steps)); // Every step a pitch
+    (void)memset(in.raw_steps, 0x33, PANEL_STEP_BYTE_COUNT); // Every step a pitch
 
     // Two edges 200 ticks apart: the steps are taken to be that long, so
     // the gate and the clock output are high for 100 ticks of each
@@ -1651,7 +1655,7 @@ static void test_a_tied_gate_is_not_broken_by_an_edge_on_time(void)
     in.tempo_raw     = TEMPO_RAW_ONE_TO_ONE;
     in.b_sync_switch = true;
     in.gate.length   = SEQ_PULSES_PER_STEP;
-    (void)memset(in.raw_steps, 0x33, sizeof(in.raw_steps));
+    (void)memset(in.raw_steps, 0x33, PANEL_STEP_BYTE_COUNT);
 
     // A whole-step gate ties the notes on the external clock as on the
     // internal one: the clock output has fallen by each edge, so no step
@@ -1839,6 +1843,193 @@ static void test_a_start_on_the_external_clock_waits_for_an_edge(void)
 
 
 
+/**
+ * @brief Sets one step's four switches in the inputs.
+ */
+static void set_step(seq_inputs_t *p_in, uint8_t step, uint8_t value)
+{
+    const uint8_t byte_index = (uint8_t)(step / 2U);
+    const uint8_t shift      = (0U == (step % 2U)) ? 4U : 0U;
+
+    p_in->raw_steps[byte_index] =
+        (uint8_t)((p_in->raw_steps[byte_index] & (uint8_t)~(uint8_t)(0x0FU << shift))
+                  | (uint8_t)(value << shift));
+}
+
+
+
+/**
+ * @brief Ticks the sequencer until a step begins and gives its number, or
+ *        255 if none did.
+ */
+static uint8_t next_step(seq_state_t *p_state, const seq_inputs_t *p_in)
+{
+    seq_outputs_t out;
+
+    return (0U != ticks_to_next_step(p_state, p_in, &out)) ? out.step : (uint8_t)255U;
+}
+
+
+
+static void test_mode_switches_choose_the_engine(void)
+{
+    // Stage 0 lasts two steps, repeating its note, which only the stage
+    // engine acts on: it plays 0 0 1, and the plain engine 0 1 2
+    static const uint8_t stage_modes[] = { 0x01U, 0x09U, 0xF9U };
+    static const uint8_t plain_modes[] = { 0x00U, 0x02U, 0x07U, 0xF8U };
+
+    for (size_t i = 0U; i < (sizeof(stage_modes) / sizeof(stage_modes[0])); i++)
+    {
+        seq_state_t  state;
+        seq_inputs_t in = make_counting_inputs();
+
+        seq_init(&state);
+        in.tempo_raw = TEMPO_RAW_250_BPM;
+        set_step(&in, 8U, 0x05U);
+        in.raw_steps[PANEL_STEP_BYTE_COUNT] = stage_modes[i];
+        TEST_ASSERT_EQUAL(0, next_step(&state, &in));
+        TEST_ASSERT_EQUAL(0, next_step(&state, &in));
+        TEST_ASSERT_EQUAL(1, next_step(&state, &in));
+    }
+
+    for (size_t i = 0U; i < (sizeof(plain_modes) / sizeof(plain_modes[0])); i++)
+    {
+        seq_state_t  state;
+        seq_inputs_t in = make_counting_inputs();
+
+        seq_init(&state);
+        in.tempo_raw = TEMPO_RAW_250_BPM;
+        set_step(&in, 8U, 0x05U);
+        in.raw_steps[PANEL_STEP_BYTE_COUNT] = plain_modes[i];
+        TEST_ASSERT_EQUAL(0, next_step(&state, &in));
+        TEST_ASSERT_EQUAL(1, next_step(&state, &in));
+        TEST_ASSERT_EQUAL(2, next_step(&state, &in));
+    }
+}
+
+
+
+static void test_the_engine_is_chosen_from_the_last_readable_panel(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_250_BPM;
+    set_step(&in, 8U, 0x05U);
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x01U;
+    in.b_steps_valid = false;
+    TEST_ASSERT(0U != ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT(0U != ticks_to_next_step(&state, &in, &out));
+    TEST_ASSERT_EQUAL(0, out.step); // The stage engine's second step of stage 0
+    TEST_ASSERT(!out.b_note_valid);
+}
+
+
+
+static void test_a_change_of_engine_starts_its_pattern_from_the_beginning(void)
+{
+    seq_state_t  state;
+    seq_inputs_t in = make_counting_inputs();
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_250_BPM;
+    TEST_ASSERT_EQUAL(0, next_step(&state, &in));
+    TEST_ASSERT_EQUAL(1, next_step(&state, &in));
+    TEST_ASSERT_EQUAL(2, next_step(&state, &in));
+
+    // A switch that chooses nothing new changes nothing
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x02U;
+    TEST_ASSERT_EQUAL(3, next_step(&state, &in));
+
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x01U;
+    TEST_ASSERT_EQUAL(0, next_step(&state, &in));
+    TEST_ASSERT_EQUAL(1, next_step(&state, &in));
+
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x00U;
+    TEST_ASSERT_EQUAL(0, next_step(&state, &in));
+    TEST_ASSERT_EQUAL(1, next_step(&state, &in));
+
+    // And the stage engine was sent back too, not left where it was
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x01U;
+    TEST_ASSERT_EQUAL(0, next_step(&state, &in));
+}
+
+
+
+static void test_reset_sends_the_chosen_engine_back(void)
+{
+    seq_state_t  state;
+    seq_inputs_t in = make_counting_inputs();
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_250_BPM;
+    set_step(&in, 9U, 0x07U); // Stage 1 lasts four steps
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x01U;
+    TEST_ASSERT_EQUAL(0, next_step(&state, &in));
+    TEST_ASSERT_EQUAL(1, next_step(&state, &in));
+    TEST_ASSERT_EQUAL(1, next_step(&state, &in));
+
+    in.b_reset = true;
+    TEST_ASSERT_EQUAL(0, next_step(&state, &in));
+    in.b_reset = false;
+    TEST_ASSERT_EQUAL(1, next_step(&state, &in));
+}
+
+
+
+static void test_a_tied_note_is_held_into_the_next_step(void)
+{
+    // 150 BPM: a step is 100 ticks. Stage 0 holds its note for three steps
+    // and the other stages are rests, so one cycle is ten steps
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    level_trace_t gate      = { 0U, 0U, false };
+    level_trace_t clock_out = { 0U, 0U, false };
+
+    seq_init(&state);
+    in.tempo_raw = TEMPO_RAW_150_BPM;
+    set_step(&in, 0U, 0x05U);
+    set_step(&in, 8U, 0x0AU);
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x01U;
+    run_and_trace(&state, &in, 1000U, &gate, &clock_out);
+
+    // Two whole steps and the half step of the gate length, as one gate;
+    // the clock output still pulses on every step
+    TEST_ASSERT_EQUAL(1, gate.rises);
+    TEST_ASSERT_EQUAL(250, gate.high_ticks);
+    TEST_ASSERT_EQUAL(10, clock_out.rises);
+}
+
+
+
+static void test_a_tie_does_not_shorten_a_longer_gate(void)
+{
+    // A gate of 30 pulses is longer than a step, so it ties by itself and
+    // the engine's tie has nothing to add: stage 0 holds for two steps and
+    // the rest that follows ends the gate on the boundary
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    level_trace_t gate      = { 0U, 0U, false };
+    level_trace_t clock_out = { 0U, 0U, false };
+
+    seq_init(&state);
+    in.tempo_raw   = TEMPO_RAW_150_BPM;
+    in.gate.length = 30U;
+    set_step(&in, 0U, 0x05U);
+    set_step(&in, 8U, 0x09U);
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x01U;
+    run_and_trace(&state, &in, 1U, &gate, &clock_out);
+    TEST_ASSERT_EQUAL(30, state.gate.pulses_left);
+    run_and_trace(&state, &in, 899U, &gate, &clock_out);
+
+    TEST_ASSERT_EQUAL(1, gate.rises);
+    TEST_ASSERT_EQUAL(200, gate.high_ticks);
+}
+
+
+
 static void test_null_pointers_are_ignored(void)
 {
     seq_state_t   state;
@@ -1862,7 +2053,7 @@ static void test_null_pointers_are_ignored(void)
     TEST_ASSERT_EQUAL(0, state.gate.pulses_left);
     TEST_ASSERT_EQUAL(0, state.cv);
     TEST_ASSERT_EQUAL(0, state.last_tempo_raw); // State untouched
-    TEST_ASSERT_EQUAL(0, state.engine.address.position);
+    TEST_ASSERT_EQUAL(0, state.plain.address.position);
     TEST_ASSERT_EQUAL(0, state.clock.phase);
     TEST_ASSERT_EQUAL(SEQ_PULSES_PER_STEP, state.step_pulses);
 }
@@ -1930,6 +2121,12 @@ int main(void)
     RUN_TEST(test_going_back_to_the_internal_clock_carries_on);
     RUN_TEST(test_reset_on_the_external_clock_plays_the_first_step_at_the_next_edge);
     RUN_TEST(test_a_start_on_the_external_clock_waits_for_an_edge);
+    RUN_TEST(test_mode_switches_choose_the_engine);
+    RUN_TEST(test_the_engine_is_chosen_from_the_last_readable_panel);
+    RUN_TEST(test_a_change_of_engine_starts_its_pattern_from_the_beginning);
+    RUN_TEST(test_reset_sends_the_chosen_engine_back);
+    RUN_TEST(test_a_tied_note_is_held_into_the_next_step);
+    RUN_TEST(test_a_tie_does_not_shorten_a_longer_gate);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();
 }

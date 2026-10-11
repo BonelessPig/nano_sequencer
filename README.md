@@ -22,6 +22,7 @@ core/                         # Pure sequencer logic; also compiles on a PC
 ├── debounce.c / debounce.h           # debounce_update(): the settled level of a button or switch
 ├── engine.h                          # The engine interface: what every engine is given and hands back
 ├── engine_plain.c / engine_plain.h   # The plain engine: each step's switches are its note value
+├── engine_stage.c / engine_stage.h   # The stage engine: eight stages with a length and a gate mode
 ├── address.c / address.h             # address_next(): direction, first and last step, one-shot, reset
 ├── note_map.c / note_map.h           # note_map_semitone(): note value to pitch through a scale and root
 ├── gate.c / gate.h                   # gate_advance(): how long a note is held, in clock pulses; ties
@@ -110,7 +111,7 @@ The wiring is drawn pin by pin, with a diagram of each chip, in [docs/SCHEMATIC.
 - EEPROM: 12 of its 1024 bytes, from address 0, hold the pitch calibration record. A chip erase by an ISP programmer wipes it unless the EESAVE fuse is set; an upload through the bootloader does not
 - SPI: master, mode 0, MSB first, 1 MHz, shared by the shift registers and the DAC
 - Pitch CV: channel A of an MCP4822 12-bit DAC (internal 2.048 V reference, gain 2: 1 mV a step, 0 to 4.095 V). `PORTB2` (D10, SS) is its chip select, `PORTB5` (D13, SCK) its clock and `PORTB3` (D11, MOSI) its data; its LDAC pin is tied to GND. 1 V to the octave from 0 V at the lowest pitch, written every millisecond, through the calibration table. No buffer or protection yet
-- Step notes: 16 steps × 4 bits, read from a chain of 8 daisy-chained 74HC165 shift registers on the SPI bus: `PORTB1` (D9) is SH/LD, `PORTB5` (D13, SCK) is CLK, and `PORTB4` (D12, MISO) takes QH of the nearest chip through 1 kΩ — each 74HC165's Clock Inhibit/CE pin must be tied to GND in hardware
+- Step notes and mode switches: 16 steps × 4 bits and 8 mode switches, read from a chain of 9 daisy-chained 74HC165 shift registers on the SPI bus (the ninth, farthest from the MCU, holds the mode switches, whose low three choose the engine): `PORTB1` (D9) is SH/LD, `PORTB5` (D13, SCK) is CLK, and `PORTB4` (D12, MISO) takes QH of the nearest chip through 1 kΩ — each 74HC165's Clock Inhibit/CE pin must be tied to GND in hardware
 - Gate output: `PORTD4` (D4), high while a note is held, which is half a step. Clock output: `PORTD5` (D5), high for the first half of every step. Both are 0 V / 5 V logic straight from the MCU, with no buffer or protection yet
 - Clock input: `PORTB0` (D8, ICP1). Reset input: `PORTD2` (D2, INT0). Each jack is meant to reach its pin through a transistor that pulls the pin low while the jack is high, so the firmware looks for a falling edge at the pin; the flag that latches it is polled once a millisecond and no interrupt is used. That input stage is not built yet
 - Sync switch: `PORTD3` (D3) to ground, on when closed. Run button: `PORTD7` (D7) to ground. All four of these inputs use the MCU's own pull-ups
@@ -178,8 +179,8 @@ There are two build configurations, chosen with `CONFIG=`. They differ only in w
 
 | | Logging | Output | Flash | Static RAM |
 |---|---|---|---:|---:|
-| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 6194 bytes | 624 bytes |
-| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 5118 bytes | 170 bytes |
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | `build/debug/output.hex` | 6692 bytes | 631 bytes |
+| `make CONFIG=release` | None; the USART is never switched on | `build/release/output.hex` | 5616 bytes | 177 bytes |
 
 `CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`). The tests, the coverage check and the static analysis always cover both loggers.
 

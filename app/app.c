@@ -153,8 +153,9 @@ static void apply_outputs(void)
 
 
 /**
- * @brief  Reads the step and tempo input ports into the snapshot. A failed
- *         read clears that input's valid flag and leaves its data as it was.
+ * @brief  Reads the step and tempo input ports into the snapshot; the
+ *         step read brings the mode switches with it. A failed read clears
+ *         that input's valid flag and leaves its data as it was.
  */
 static void scan_inputs(void)
 {

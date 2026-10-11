@@ -122,8 +122,8 @@ wires between them</title>
 
 <!-- 74HC165 chain -->
 <text class="lbl sw" x="480" y="46" text-anchor="middle">8 switches into A to H</text>
-<text class="lbl sw" x="660" y="46" text-anchor="middle">48 switches</text>
-<text class="lbl sw" x="840" y="46" text-anchor="middle">8 switches into A to H</text>
+<text class="lbl sw" x="660" y="46" text-anchor="middle">56 switches</text>
+<text class="lbl sw" x="840" y="46" text-anchor="middle">8 mode switches into A to H</text>
 <rect class="box" x="420" y="56" width="120" height="100" rx="4"/>
 <text class="title" x="480" y="76" text-anchor="middle">74HC165 chip 0</text>
 <text class="sub" x="480" y="92" text-anchor="middle">steps 0 and 1</text>
@@ -133,22 +133,22 @@ wires between them</title>
 <text class="num" x="505" y="150" text-anchor="middle">CLK</text>
 
 <rect class="box dash" x="600" y="56" width="120" height="100" rx="4"/>
-<text class="title" x="660" y="76" text-anchor="middle">Chips 1 to 6</text>
-<text class="sub" x="660" y="92" text-anchor="middle">steps 2 to 13</text>
+<text class="title" x="660" y="76" text-anchor="middle">Chips 1 to 7</text>
+<text class="sub" x="660" y="92" text-anchor="middle">steps 2 to 15</text>
 <text x="606" y="124">QH</text>
 <text x="714" y="124" text-anchor="end">SER</text>
 <text class="num" x="635" y="150" text-anchor="middle">SH/LD</text>
 <text class="num" x="685" y="150" text-anchor="middle">CLK</text>
 
 <rect class="box" x="780" y="56" width="120" height="100" rx="4"/>
-<text class="title" x="840" y="76" text-anchor="middle">74HC165 chip 7</text>
-<text class="sub" x="840" y="92" text-anchor="middle">steps 14 and 15</text>
+<text class="title" x="840" y="76" text-anchor="middle">74HC165 chip 8</text>
+<text class="sub" x="840" y="92" text-anchor="middle">mode switches 0 to 7</text>
 <text x="786" y="124">QH</text>
 <text x="894" y="124" text-anchor="end">SER</text>
 <text class="num" x="815" y="150" text-anchor="middle">SH/LD</text>
 <text class="num" x="865" y="150" text-anchor="middle">CLK</text>
 
-<!-- Chain data: chip 7 towards the MCU, through 1 k into MISO -->
+<!-- Chain data: chip 8 towards the MCU, through 1 k into MISO -->
 <path class="w spi" d="M240 120H330M370 120H420M540 120H600M720 120H780"/>
 <rect class="w spi" x="330" y="113" width="40" height="14"/>
 <text class="lbl" x="350" y="106" text-anchor="middle">1 kΩ</text>
@@ -239,11 +239,19 @@ wires between them</title>
 printed on the board, with the ATmega328P pin name beside the ones the firmware uses.</p>
 <div class="fig" id="nano"></div>
 
-<h2>74HC165 shift register (eight of them)</h2>
+<h2>74HC165 shift register (nine of them)</h2>
 <p>Chip <i>k</i> of the chain, counting from 0 at the chip nearest the Nano. It reads the four
 switches of step 2<i>k</i> on inputs H to E and those of step 2<i>k</i>+1 on D to A, the
-higher letter being the more significant bit. A switch that is on must read high.</p>
+higher letter being the more significant bit. A switch that is on must read high. That
+holds for chips 0 to 7. Chip 8, the far end of the chain, reads the eight mode switches
+instead and is drawn on its own below.</p>
 <div class="fig" id="hc165"></div>
+<p>Chip 8 reads mode switch 0 on input A up to mode switch 7 on input H, wired as the step
+switches are: on must read high. The low three, on A, B and C, choose the engine as a
+number: 0 is the plain engine and 1 the stage engine; 2 to 7 have no engine yet and play
+the plain one. Mode switches 3 to 7 do nothing yet. One read of the chain is 72 bits, nine
+bytes, and the mode switches are the last byte to arrive.</p>
+<div class="fig" id="hc165-mode"></div>
 
 <div class="tablewrap">
 <table>
@@ -263,8 +271,10 @@ higher letter being the more significant bit. A switch that is on must read high
     <td>SER of chip 4</td></tr>
 <tr><td class="n">6</td><td>step 12</td><td>step 13</td><td>QH of chip 7</td>
     <td>SER of chip 5</td></tr>
-<tr><td class="n">7</td><td>step 14</td><td>step 15</td><td>Ground</td>
+<tr><td class="n">7</td><td>step 14</td><td>step 15</td><td>QH of chip 8</td>
     <td>SER of chip 6</td></tr>
+<tr><td class="n">8</td><td>mode switches 7 to 4</td><td>mode switches 3 to 0</td>
+    <td>Ground</td><td>SER of chip 7</td></tr>
 </table>
 </div>
 <p>Input A of chip 7 is the lowest switch of step 15, which is the store switch in calibration
@@ -389,7 +399,8 @@ ATmega328P pin</title>
         datasheet (DS20002249B, the PDIP, SOIC and MSOP packages) and Arduino's Nano pinout
         sheet. A part from another maker, or in another package, is worth a look at its
         own.</li>
-    <li>How the panel switches are wired is not recorded anywhere in the repo. The firmware
+    <li>How the panel switches are wired is not recorded anywhere in the repo, the mode
+        switches included. The firmware
         only needs an input to be high when its switch is on, and a 74HC165 input must never
         float: a switch to 5 V with a pull-down resistor on each input does both.</li>
     <li>The tempo pot's value is not recorded either. Its ends go to 5 V and ground because
@@ -458,7 +469,7 @@ drawChip("nano", {
     title: "Arduino Nano (ATmega328P)", usb: true,
     label: "Arduino Nano outline with what each header pin goes to",
     left: [
-        ["", "D13 · PB5", "SCK: CLK of all eight 74HC165s, DAC SCK", "spi"],
+        ["", "D13 · PB5", "SCK: CLK of all nine 74HC165s, DAC SCK", "spi"],
         ["", "3V3", "not connected", "nc"],
         ["", "REF", "not connected", "nc"],
         ["", "A0 · PC0", "unused (set as an input)", "nc"],
@@ -478,7 +489,7 @@ drawChip("nano", {
         ["", "D12 · PB4", "MISO: QH of chip 0, through 1 kΩ", "spi"],
         ["", "D11 · PB3", "MOSI: DAC SDI", "spi"],
         ["", "D10 · PB2", "SS: DAC chip select", "spi"],
-        ["", "D9 · PB1", "SH/LD of all eight 74HC165s", "spi"],
+        ["", "D9 · PB1", "SH/LD of all nine 74HC165s", "spi"],
         ["", "D8 · PB0", "ICP1: clock input, from its input stage", "in"],
         ["", "D7 · PD7", "run button, to ground", "sw"],
         ["", "D6 · PD6", "free", "nc"],
@@ -494,11 +505,11 @@ drawChip("nano", {
 });
 
 drawChip("hc165", {
-    title: "74HC165, DIP-16, chip k of the chain",
-    label: "74HC165 pinout with what each pin goes to",
+    title: "74HC165, DIP-16, chip k of the chain (0 to 7)",
+    label: "74HC165 pinout with what each pin of a step chip goes to",
     left: [
-        [1, "SH/LD", "D9 (PB1), shared by all eight", "spi"],
-        [2, "CLK", "D13 (PB5, SCK), shared by all eight", "spi"],
+        [1, "SH/LD", "D9 (PB1), shared by all nine", "spi"],
+        [2, "CLK", "D13 (PB5, SCK), shared by all nine", "spi"],
         [3, "E", "step 2k switch, bit 0 (lowest)", "sw"],
         [4, "F", "step 2k switch, bit 1", "sw"],
         [5, "G", "step 2k switch, bit 2", "sw"],
@@ -513,8 +524,33 @@ drawChip("hc165", {
         [13, "C", "step 2k+1 switch, bit 2", "sw"],
         [12, "B", "step 2k+1 switch, bit 1", "sw"],
         [11, "A", "step 2k+1 switch, bit 0 (lowest)", "sw"],
-        [10, "SER", "QH of chip k+1; ground on chip 7", "spi"],
+        [10, "SER", "QH of chip k+1", "spi"],
         [9, "QH", "SER of chip k−1; chip 0: 1 kΩ to D12", "spi"],
+    ],
+});
+
+drawChip("hc165-mode", {
+    title: "74HC165, DIP-16, chip 8: the mode switches",
+    label: "74HC165 pinout with what each pin of the mode switch chip goes to",
+    left: [
+        [1, "SH/LD", "D9 (PB1), shared by all nine", "spi"],
+        [2, "CLK", "D13 (PB5, SCK), shared by all nine", "spi"],
+        [3, "E", "mode switch 4", "sw"],
+        [4, "F", "mode switch 5", "sw"],
+        [5, "G", "mode switch 6", "sw"],
+        [6, "H", "mode switch 7 (highest)", "sw"],
+        [7, "Q̅H", "not connected", "nc"],
+        [8, "GND", "ground", "gnd"],
+    ],
+    right: [
+        [16, "VCC", "5 V", "pwr"],
+        [15, "CLK INH", "ground", "gnd"],
+        [14, "D", "mode switch 3", "sw"],
+        [13, "C", "mode switch 2: engine, bit 2", "sw"],
+        [12, "B", "mode switch 1: engine, bit 1", "sw"],
+        [11, "A", "mode switch 0 (lowest): engine, bit 0", "sw"],
+        [10, "SER", "ground: the end of the chain", "gnd"],
+        [9, "QH", "SER of chip 7", "spi"],
     ],
 });
 

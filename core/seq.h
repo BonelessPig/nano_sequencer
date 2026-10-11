@@ -15,6 +15,7 @@
 #include "address.h"
 #include "clock.h"
 #include "engine_plain.h"
+#include "engine_stage.h"
 #include "gate.h"
 #include "note_map.h"
 #include "panel.h"
@@ -43,7 +44,10 @@ typedef struct
     uint16_t             last_tempo_raw; // Most recent valid tempo reading, 0 to 1023
     uint16_t             step_pulses;    // Pulses since the last step was due; the
                                          // next is due at SEQ_PULSES_PER_STEP
-    engine_plain_state_t engine;         // Where the engine has got to in the pattern
+    uint8_t              engine;         // Which engine played the last step: the
+                                         // mode switches' choice, as seq_tick() says
+    engine_plain_state_t plain;          // Where the plain engine has got to
+    engine_stage_state_t stage;          // Where the stage engine has got to
     gate_state_t         gate;           // How much of the current note's gate is left
     uint16_t             cv;             // Pitch CV value of the last note played
     transport_state_t    transport;      // Whether the pattern runs, and from which clock
@@ -54,7 +58,7 @@ typedef struct
  */
 typedef struct
 {
-    // The panel's step bits, packed as panel.h describes
+    // The panel's step bits and mode switches, packed as panel.h describes
     uint8_t           raw_steps[PANEL_RAW_BYTE_COUNT];
     bool              b_steps_valid; // false if raw_steps could not be read
     uint16_t          tempo_raw;     // Tempo control position, 0 to 1023 (10-bit)
@@ -147,10 +151,15 @@ void seq_init(seq_state_t *p_state);
  *         progress is finished quickly and the next waits for an edge; going
  *         back, the internal clock carries on from there.
  *
- *         Which step begins is up to the engine (the plain engine, see
- *         engine_plain.h) and the addressing controls in p_in->address (see
- *         address.h). When a one-shot pattern has finished, the clock keeps
- *         running and steps keep falling due, but none begins.
+ *         Which step begins is up to the engine and the addressing
+ *         controls in p_in->address (see address.h). The low three mode
+ *         switches (see panel.h) choose the engine, as a number: 1 is the
+ *         stage engine (engine_stage.h), and 0 and every other value the
+ *         plain engine (engine_plain.h). The choice is read when a step
+ *         begins, from the panel as last read, and a change of engine
+ *         starts the new one's pattern from its beginning. When a one-shot
+ *         pattern has finished, the clock keeps running and steps keep
+ *         falling due, but none begins.
  *
  *         While p_in->b_reset is true the pattern is held at its start: the
  *         next step to begin is the first of the cycle, at the time it
@@ -171,6 +180,9 @@ void seq_init(seq_state_t *p_state);
  *         step whose note is not valid, and a step that is due but does not
  *         begin all leave the gate closed, and each ends a gate still open
  *         from the step before. A reset does not cut a held note short.
+ *         A note the engine ties to the next step is held for a whole step
+ *         at least, whatever the gate length, so its gate is still open
+ *         when that step begins.
  *
  *         A step that plays a pitch also sets the pitch CV value, through
  *         the calibration table in p_in->pitch_cal (see pitch_cal.h), on

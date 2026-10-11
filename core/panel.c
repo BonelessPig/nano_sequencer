@@ -31,3 +31,17 @@ uint8_t panel_step_value(const uint8_t *p_raw_steps, uint8_t step)
 
     return value;
 }
+
+
+
+uint8_t panel_mode_value(const uint8_t *p_raw_steps)
+{
+    uint8_t value = 0U;
+
+    if (NULL != p_raw_steps)
+    {
+        value = p_raw_steps[PANEL_STEP_BYTE_COUNT];
+    }
+
+    return value;
+}

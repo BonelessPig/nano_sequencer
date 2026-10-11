@@ -6,7 +6,7 @@ const { test } = require('node:test');
 const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 
 const PANEL = [1, 4, 7, 10, 13, 0, 3, 6, 9, 12, 15, 2, 5, 8, 11, 14];
-const CLOCKS_PER_READ = 64;    // 16 steps of 4 bits
+const CLOCKS_PER_READ = 72;    // 16 steps of 4 bits and 8 mode switches
 const CLOCKS_PER_CV_WRITE = 16; // One DAC frame, sent on every tick
 const SCAN_PERIOD_TICKS = 8;
 const SCAN_PERIOD_MS = 8;      // The panel and pot are read every 8 ticks
@@ -67,13 +67,13 @@ test('sends at 115200 baud in double-speed mode', () => {
     assert.equal(Math.round(board.machine.usart.baudRate), 117647);
 });
 
-test('reads the panel every 8 ms, with 64 clock pulses', () => {
+test('reads the panel every 8 ms, with 72 clock pulses', () => {
     const board = debugBoard(FASTEST_READING);
     const readCount = 200;
 
     board.runUntilPanelReads(readCount + 1, RUN_LIMIT_MS);
 
-    // 64 for the read itself; the chain is also clocked by the eight DAC
+    // 72 for the read itself; the chain is also clocked by the eight DAC
     // frames sent before the next load, having no chip select of its own
     for (const read of board.panelReads.slice(0, readCount)) {
         assert.equal(read.clocks,

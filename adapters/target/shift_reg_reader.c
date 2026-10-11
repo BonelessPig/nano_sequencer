@@ -1,7 +1,8 @@
 /**
  * @file   shift_reg_reader.c
  * @brief  Target implementation of the step input port: reads the 74HC165
- *         shift register chain that holds the step notes, over the SPI bus.
+ *         shift register chain that holds the step notes and the mode
+ *         switches, over the SPI bus.
  * @author BonelessPig
  *
  * The chain's clock is the bus clock (PB5, SCK) and its output, QH of the
@@ -20,7 +21,9 @@
 #include "port_status.h"
 #include "spi.h"
 
-#define SHIFT_REG_CHAIN_BYTES (8U) // Max daisy-chained 74HC165s supported (8 x 8 bits = 64 bits)
+// Daisy-chained 74HC165s: eight for the steps and, farthest from the MCU,
+// one for the mode switches (9 x 8 bits = 72 bits)
+#define SHIFT_REG_CHAIN_BYTES (9U)
 
 #define SHIFT_LOAD_BIT BIT_1 // PB1: SH/LD (active-low load pulse)
 

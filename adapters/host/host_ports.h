@@ -15,7 +15,7 @@
 #include "log_port.h"
 #include "port_status.h"
 
-#define HOST_RAW_STEP_BYTES (8U)  // Size of the scripted step-input buffer
+#define HOST_RAW_STEP_BYTES (9U)  // Size of the scripted step-input buffer
 #define HOST_MAX_EVENTS     (64U) // Output-port calls recorded before further ones are dropped
 #define HOST_NV_BYTES       (32U) // Size of the faked non-volatile storage
 #define HOST_NV_ERASED      (0xFFU) // What a byte of it holds until it is written

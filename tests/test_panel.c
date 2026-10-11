@@ -14,12 +14,14 @@
 
 static void test_layout_constants(void)
 {
-    // 16 steps of 4 bits fill exactly 8 bytes, with no partial byte
+    // 16 steps of 4 bits fill exactly 8 bytes, with no partial byte, and
+    // the mode switches are a ninth
     TEST_ASSERT_EQUAL(16, PANEL_STEP_COUNT);
-    TEST_ASSERT_EQUAL(8, PANEL_RAW_BYTE_COUNT);
+    TEST_ASSERT_EQUAL(8, PANEL_STEP_BYTE_COUNT);
+    TEST_ASSERT_EQUAL(9, PANEL_RAW_BYTE_COUNT);
     TEST_ASSERT_EQUAL(0, PANEL_BITS_PER_BYTE % PANEL_VALUE_BITS);
     TEST_ASSERT_EQUAL(PANEL_STEP_COUNT * PANEL_VALUE_BITS,
-                      PANEL_RAW_BYTE_COUNT * PANEL_BITS_PER_BYTE);
+                      PANEL_STEP_BYTE_COUNT * PANEL_BITS_PER_BYTE);
     TEST_ASSERT_EQUAL(15, PANEL_VALUE_MAX);
 }
 
@@ -80,9 +82,30 @@ static void test_step_beyond_the_last_wraps_round(void)
 
 
 
+static void test_mode_switches_are_the_ninth_byte(void)
+{
+    uint8_t raw[PANEL_RAW_BYTE_COUNT];
+
+    (void)memset(raw, 0xFF, sizeof(raw));
+    raw[8] = 0x00U;
+    TEST_ASSERT_EQUAL(0x00, panel_mode_value(raw));
+    TEST_ASSERT_EQUAL(0xF, panel_step_value(raw, 15U)); // The steps are not it
+
+    (void)memset(raw, 0, sizeof(raw));
+    raw[8] = 0xA6U;
+    TEST_ASSERT_EQUAL(0xA6, panel_mode_value(raw));
+    for (uint8_t step = 0U; step < PANEL_STEP_COUNT; step++)
+    {
+        TEST_ASSERT_EQUAL(0, panel_step_value(raw, step));
+    }
+}
+
+
+
 static void test_null_raw_bytes_give_zero(void)
 {
     TEST_ASSERT_EQUAL(0, panel_step_value(NULL, 0U));
+    TEST_ASSERT_EQUAL(0, panel_mode_value(NULL));
 }
 
 
@@ -93,6 +116,7 @@ int main(void)
     RUN_TEST(test_values_decode_high_nibble_first);
     RUN_TEST(test_each_step_is_independent);
     RUN_TEST(test_step_beyond_the_last_wraps_round);
+    RUN_TEST(test_mode_switches_are_the_ninth_byte);
     RUN_TEST(test_null_raw_bytes_give_zero);
     return TEST_RESULT();
 }

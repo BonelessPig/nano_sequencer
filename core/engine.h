@@ -24,12 +24,14 @@
  *       finished, or a pointer is null).
  *
  * The sequencer owns the clock and decides when a step is due; the engine
- * decides which step it is and what its note value is. The note value still
- * has to go through the note mapping to become a pitch.
+ * decides which step it is, what its note value is, and whether its note is
+ * held into the step after it. The note value still has to go through the
+ * note mapping to become a pitch.
  *
  * @copyright Copyright (c) 2026
  *
  */
+#include <stdbool.h>
 #include <stdint.h>
 #include "address.h"
 
@@ -38,7 +40,7 @@
  */
 typedef struct
 {
-    const uint8_t          *p_raw_steps; // Panel bits, PANEL_RAW_BYTE_COUNT bytes
+    const uint8_t          *p_raw_steps; // Panel bytes, PANEL_RAW_BYTE_COUNT of them
                                          // (see panel.h); the latest readable
                                          // ones if the panel could not be read
     const address_config_t *p_address;   // The addressing controls
@@ -51,6 +53,9 @@ typedef struct
 {
     uint8_t step; // Panel step being played, 0 to PANEL_STEP_COUNT - 1
     uint8_t note; // Its note value: 0 is a rest, 1 to 15 are notes of the scale
+    bool    b_tie; // true if the note is held into the step after it: its
+                   // gate stays open until that step begins. Means nothing
+                   // for a rest
 } engine_step_t;
 
 #endif /* ENGINE_H */

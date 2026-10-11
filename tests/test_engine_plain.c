@@ -69,6 +69,7 @@ static void test_steps_play_in_order_with_their_panel_values(void)
         TEST_ASSERT(engine_plain_step(&state, &in, &played));
         TEST_ASSERT_EQUAL(expected_step, played.step);
         TEST_ASSERT_EQUAL(15U - expected_step, played.note);
+        TEST_ASSERT(!played.b_tie); // The plain engine ties nothing
     }
 }
 

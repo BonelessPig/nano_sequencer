@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 
-const CLOCKS_PER_READ = 64;     // 16 steps of 4 bits
+const CLOCKS_PER_READ = 72;     // 16 steps of 4 bits, 8 mode switches
 const CLOCKS_PER_CV_WRITE = 16; // One DAC frame, sent on every tick
 const SCAN_PERIOD_TICKS = 8;
 const SCAN_PERIOD_MS = 8;       // The panel and pot are read every 8 ticks
@@ -247,22 +247,23 @@ test('the pitch CV changes only when a note begins, and holds through a rest', (
     assert.equal(Math.max(...board.cvWrites.map((write) => write.millivolts)), 1167);
 });
 
-test('reads the chain in eight transfers of zeros', () => {
+test('reads the chain in nine transfers of zeros', () => {
     const board = releaseBoard();
 
     board.runUntilPanelReads(3, RUN_LIMIT_MS);
 
-    // Two complete reads: eight bytes each, all zeros sent
-    assert.deepEqual(board.spiSent.slice(0, 16), new Array(16).fill(0));
+    // Two complete reads and no more: nine bytes each, all zeros sent
+    assert.equal(board.spiSent.length, 18);
+    assert.deepEqual(board.spiSent, new Array(18).fill(0));
 });
 
-test('reads the panel every 8 ms, with 64 clock pulses', () => {
+test('reads the panel every 8 ms, with 72 clock pulses', () => {
     const board = releaseBoard();
     const readCount = 200;
 
     board.runUntilPanelReads(readCount + 1, RUN_LIMIT_MS);
 
-    // The chain has no chip select, so after the 64 clocks of its own read
+    // The chain has no chip select, so after the 72 clocks of its own read
     // it is also clocked by the eight DAC frames sent before the next load
     for (const read of board.panelReads.slice(0, readCount)) {
         assert.equal(read.clocks,

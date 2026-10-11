@@ -5,7 +5,7 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 ## Layout
 
 - `lib/`: the chip, `pin_recorder.js` for watching an output pin, and `edge_flag.js` for a flag that latches an edge on an input pin. `parts/`: models of external chips and of things plugged in or pressed (`clock_source.js`, `switch.js`). Neither may know anything about the sequencer, so they can be lifted out for another project.
-- `boards/nano_sequencer.js`: which part is on which pin, plus the panel, pot, the DAC's frames, the gate and clock recorders, the two input jacks, the sync switch and the run button, serial capture, and the EEPROM's contents and the reset flags at power-on (`createBoard(config, { eeprom, resetFlags })`). `boards/cal_record.js` works the calibration record out on its own, so a scenario does not check the firmware against itself.
+- `boards/nano_sequencer.js`: which part is on which pin, plus the panel, the mode switches (`setModeSwitches()`), pot, the DAC's frames, the gate and clock recorders, the two input jacks, the sync switch and the run button, serial capture, and the EEPROM's contents and the reset flags at power-on (`createBoard(config, { eeprom, resetFlags })`). `boards/cal_record.js` works the calibration record out on its own, so a scenario does not check the firmware against itself.
 - `scenarios/*.test.js`: what each firmware image must do, using Node's built-in test runner. No other dependencies; avr8js is pinned in `package-lock.json`.
 
 - `live/server.js` and `live/page.html`: `make live`, the board run at real speed and shown in a browser. A viewer, not a check.
@@ -40,6 +40,8 @@ The emulated board behind `make sim`: each `build/<config>/output.hex` runs unmo
 - The board sorts the log: `serial.lines` holds the step lines, which scenarios count and time, and `serial.notices` every other line (start-up, calibration, errors). A new kind of line goes to the notices unless it begins `Step `.
 - A power cycle is a second board created with the first one's `eepromBytes()`. A scenario with no log (the release image, or calibration mode in either) runs for a time with `runForMs()`, not until a line.
 - A calibration scenario that should hold for both images goes in `calibration.test.js`, inside the loop over the two.
+- A scenario about the mode switches or an engine goes in `engines.test.js`, inside the loop over the two. An engine's gates are checked against the clock output, which pulses on every step whatever the engine does: say which step each gate should rise on and how long it should be, and read its note from the DAC.
+- The chain is nine chips, so a panel read is 72 clocks and nine transfers. The mode switches are off on a new board, which is the plain engine, so a scenario that does not set them plays sixteen steps.
 - A peripheral the firmware starts using (a timer, SPI, the EEPROM) has to be instantiated in `lib/machine.js` first; avr8js does nothing for registers nobody models.
 - When a pin or part changes in `adapters/target/`, change the board and its scenarios in the same piece of work.
 

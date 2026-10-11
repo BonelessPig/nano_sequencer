@@ -37,7 +37,7 @@ void engine_plain_init(engine_plain_state_t *p_state);
  *
  *         The step is the next one in the addressing order (see address.h),
  *         and its note value is that step's four panel switches as a number,
- *         read as they are now.
+ *         read as they are now. No step is tied to the next.
  * @param  p_state  State from engine_plain_init() or the previous call; updated.
  * @param  p_in     The panel bits and the addressing controls.
  * @param  p_step   Receives the step. Written only when the return value is
