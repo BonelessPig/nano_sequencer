@@ -96,8 +96,8 @@ USB.</p>
 
 <div class="fig">
 <svg viewBox="0 0 960 990" role="img" aria-labelledby="sys-t">
-<title id="sys-t">The Nano, the 74HC165 chain, the MCP4822 DAC, the tempo pot, the two
-logic outputs, the clock and reset inputs, the sync switch, the run button and the two
+<title id="sys-t">The Nano, the 74HC165 chain, the MCP4822 DAC, the pot, the two
+logic outputs, the clock and reset inputs, the run button and the two
 74HC595s that drive the sixteen step lights, with the wires between them</title>
 
 <!-- Arduino Nano -->
@@ -214,21 +214,17 @@ logic outputs, the clock and reset inputs, the sync switch, the run button and t
 <text class="lbl" x="312" y="593">low while jack high</text>
 <text class="lbl" x="312" y="643">low while jack high</text>
 <text x="674" y="598">Clock in: steps follow its rising edges</text>
-<text class="sub" x="674" y="613">Only with the sync switch on</text>
+<text class="sub" x="674" y="613">Its first edge takes the clock over</text>
 <text x="674" y="648">Reset in: a rising edge, back to step 0</text>
 <text class="sub" x="674" y="663">Both stages suggested only, not built</text>
 
-<!-- Sync switch and run button, each from its pin to ground -->
-<path class="w sw" d="M240 700H420M240 750H420"/>
-<rect class="box" x="420" y="682" width="120" height="36" rx="4"/>
+<!-- The run button, from its pin to ground. D3, where the sync switch was, is free -->
+<path class="w sw" d="M240 750H420"/>
 <rect class="box" x="420" y="732" width="120" height="36" rx="4"/>
-<text class="title" x="480" y="704" text-anchor="middle">Sync switch</text>
 <text class="title" x="480" y="754" text-anchor="middle">Run button</text>
-<text class="lbl" x="312" y="693">low while on</text>
 <text class="lbl" x="312" y="743">low while pressed</text>
-<path class="w gnd" d="M540 700H570V716M560 716H580M564 721H576M568 726H572"/>
 <path class="w gnd" d="M540 750H570V766M560 766H580M564 771H576M568 776H572"/>
-<text x="594" y="704">A toggle. On: follow the clock input</text>
+<text class="sub" x="252" y="704">Free: nothing is wired here</text>
 <text x="594" y="754">A push button. Each press stops or starts the pattern</text>
 <text class="sub" x="594" y="769">Both to ground: the chip's pull-ups hold the pins high</text>
 
@@ -270,24 +266,32 @@ logic outputs, the clock and reset inputs, the sync switch, the run button and t
 </svg>
 </div>
 
+<p><b>Not drawn above yet:</b> the tenth 74HC165 with the selector, the level light on D6
+and the modulation input on A7. Their pins are in the tables below, under "Selector, level
+light and modulation input".</p>
+
 <h2>Arduino Nano</h2>
 <p>Seen from above with the USB socket at the top. Labels inside the outline are the ones
 printed on the board, with the ATmega328P pin name beside the ones the firmware uses.</p>
 <div class="fig" id="nano"></div>
 
-<h2>74HC165 shift register (nine of them)</h2>
+<h2>74HC165 shift register (ten of them)</h2>
 <p>Chip <i>k</i> of the chain, counting from 0 at the chip nearest the Nano. It reads the four
 switches of step 2<i>k</i> on inputs H to E and those of step 2<i>k</i>+1 on D to A, the
 higher letter being the more significant bit. A switch that is on must read high. That
-holds for chips 0 to 7. Chip 8, the far end of the chain, reads the eight mode switches
-instead and is drawn on its own below.</p>
+holds for chips 0 to 7. Chip 8 reads the eight mode switches instead and is drawn on its
+own below, and chip 9, the far end of the chain, reads the selector.</p>
 <div class="fig" id="hc165"></div>
 <p>Chip 8 reads mode switch 0 on input A up to mode switch 7 on input H, wired as the step
 switches are: on must read high. The low three, on A, B and C, choose the engine as a
 number: 0 is the plain engine, 1 the stage engine, 2 Klee, 3 chance, 4 Cartesian and 5
 Euclidean; 6 and 7 have no engine yet and play the plain one. Mode switches 3 to 7 belong
-to the engine chosen, each engine giving them its own meaning. One read of the chain is
-72 bits, nine bytes, and the mode switches are the last byte to arrive.</p>
+to the engine chosen, each engine giving them its own meaning.</p>
+<p>Chip 9 is wired as chip 8 is, with its serial output to chip 8's serial input and its own
+serial input to ground. Its inputs A, B and C take the three lines of the selector, a coded
+rotary switch of eight positions, A being the least significant bit, and a line must read
+high for a 1. Inputs D to H have nothing on them and go to ground. One read of the chain is
+80 bits, ten bytes, and the selector's is the last byte to arrive.</p>
 <div class="fig" id="hc165-mode"></div>
 
 <div class="tablewrap">
@@ -327,7 +331,7 @@ always drive and nothing clears the chain.</p>
 <p>The latch clock, RCLK of both chips, is D9 (PB1): <b>the same pin as the 74HC165 load
 line</b>. Before each read of the panel the firmware sends two bytes, steps 15 to 8 and
 then steps 7 to 0, and the rising edge that ends the load pulse puts them on the outputs.
-The chain has no chip select, so the nine bytes of the panel read and the DAC's frames
+The chain has no chip select, so the ten bytes of the panel read and the DAC's frames
 pass through its shift registers too, but none of that shows: the outputs change only at
 that edge, once every 8 ms.</p>
 <p>The firmware lights the LED of the step that last began, for the first half of the
@@ -364,9 +368,44 @@ of an LED, whose cathode goes to ground</title>
 With LDAC tied to ground the output changes as chip select rises.</p>
 <div class="fig" id="mcp4822"></div>
 
-<h2>Clock and reset inputs, sync switch and run button</h2>
-<p>Four inputs, each with the chip's internal pull-up switched on, so each pin rests high and
-something outside pulls it low. The firmware looks at all four once a millisecond.</p>
+<h2>Selector, level light and modulation input</h2>
+<p>One pot sets eight amounts, and the selector says which. None of these three is wired on
+the board yet, and the modulation input's stage is not designed.</p>
+
+<div class="tablewrap">
+<table>
+<tr><th>Nano pin</th><th>Chip pin</th><th>What</th><th>Wired</th></tr>
+<tr><td>None</td><td>None</td><td>Selector, a binary coded rotary switch of eight positions</td>
+    <td>Its three lines to inputs A, B and C of chip 9 of the 74HC165 chain, each reading
+        high for a 1</td></tr>
+<tr><td>A6</td><td>ADC6</td><td>The pot</td>
+    <td>As before: its ends to 5 V and ground, its wiper to the pin</td></tr>
+<tr><td>D6</td><td>PD6 (OC0A)</td><td>Level light, an LED</td>
+    <td>From the pin through a resistor to the LED and ground. Value to be chosen for the
+        LED, at a few milliamps</td></tr>
+<tr><td>A7</td><td>ADC7</td><td>Modulation input jack (an LFO)</td>
+    <td>Through an input stage that is not designed. It has to put the LFO's centre, and an
+        empty jack, at half of 5 V</td></tr>
+</table>
+</div>
+
+<ul>
+    <li><b>Selector.</b> Position 0 is the tempo. Positions 1, 2 and 3 are how much of the
+        LFO moves the note, the gate length and the chance of a step dropping out.
+        Positions 4 to 7 hold an amount and do nothing with it yet. With chip 9 not wired
+        the firmware reads position 0, so the pot is the tempo.</li>
+    <li><b>The pot.</b> After the selector moves, the pot changes nothing until it has been
+        turned to meet the amount that position holds.</li>
+    <li><b>Level light.</b> As bright as the amount the selector is on, by pulse width, 977
+        times a second. Dark at 0.</li>
+    <li><b>Modulation input.</b> Read every 8 ms and used as each step begins. At half of
+        5 V it moves nothing.</li>
+</ul>
+
+<h2>Clock and reset inputs and run button</h2>
+<p>Three inputs, each with the chip's internal pull-up switched on, so each pin rests high and
+something outside pulls it low. The firmware looks at all three once a millisecond. D3,
+where the sync switch used to be, is free; its pull-up is still on.</p>
 
 <div class="tablewrap">
 <table>
@@ -375,29 +414,27 @@ something outside pulls it low. The firmware looks at all four once a millisecon
     <td>Through an inverting input stage</td><td>While the jack is high</td></tr>
 <tr><td>D2</td><td>PD2 (INT0)</td><td>Reset input jack</td>
     <td>Through an inverting input stage</td><td>While the jack is high</td></tr>
-<tr><td>D3</td><td>PD3</td><td>Sync switch, a toggle</td>
-    <td>Between the pin and ground</td><td>While the switch is on</td></tr>
 <tr><td>D7</td><td>PD7</td><td>Run button, a push button</td>
     <td>Between the pin and ground</td><td>While it is pressed</td></tr>
 </table>
 </div>
 
 <ul>
-    <li><b>Clock input.</b> Used only while the sync switch is on. A rising edge at the jack
+    <li><b>Clock input.</b> The first edge takes the pattern over from the internal clock,
+        and it stays on this clock until it is stopped. A rising edge at the jack
         is a falling edge at the pin, which Timer/Counter1's input capture flag latches
         however short the pulse; the firmware reads and clears the flag on its next tick.
-        No interrupt is used. With the tempo pot in the middle a step begins on every edge;
+        No interrupt is used. With the tempo amount in the middle a step begins on every edge;
         turned down it takes every second, third or fourth edge, and turned up it fits two,
         three or four steps to an edge.</li>
     <li><b>Reset input.</b> A rising edge at the jack sends the pattern back to its first
         step, which plays when the next step is due. The falling edge at the pin is latched
         in the INT0 flag and read the same way, with the interrupt left off. Ignored while
         the pattern is stopped.</li>
-    <li><b>Sync switch.</b> Off, the pattern runs from the internal clock at the tempo the
-        pot sets and the clock input is ignored. On, steps follow the clock input, and with
-        no clock nothing plays.</li>
     <li><b>Run button.</b> Each press stops the pattern or starts it again from its first
-        step. The board powers on running.</li>
+        step. The board powers on running, on the internal clock. A stop forgets the
+        external clock: the start after it is on the internal one, unless an edge came
+        while the pattern was stopped, in which case the start waits for the next.</li>
 </ul>
 <p>The switch and the button need no resistor and no capacitor: the pull-ups are inside the
 chip, and the firmware waits for a contact to hold still for 20 ms before it believes it.</p>
@@ -504,7 +541,7 @@ ATmega328P pin</title>
     <li>That the two edge flags latch with their interrupts off is taken from the
         ATmega328P datasheet and from the emulated board, whose model of it is this
         project's own. It has not been seen on a real chip yet.</li>
-    <li>The sync switch and the run button go from their pins to ground with nothing else:
+    <li>The run button goes from its pin to ground with nothing else:
         no resistor, and no connection to 5 V.</li>
     <li>Do not patch the gate, clock or pitch CV into other equipment until their buffer
         stages are built: nothing protects those pins
@@ -566,8 +603,8 @@ drawChip("nano", {
         ["", "A3", "free", "nc"],
         ["", "A4", "free", "nc"],
         ["", "A5", "free", "nc"],
-        ["", "A6 · ADC6", "tempo pot wiper", "ana"],
-        ["", "A7", "free", "nc"],
+        ["", "A6 · ADC6", "pot wiper", "ana"],
+        ["", "A7 · ADC7", "modulation input, from its stage", "ana"],
         ["", "5V", "5 V to every chip and the pot", "pwr"],
         ["", "RST", "not connected", "nc"],
         ["", "GND", "common ground", "gnd"],
@@ -580,10 +617,10 @@ drawChip("nano", {
         ["", "D9 · PB1", "74HC165 SH/LD and 74HC595 RCLK", "spi"],
         ["", "D8 · PB0", "ICP1: clock input, from its input stage", "in"],
         ["", "D7 · PD7", "run button, to ground", "sw"],
-        ["", "D6 · PD6", "free", "nc"],
+        ["", "D6 · PD6", "OC0A: level light, through a resistor", "out"],
         ["", "D5 · PD5", "clock output", "out"],
         ["", "D4 · PD4", "gate output", "out"],
-        ["", "D3 · PD3", "sync switch, to ground", "sw"],
+        ["", "D3 · PD3", "free", "nc"],
         ["", "D2 · PD2", "INT0: reset input, from its input stage", "in"],
         ["", "GND", "common ground", "gnd"],
         ["", "RST", "not connected", "nc"],
@@ -596,8 +633,8 @@ drawChip("hc165", {
     title: "74HC165, DIP-16, chip k of the chain (0 to 7)",
     label: "74HC165 pinout with what each pin of a step chip goes to",
     left: [
-        [1, "SH/LD", "D9 (PB1), shared by all nine", "spi"],
-        [2, "CLK", "D13 (PB5, SCK), shared by all nine", "spi"],
+        [1, "SH/LD", "D9 (PB1), shared by all ten", "spi"],
+        [2, "CLK", "D13 (PB5, SCK), shared by all ten", "spi"],
         [3, "E", "step 2k switch, bit 0 (lowest)", "sw"],
         [4, "F", "step 2k switch, bit 1", "sw"],
         [5, "G", "step 2k switch, bit 2", "sw"],
@@ -621,8 +658,8 @@ drawChip("hc165-mode", {
     title: "74HC165, DIP-16, chip 8: the mode switches",
     label: "74HC165 pinout with what each pin of the mode switch chip goes to",
     left: [
-        [1, "SH/LD", "D9 (PB1), shared by all nine", "spi"],
-        [2, "CLK", "D13 (PB5, SCK), shared by all nine", "spi"],
+        [1, "SH/LD", "D9 (PB1), shared by all ten", "spi"],
+        [2, "CLK", "D13 (PB5, SCK), shared by all ten", "spi"],
         [3, "E", "mode switch 4", "sw"],
         [4, "F", "mode switch 5", "sw"],
         [5, "G", "mode switch 6", "sw"],

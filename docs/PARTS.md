@@ -8,7 +8,7 @@ Where the documents do not fix a value, this says so. Those are typical choices,
 
 They do opposite jobs, so one part cannot stand in for the other:
 
-- **74HC165** is parallel-in, serial-out. It reads the 72 panel switches and shifts them to the MCU on one wire.
+- **74HC165** is parallel-in, serial-out. It reads the 72 panel switches and the selector and shifts them to the MCU on one wire.
 - **74HC595** is serial-in, parallel-out. It takes two bytes from the MCU and holds 16 outputs steady to drive the step lights.
 
 Neither chip works in the other direction. They share the SPI clock, and one pin (D9) serves as both the 165s' load line and the 595s' latch, so the pair costs no extra MCU pins.
@@ -26,13 +26,14 @@ Neither chip works in the other direction. They share the SPI clock, and one pin
 
 | Qty | Part | For |
 |---|---|---|
-| 9 | 74HC165 | 8 for the steps, 1 for the mode switches |
+| 10 | 74HC165 | 8 for the steps, 1 for the mode switches, 1 for the selector |
 | 72 | Toggle switches (SPST is enough) | 64 step switches, 8 mode switches |
-| 72 | Pull-down resistors, about 10 kΩ (or 9 eight-way resistor networks) | One per switch input. Value not fixed |
+| 75 | Pull-down resistors, about 10 kΩ (or 10 eight-way resistor networks) | One per switch input, and one for each of the selector's three lines. The tenth chip's five spare inputs go to ground. Value not fixed |
 | 1 | 1 kΩ resistor | Between the chain's output and D12, so a programmer can still override the line |
-| 1 | Potentiometer, linear, about 10 kΩ | Tempo. Value not fixed |
+| 1 | Potentiometer, linear, about 10 kΩ | Sets whichever amount the selector is on: the tempo at position 0. Value not fixed |
+| 1 | Rotary switch, 8 positions, binary coded (real code, with a common that goes to 5 V) | The selector: which amount the pot sets |
+| 1 | LED and resistor | The level light on D6: as bright as the amount the selector is on |
 | 1 | Momentary push button | Run and stop |
-| 1 | Toggle switch | Sync: the internal clock or the external one |
 
 ### Step lights
 
@@ -53,7 +54,8 @@ Neither chip works in the other direction. They share the SPI clock, and one pin
 
 | Qty | Part | For |
 |---|---|---|
-| 5 | Jack sockets (3.5 mm for Eurorack) | Clock in, reset in, gate out, clock out, CV out |
+| 6 | Jack sockets (3.5 mm for Eurorack) | Clock in, reset in, modulation in, gate out, clock out, CV out |
+| 1 | Op-amp stage, or a resistor network with clamp diodes | The modulation input: an LFO scaled and shifted so that its centre sits at half of 5 V. Not designed |
 | 2 | NPN small-signal transistors (a 2N3904, say) | One inverting input stage per input jack |
 | 2 | 1N4148 diodes | Ground to base, protecting each transistor from negative voltages |
 | 2 | Base resistors | Jack to base. Value not chosen |
@@ -64,8 +66,8 @@ Neither chip works in the other direction. They share the SPI clock, and one pin
 
 | Qty | Part | For |
 |---|---|---|
-| 12 or more | 100 nF ceramic capacitors | One at each chip's supply pin |
-| 1 | Bulk capacitor, 10 to 100 µF | Across the 5 V rail. Not in the other documents, but sensible with 12 chips |
+| 13 or more | 100 nF ceramic capacitors | One at each chip's supply pin |
+| 1 | Bulk capacitor, 10 to 100 µF | Across the 5 V rail. Not in the other documents, but sensible with 13 chips |
 
 ### MIDI out (roadmap phase 10; the firmware is built, the circuit is not)
 
@@ -84,10 +86,11 @@ Neither chip works in the other direction. They share the SPI clock, and one pin
 
 ## Not designed yet
 
-Three parts of this list are placeholders, because the circuits behind them have not been worked out:
+Four parts of this list are placeholders, because the circuits behind them have not been worked out:
 
 - **The two input stages.** The firmware assumes they invert, and nothing more is decided.
 - **The gate and clock output buffer.** The pins are bare 0 V and 5 V logic today, with no protection.
+- **The modulation input stage.** The firmware takes half of 5 V at the pin as an LFO at its centre or no LFO at all, to within about 78 mV. What scales and shifts a ±5 V LFO to that, and protects the pin, is not worked out. If it uses an op-amp, the second half of the CV buffer's is free.
 - **The CV buffer and its supply.** The DAC gives 0 to 3.75 V. An op-amp running from the same 5 V rail must be rail-to-rail to reach 0 V. See "Power" below.
 
 ## Power
