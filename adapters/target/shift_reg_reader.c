@@ -2,8 +2,8 @@
  * @file   shift_reg_reader.c
  * @brief  Target implementation of the step input port and the LED output
  *         port, which share the SPI bus and one control line: reads the
- *         74HC165 shift register chain that holds the step notes and the
- *         mode switches, and on the way writes the two 74HC595s that drive
+ *         74HC165 shift register chain that holds the step notes, the
+ *         mode switches and the selector, and on the way writes the two 74HC595s that drive
  *         the sixteen step lights.
  * @author BonelessPig
  *
@@ -34,9 +34,9 @@
 #include "port_status.h"
 #include "spi.h"
 
-// Daisy-chained 74HC165s: eight for the steps and, farthest from the MCU,
-// one for the mode switches (9 x 8 bits = 72 bits)
-#define SHIFT_REG_CHAIN_BYTES (9U)
+// Daisy-chained 74HC165s: eight for the steps, one for the mode switches
+// and, farthest from the MCU, one for the selector (10 x 8 bits = 80 bits)
+#define SHIFT_REG_CHAIN_BYTES (10U)
 
 // PB1: SH/LD of the 74HC165s (active-low load pulse) and the latch clock
 // of the 74HC595s (rising edge)

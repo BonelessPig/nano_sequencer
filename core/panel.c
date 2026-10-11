@@ -11,6 +11,9 @@
 
 #define VALUE_MASK ((uint8_t)PANEL_VALUE_MAX)
 
+// The selector's bits in its byte, which follows the mode switches' one
+#define SELECTOR_MASK (0x07U)
+
 
 
 uint8_t panel_step_value(const uint8_t *p_raw_steps, uint8_t step)
@@ -41,6 +44,20 @@ uint8_t panel_mode_value(const uint8_t *p_raw_steps)
     if (NULL != p_raw_steps)
     {
         value = p_raw_steps[PANEL_STEP_BYTE_COUNT];
+    }
+
+    return value;
+}
+
+
+
+uint8_t panel_selector_value(const uint8_t *p_raw_steps)
+{
+    uint8_t value = 0U;
+
+    if (NULL != p_raw_steps)
+    {
+        value = (uint8_t)(p_raw_steps[PANEL_STEP_BYTE_COUNT + 1U] & SELECTOR_MASK);
     }
 
     return value;

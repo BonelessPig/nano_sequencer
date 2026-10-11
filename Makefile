@@ -287,7 +287,7 @@ CORE_TESTS = test_seq test_clock test_panel test_address test_note_map \
              test_engine_chance test_engine_cartesian test_engine_euclid \
              test_prng test_gate test_pitch_cal test_cal_record \
              test_cal test_debounce test_transport test_crc8 test_errlog \
-             test_midi_out
+             test_midi_out test_pickup test_bank
 TEST_CORE := $(patsubst %,$(HOST_DIR)/%$(EXE),$(CORE_TESTS))
 
 # Tests that #include the source file they test (one each for the target

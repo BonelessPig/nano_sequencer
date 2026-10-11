@@ -20,6 +20,8 @@ core/                         # Pure sequencer logic; also compiles on a PC
 ├── clock.c / clock.h                 # Elapsed ticks to pulses: at a tempo with no drift, or following external edges
 ├── transport.c / transport.h         # transport_tick(): stopped, or running from which clock
 ├── debounce.c / debounce.h           # debounce_update(): the settled level of a button or switch
+├── pickup.c / pickup.h               # pickup_update(): a shared pot sets a value only once it has met it
+├── bank.c / bank.h                   # bank_tick(): eight amounts, one pot and a selector
 ├── engine.h                          # The engine interface: what every engine is given and hands back
 ├── engine_plain.c / engine_plain.h   # The plain engine: each step's switches are its note value
 ├── engine_stage.c / engine_stage.h   # The stage engine: eight stages with a length and a gate mode
@@ -130,7 +132,7 @@ The wiring is drawn pin by pin, with a diagram of each chip, in [docs/SCHEMATIC.
 - Watchdog: the MCU's own, reset only, about 250 ms, kicked once a millisecond. With the Nano's stock old bootloader a watchdog reset does not recover until the power is cycled; see open item 15 in `docs/ARCHITECTURE.md`
 - SPI: master, mode 0, MSB first, 1 MHz, shared by the shift registers and the DAC
 - Pitch CV: channel A of an MCP4822 12-bit DAC (internal 2.048 V reference, gain 2: 1 mV a step, 0 to 4.095 V). `PORTB2` (D10, SS) is its chip select, `PORTB5` (D13, SCK) its clock and `PORTB3` (D11, MOSI) its data; its LDAC pin is tied to GND. 1 V to the octave from 0 V at the lowest pitch, written every millisecond, through the calibration table. No buffer or protection yet
-- Step notes and mode switches: 16 steps × 4 bits and 8 mode switches, read from a chain of 9 daisy-chained 74HC165 shift registers on the SPI bus (the ninth, farthest from the MCU, holds the mode switches, whose low three choose the engine): `PORTB1` (D9) is SH/LD, `PORTB5` (D13, SCK) is CLK, and `PORTB4` (D12, MISO) takes QH of the nearest chip through 1 kΩ — each 74HC165's Clock Inhibit/CE pin must be tied to GND in hardware
+- Step notes, mode switches and selector: 16 steps × 4 bits, 8 mode switches and a coded 8-way rotary selector, read from a chain of 10 daisy-chained 74HC165 shift registers on the SPI bus (the ninth holds the mode switches, whose low three choose the engine; the tenth, farthest from the MCU, has the selector on its low three inputs, which says what the pot sets, position 0 being the tempo): `PORTB1` (D9) is SH/LD, `PORTB5` (D13, SCK) is CLK, and `PORTB4` (D12, MISO) takes QH of the nearest chip through 1 kΩ — each 74HC165's Clock Inhibit/CE pin must be tied to GND in hardware
 - Gate output: `PORTD4` (D4), high while a note is held, which is half a step. Clock output: `PORTD5` (D5), high for the first half of every step. Both are 0 V / 5 V logic straight from the MCU, with no buffer or protection yet
 - Clock input: `PORTB0` (D8, ICP1). Reset input: `PORTD2` (D2, INT0). Each jack is meant to reach its pin through a transistor that pulls the pin low while the jack is high, so the firmware looks for a falling edge at the pin; the flag that latches it is polled once a millisecond and no interrupt is used. That input stage is not built yet
 - Run button: `PORTD7` (D7) to ground. All three of these inputs use the MCU's own pull-ups

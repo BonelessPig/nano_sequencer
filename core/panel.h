@@ -4,8 +4,8 @@
  * @file   panel.h
  * @brief  The front panel as the core sees it: 16 steps of 4 switches each,
  *         packed into raw bytes, and after them one byte of 8 mode
- *         switches. Every engine reads the same step bits and gives them
- *         its own meaning. Pure logic with no hardware access; compiles
+ *         switches and one that holds the selector. Every engine reads the
+ *         same step bits and gives them its own meaning. Pure logic with no hardware access; compiles
  *         unchanged for the MCU and for a PC.
  * @author BonelessPig
  *
@@ -22,8 +22,9 @@
 #define PANEL_STEP_BYTE_COUNT \
     ((PANEL_STEP_COUNT * PANEL_VALUE_BITS) / PANEL_BITS_PER_BYTE)
 
-// The whole panel as raw bytes: the steps' bytes, then the mode switches' one
-#define PANEL_RAW_BYTE_COUNT (PANEL_STEP_BYTE_COUNT + 1U)
+// The whole panel as raw bytes: the steps' bytes, then the mode switches'
+// one, then the selector's
+#define PANEL_RAW_BYTE_COUNT (PANEL_STEP_BYTE_COUNT + 2U)
 
 #define PANEL_VALUE_MAX      ((1U << PANEL_VALUE_BITS) - 1U) // Largest step value (15)
 
@@ -47,5 +48,14 @@ uint8_t panel_step_value(const uint8_t *p_raw_steps, uint8_t step);
  * @return The mode switches, 0 to 255. 0 if p_raw_steps is null.
  */
 uint8_t panel_mode_value(const uint8_t *p_raw_steps);
+
+/**
+ * @brief  Gives the position of the selector, a coded rotary switch: the
+ *         low three bits of the byte that follows the mode switches', as a
+ *         number. The byte's other five bits have nothing on them.
+ * @param  p_raw_steps  The panel's raw bytes, PANEL_RAW_BYTE_COUNT of them.
+ * @return The position, 0 to 7. 0 if p_raw_steps is null.
+ */
+uint8_t panel_selector_value(const uint8_t *p_raw_steps);
 
 #endif /* PANEL_H */

@@ -9,6 +9,7 @@
  *
  */
 #include <stddef.h>
+#include <string.h>
 #include "app.h"
 #include "cal_record.h"
 #include "host_ports.h"
@@ -1527,6 +1528,55 @@ static void test_init_starts_a_stopped_pattern_running_again(void)
 
 
 
+/**
+ * @brief Sets the panel to the descending notes with the selector at a
+ *        position, and the pot to a reading.
+ */
+static void set_selector_and_pot(uint8_t position, uint16_t reading)
+{
+    uint8_t raw[HOST_RAW_STEP_BYTES];
+
+    (void)memcpy(raw, g_descending_notes, sizeof(raw));
+    raw[HOST_RAW_STEP_BYTES - 1U] = position;
+    host_set_steps(raw, STATUS_OK);
+    host_set_tempo(reading, STATUS_OK);
+}
+
+
+
+static void test_the_pot_sets_the_tempo_only_while_the_selector_is_on_it(void)
+{
+    uint16_t events;
+
+    // 150 BPM from the pot as it stood at power-on: a step every 100 ticks
+    start_app();
+    run_ticks(2U);
+    TEST_ASSERT_EQUAL(1, host_event_count());
+
+    // The selector moved off the tempo and the pot turned right up: the
+    // tempo holds
+    set_selector_and_pot(1U, 1023U);
+    run_ticks(10U * TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(11, host_event_count());
+
+    // Back on the tempo, the pot is not where the tempo was left: it still
+    // holds
+    set_selector_and_pot(0U, 1023U);
+    run_ticks(5U * TICKS_PER_STEP);
+    TEST_ASSERT_EQUAL(16, host_event_count());
+
+    // Turned back to meet it, the pot has the tempo again: 285 BPM is 19
+    // steps in the time 150 BPM takes for 10
+    set_selector_and_pot(0U, TEMPO_RAW_150_BPM);
+    run_ticks(2U * TICKS_PER_STEP);
+    set_selector_and_pot(0U, 1023U);
+    events = host_event_count();
+    run_ticks(10U * TICKS_PER_STEP);
+    TEST_ASSERT(host_event_count() >= (events + 17U));
+}
+
+
+
 static void test_calibration_mode_leaves_the_transport_alone(void)
 {
     start_calibration(2U, CAL_TRIM_CENTRE);
@@ -1958,6 +2008,7 @@ int main(void)
     RUN_TEST(test_an_external_edge_takes_the_pattern_over_from_the_clock_input);
     RUN_TEST(test_the_reset_input_sends_the_pattern_back_to_its_start);
     RUN_TEST(test_init_starts_a_stopped_pattern_running_again);
+    RUN_TEST(test_the_pot_sets_the_tempo_only_while_the_selector_is_on_it);
     RUN_TEST(test_calibration_mode_leaves_the_transport_alone);
     RUN_TEST(test_the_midi_fake_records_what_is_written_and_scripts_the_room);
     return TEST_RESULT();

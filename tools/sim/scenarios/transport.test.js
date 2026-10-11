@@ -350,6 +350,34 @@ for (const config of CONFIGS) {
         }
     });
 
+    test(`${config}: the pot sets the tempo only once it has met it again`, () => {
+        const board = boardWith(config, READING_150_BPM, false);
+        const lastPeriodMs = () => {
+            const rises = riseMs(board, board.clockOut);
+
+            return rises[rises.length - 1] - rises[rises.length - 2];
+        };
+
+        // The selector off the tempo and the pot turned right up: it holds
+        board.runForMs(250);
+        board.setSelector(1);
+        board.setTempoReading(1023);
+        board.runUntilClockOutPulses(8, RUN_LIMIT_MS);
+        assertNear(lastPeriodMs(), STEP_MS, EDGE_JITTER_MAX_MS, 'off the tempo');
+
+        // Back on it, with the pot not where the tempo was left: it holds
+        board.setSelector(0);
+        board.runUntilClockOutPulses(12, RUN_LIMIT_MS);
+        assertNear(lastPeriodMs(), STEP_MS, EDGE_JITTER_MAX_MS, 'not yet met');
+
+        // Turned back to meet it, and then up: 285 BPM is 52.6 ms a step
+        board.setTempoReading(READING_150_BPM);
+        board.runForMs(30);
+        board.setTempoReading(1023);
+        board.runUntilClockOutPulses(18, RUN_LIMIT_MS);
+        assertNear(lastPeriodMs(), 15000 / 285, 1.1, 'met and turned up');
+    });
+
     test(`${config}: a stop and a start go back to the internal clock`, () => {
         const board = boardWith(config, READING_150_BPM, true);
 

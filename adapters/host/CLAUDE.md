@@ -12,7 +12,7 @@ The ports faked for the PC: tests script what the input ports return and read ba
 - The MIDI output gives the room a test sets (`host_set_midi_room()`) and records every byte it is written, at write time, a write of more than the room included, so that a test can see an overrun. The bytes are kept out of the event record and nothing is sent on a poll. Two readbacks show the order of the apply step: `host_midi_byte_count_at_gate_rise()` and `host_midi_byte_count_at_first_event()`.
 - A static here is named for its fake (`g_host_midi_*`): a name shared with a static in another file of the host run is a rule 5.9 finding.
 - `log_transport()` is in the event record. A run that never stops or changes clock logs none, so existing counts of events hold.
-- The scripted panel is nine bytes, the ninth being the mode switches. A test's array of eight leaves them all off, which is the plain engine.
+- The scripted panel is ten bytes, the ninth being the mode switches and the tenth the selector. A test's array of eight leaves them all off, which is the plain engine with the pot setting the tempo.
 - Time is scripted too: `timebase_elapsed_ticks()` returns whatever the test last set, on every call, so a test moves time on by calling `app_run_once()` once per tick.
 - No hardware access, no register headers.
 - This code is in the `misra-host` analysis run, so it is held to the coding standard like firmware source.

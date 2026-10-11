@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "address.h"
+#include "bank.h"
 #include "cal.h"
 #include "cal_record.h"
 #include "errlog.h"
@@ -45,6 +46,11 @@
 // The board has no gate length control yet: a note is held for half its step
 #define GATE_LENGTH_PULSES (SEQ_PULSES_PER_STEP / 2U)
 
+// What each slot of the amount bank sets, by the position of the selector
+// that chooses it. The tempo is position 0, which is what a board with no
+// selector wired reads, so that its pot is still the tempo
+#define SLOT_TEMPO (0U)
+
 // The pitch CV is nominally 1 V to the octave from 0 V at the lowest pitch.
 // That is the ideal calibration table, used until a measured one is stored,
 // and what calibration mode trims each point from
@@ -76,8 +82,12 @@ static midi_out_state_t g_midi_state; // MIDI out's state carried between ticks
 static midi_out_bytes_t g_midi_bytes; // What it computed on the last tick
 static uint8_t          g_midi_room = 0U; // Bytes the MIDI output could take, as last read
 
+static bank_state_t g_bank;                // The amounts the pot sets, one a slot
+static uint16_t     g_pot_raw     = 0U;    // The pot's position, as last read
+static bool         g_b_pot_valid = false; // false if it could not be read
+
 static port_status_t g_step_read_status  = STATUS_OK; // Status of the last step input read
-static port_status_t g_tempo_read_status = STATUS_OK; // Status of the last tempo input read
+static port_status_t g_tempo_read_status = STATUS_OK; // Status of the last pot read
 static uint8_t       g_ticks_until_scan  = 0U;        // Ticks before the inputs are read again
 
 
@@ -178,17 +188,18 @@ static void apply_outputs(void)
 
 
 /**
- * @brief  Reads the step and tempo input ports into the snapshot; the
- *         step read brings the mode switches with it. A failed read clears
- *         that input's valid flag and leaves its data as it was.
+ * @brief  Reads the panel into the snapshot and the pot beside it; the
+ *         panel read brings the mode switches and the selector with it. A
+ *         failed read clears that input's valid flag and leaves its data as
+ *         it was.
  */
 static void scan_inputs(void)
 {
     g_step_read_status = step_input_read(g_inputs.raw_steps, (uint8_t)PANEL_RAW_BYTE_COUNT);
     g_inputs.b_steps_valid = (STATUS_OK == g_step_read_status);
 
-    g_tempo_read_status = pot_input_read(&g_inputs.tempo_raw);
-    g_inputs.b_tempo_valid = (STATUS_OK == g_tempo_read_status);
+    g_tempo_read_status = pot_input_read(&g_pot_raw);
+    g_b_pot_valid       = (STATUS_OK == g_tempo_read_status);
 }
 
 
@@ -197,7 +208,7 @@ static void scan_inputs(void)
  * @brief  Brings the input snapshot up to date for this tick: records the
  *         elapsed time, reads the transport inputs and the room the MIDI
  *         output has, which are read on every tick, and re-reads the panel
- *         and the tempo if a scan is due.
+ *         and the pot if a scan is due.
  * @param  elapsed_ticks  Ticks since the previous tick, 1 to 255.
  */
 static void gather_inputs(uint8_t elapsed_ticks)
@@ -245,10 +256,31 @@ static void run_midi_out(void)
 
 
 /**
+ * @brief  Lets the pot set the amount the selector chooses, and hands the
+ *         sequencer the one it uses: the tempo. The bank always has a
+ *         tempo to give, so it is always valid.
+ */
+static void run_bank(void)
+{
+    bank_inputs_t bank_in;
+
+    bank_in.selected        = panel_selector_value(g_inputs.raw_steps);
+    bank_in.reading         = g_pot_raw;
+    bank_in.b_reading_valid = g_b_pot_valid;
+    bank_tick(&g_bank, &bank_in);
+
+    g_inputs.tempo_raw     = bank_amount(&g_bank, (uint8_t)SLOT_TEMPO);
+    g_inputs.b_tempo_valid = true;
+}
+
+
+
+/**
  * @brief  Runs the core for this tick. Calibration goes first: if the panel
  *         asked for calibration mode at start-up, it gives the pitch CV and
- *         the gate and nothing is sequenced, and no MIDI is sent; otherwise
- *         the sequencer runs, and MIDI out after it.
+ *         the gate, with the pot as it reads, and nothing is sequenced, and
+ *         no MIDI is sent; otherwise the bank takes the pot, the sequencer
+ *         runs, and MIDI out after it.
  */
 static void run_core(void)
 {
@@ -256,8 +288,8 @@ static void run_core(void)
 
     cal_in.p_raw_steps   = g_inputs.raw_steps;
     cal_in.b_steps_valid = g_inputs.b_steps_valid;
-    cal_in.tempo_raw     = g_inputs.tempo_raw;
-    cal_in.b_tempo_valid = g_inputs.b_tempo_valid;
+    cal_in.tempo_raw     = g_pot_raw;
+    cal_in.b_tempo_valid = g_b_pot_valid;
     cal_in.elapsed_ticks = g_inputs.elapsed_ticks;
     cal_in.cv_per_octave = CV_MILLIVOLTS_PER_OCTAVE;
 
@@ -271,6 +303,7 @@ static void run_core(void)
     }
     else
     {
+        run_bank();
         seq_tick(&g_seq_state, &g_inputs, &g_outputs);
         run_midi_out();
     }
@@ -344,6 +377,10 @@ static void reset_tick_state(void)
     g_cal_outputs.b_gate   = false;
     g_cal_outputs.b_stored = false;
     g_cal_outputs.point    = 0U;
+
+    bank_init(&g_bank, (uint8_t)SLOT_TEMPO);
+    g_pot_raw     = 0U;
+    g_b_pot_valid = false;
 
     midi_out_init(&g_midi_state);
     g_midi_bytes.count = 0U;

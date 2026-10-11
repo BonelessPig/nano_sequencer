@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 
-const CLOCKS_PER_READ = 72;     // 16 steps of 4 bits, 8 mode switches
+const CLOCKS_PER_READ = 80;     // 16 steps of 4 bits, 8 mode switches, the selector
 const CLOCKS_PER_LED_WRITE = 16; // The step lights, sent ahead of each read
 const CLOCKS_PER_CV_WRITE = 16; // One DAC frame, sent on every tick
 const SCAN_PERIOD_TICKS = 8;
@@ -248,27 +248,27 @@ test('the pitch CV changes only when a note begins, and holds through a rest', (
     assert.equal(Math.max(...board.cvWrites.map((write) => write.millivolts)), 1167);
 });
 
-test('reads the chain in nine transfers of zeros, after two bytes for the lights', () => {
+test('reads the chain in ten transfers of zeros, after two bytes for the lights', () => {
     const board = releaseBoard();
 
     board.runUntilPanelReads(3, RUN_LIMIT_MS);
 
     // Two complete reads and the start of a third. Each is two bytes for
-    // the step lights, then the load pulse, then nine bytes of zeros. No
+    // the step lights, then the load pulse, then ten bytes of zeros. No
     // light is lit before the first read; step 0's is by the second
-    assert.equal(board.spiSent.length, 11 + 11 + 2);
-    assert.deepEqual(board.spiSent.slice(0, 11), new Array(11).fill(0));
-    assert.deepEqual(board.spiSent.slice(11, 13), [0x00, 0x01]);
-    assert.deepEqual(board.spiSent.slice(13, 22), new Array(9).fill(0));
+    assert.equal(board.spiSent.length, 12 + 12 + 2);
+    assert.deepEqual(board.spiSent.slice(0, 12), new Array(12).fill(0));
+    assert.deepEqual(board.spiSent.slice(12, 14), [0x00, 0x01]);
+    assert.deepEqual(board.spiSent.slice(14, 24), new Array(10).fill(0));
 });
 
-test('reads the panel every 8 ms, with 72 clock pulses', () => {
+test('reads the panel every 8 ms, with 80 clock pulses', () => {
     const board = releaseBoard();
     const readCount = 200;
 
     board.runUntilPanelReads(readCount + 1, RUN_LIMIT_MS);
 
-    // The chain has no chip select, so after the 72 clocks of its own read
+    // The chain has no chip select, so after the 80 clocks of its own read
     // it is also clocked by the eight DAC frames sent before the next load
     for (const read of board.panelReads.slice(0, readCount)) {
         assert.equal(read.clocks,

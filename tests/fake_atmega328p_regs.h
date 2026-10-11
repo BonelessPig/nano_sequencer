@@ -170,7 +170,7 @@ static uint8_t g_fake_portd_at_first_ddrd = 0U;
 static bool    g_fake_b_ddrd_accessed     = false;
 
 // ---- 74HC165 chain model ----
-#define FAKE_SHIFT_CHAIN_BYTES (9U)    // Chips in the modelled chain
+#define FAKE_SHIFT_CHAIN_BYTES (10U)   // Chips in the modelled chain
 #define FAKE_SHIFT_CHAIN_BITS  (FAKE_SHIFT_CHAIN_BYTES * 8U)
 #define FAKE_SHIFT_LOAD_MASK   (0x02U) // PB1: SH/LD, low = load
 

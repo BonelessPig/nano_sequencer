@@ -1,9 +1,10 @@
 'use strict';
 /**
  * The sequencer board as it is wired today: an ATmega328P at 16 MHz with
- * nine 74HC165s on the SPI bus (clock on SCK, data on MISO) and their load
- * line on PB1: eight for the 16 steps and, farthest from the MCU, one for
- * the eight mode switches. An MCP4822 DAC on the same bus (clock on SCK, data on MOSI)
+ * ten 74HC165s on the SPI bus (clock on SCK, data on MISO) and their load
+ * line on PB1: eight for the 16 steps, one for the eight mode switches and,
+ * farthest from the MCU, one whose low three inputs are the selector, a
+ * coded rotary switch that says what the pot sets. An MCP4822 DAC on the same bus (clock on SCK, data on MOSI)
  * with its chip select on PB2, two 74HC595s on the bus as well (clock on
  * SCK, data on MOSI) driving the sixteen step lights, their latch clock on
  * PB1 with the 74HC165 load line, the tempo pot on ADC channel 6, the gate
@@ -38,6 +39,8 @@ const CLOCK_HZ = 16000000;
 const STEP_COUNT = 16;
 const NOTE_BITS = 4;
 const MODE_BITS = 8;
+const BITS_PER_CHIP = 8;
+const SELECTOR_POSITIONS = 8; // The low three inputs of the tenth chip
 const LED_CHIPS = 2;
 const TEMPO_ADC_CHANNEL = 6;
 const ADC_REFERENCE_VOLTS = 5;
@@ -86,6 +89,7 @@ function createBoard(config, options = {}) {
     const machine = createAtmega328p(hexPath, CLOCK_HZ);
     const notes = new Array(STEP_COUNT).fill(0);
     let modeSwitches = 0;
+    let selector = 0;
     // lines holds the step lines, which most scenarios count and time;
     // notices holds every other line (start-up, calibration, errors)
     // bytes counts everything the USART sent, whatever it was
@@ -104,8 +108,9 @@ function createBoard(config, options = {}) {
     machine.eepromMemory.set(options.eeprom || []);
     machine.cpu.data[MCUSR] = options.resetFlags || 0;
 
-    // Step 0's most significant bit is the first bit out of the chain, and
-    // the mode switches follow the last step, highest switch first
+    // Step 0's most significant bit is the first bit out of the chain, the
+    // mode switches follow the last step, highest switch first, and then
+    // the selector's chip, whose five spare inputs are low
     function panelBits() {
         const bits = [];
         for (const note of notes) {
@@ -115,6 +120,9 @@ function createBoard(config, options = {}) {
         }
         for (let bit = MODE_BITS - 1; bit >= 0; bit--) {
             bits.push((modeSwitches >> bit) & 1);
+        }
+        for (let bit = BITS_PER_CHIP - 1; bit >= 0; bit--) {
+            bits.push((selector >> bit) & 1);
         }
         return bits;
     }
@@ -367,6 +375,19 @@ function createBoard(config, options = {}) {
          */
         setModeSwitches(value) {
             modeSwitches = value & ((1 << MODE_BITS) - 1);
+        },
+
+        /**
+         * Turns the selector to a position, 0 to 7: what the pot sets.
+         * Position 0 is the tempo.
+         */
+        setSelector(position) {
+            selector = position % SELECTOR_POSITIONS;
+        },
+
+        /** The selector's position, 0 to 7. */
+        selector() {
+            return selector;
         },
 
         /** The mode switches as they are set, 0 to 255. */
