@@ -55,6 +55,7 @@ Before calling a change done, all of these pass. `make check` runs them all and 
 - To prove a refactor changed nothing, save `build/debug/output.hex` before editing, rebuild after, and `cmp` the two (and the release ones if the change could reach them). If they differ, diff the `avr-objdump -d` instruction streams with addresses stripped to see which function moved.
 - Commit and push only when asked.
 - Keep `README.md` and `docs/ARCHITECTURE.md` in step with the code in the same piece of work. ARCHITECTURE.md describes what the firmware does today and carries the size figures, test counts, MISRA status and the open items list; `docs/ROADMAP.md` carries the plan and the decisions taken. Don't repeat any of those here.
+- When a change alters what the board has or does that someone could see or work (a pin, a part, a control, a mode, a log line, an output), spin off a subagent to bring the live view (`make live`, `tools/sim/live/`) up to date in the same piece of work, along with anything it needs from `tools/sim/boards/`. Tell it what changed and to read `tools/sim/CLAUDE.md` first. Check its work yourself and run `make sim` before calling the change done; the page cannot be checked from here, so say what the owner should look at in the browser.
 - The owner wants the project minimal and lightweight, and as clean as possible against the standard: prefer actually resolving a finding over recording a deviation, and when there is a real trade-off, lay out the options with a recommendation and let them choose.
 
 ## Project facts
