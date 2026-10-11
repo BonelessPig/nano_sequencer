@@ -32,7 +32,7 @@ Read a folder's `CLAUDE.md` before adding a file to it or changing one in it.
 
 ## Done means
 
-Before calling a change done, all of these pass. `make check` runs them all and prints one line per stage, with the full output only of a stage that fails; use it for the final run, and a stage's own target when you need its output. The Makefile's recipes run under `cmd.exe` on Windows; from Git Bash, call it as `cmd //c "make ..."`.
+Before calling a change done, every stage it could affect passes. `make check` runs them all and prints one line per stage, with the full output only of a stage that fails. Run it once, before the commit of a change to what the firmware does, not after every edit; use a stage's own target when you need its output. Run less where less can have changed: a refactor that `cmp` shows left all three images identical needs only `make test`, and a change to docs alone needs nothing. Keeping token use and waiting down is a priority: do not re-run a stage nothing has touched since it last passed. The Makefile's recipes run under `cmd.exe` on Windows; from Git Bash, call it as `cmd //c "make ..."`.
 
 - `make`, `make CONFIG=release` and `make CONFIG=midi`: all three firmware images build. Any warning fails the build (`-Wall -Wextra -Wconversion -Wshadow -Werror`).
 - `make test`: the host test programs pass.
