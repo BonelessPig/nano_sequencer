@@ -16,6 +16,7 @@
 #   make sim          Run the firmware images on an emulated board
 #   make live         Run one image on that board at real speed, shown in a browser
 #   make check        Run all of the above checks; one line each unless one fails
+#   make figures      Measure the sizes and counts the documents quote
 #   make clean       Delete the build/ directory
 #   make flash PORT=COM5   Override any variable below from the command line
 #
@@ -203,7 +204,9 @@ CFLAGS  = -g -Os -std=c99 -Wall -Wextra -Wconversion -Wshadow -Werror \
 #   -mmcu=...             Picks the startup code and memory map for the chip
 #   -Wl,--gc-sections     Remove unused functions/variables (pairs with the
 #                           -ffunction-sections / -fdata-sections flags above)
-LDFLAGS = -mmcu=$(MCU) -Wl,--gc-sections
+#   -Wl,-Map=...          Write output.map beside the .elf: what the linker put
+#                           where, and from which object. `make figures` reads it
+LDFLAGS = -mmcu=$(MCU) -Wl,--gc-sections -Wl,-Map=$(TARGET).map
 
 # Register addresses. The C code declares each MCU register as a plain variable
 # (adapters/target/atmega328p_regs.h) and this linker file says where each one
@@ -450,6 +453,17 @@ $(SIM_MODULES): $(SIM_DIR)/package-lock.json
 .PHONY: check
 check:
 	@$(PYTHON) tools/check/run.py $(MAKE)
+
+# `make figures` measures what the documents quote (flash and RAM by source
+# file, the host test counts, coverage and the scenario counts) and writes it
+# to docs/FIGURES.md. It runs the coverage build and the emulated board, so it
+# takes about as long as those two. tools/figures/figures.py has the details.
+.PHONY: figures
+figures: $(SIM_MODULES)
+	$(MAKE) CONFIG=debug all
+	$(MAKE) CONFIG=release all
+	$(MAKE) CONFIG=midi all
+	@$(PYTHON) tools/figures/figures.py "$(MAKE)" "$(NODE)" docs/FIGURES.md
 
 # `make test-quiet` is `make test` through the same script: one line if every
 # test passes, and the full output if one fails.

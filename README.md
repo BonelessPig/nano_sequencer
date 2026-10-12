@@ -99,7 +99,7 @@ The checks need a few more tools on `PATH`:
 |---|---|
 | A C compiler for your PC (`gcc` on Windows, `cc` elsewhere), with `gcov` | `make test`, `make coverage` |
 | `cppcheck` | `make misra` |
-| `python` | `make misra`, `make coverage`, `make check` |
+| `python` | `make misra`, `make coverage`, `make check`, `make figures` |
 | `node` and `npm` (Node.js 22 or later) | `make sim`, `make live`. The first run downloads the [avr8js](https://github.com/wokwi/avr8js) emulator into `tools/sim/node_modules` |
 
 On Windows with Chocolatey, `choco install mingw cppcheck` covers the first two.
@@ -119,6 +119,7 @@ make misra      # Run cppcheck with the MISRA addon
 make sim        # Run the firmware images on an emulated board and check what they do
 make live       # Run one image on that board at real speed and watch it in a browser
 make check      # The three builds and all four checks above; one line each unless one fails
+make figures    # Measure sizes, test counts and coverage, and write docs/FIGURES.md
 make clean      # Remove the build/ directory
 ```
 
