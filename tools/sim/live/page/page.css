@@ -65,9 +65,9 @@ button { cursor: pointer; }
 #steps.stage .step.control .switch[data-bit="1"] { margin-top: 6px; }
 /* The Klee engine: a step's pattern switch stands apart from its value */
 #steps.klee .switch[data-bit="2"] { margin-top: 6px; }
-/* The engine's rotary switch */
-#engine-knob { width: 230px; outline-offset: 2px; }
-#engine-knob svg { display: block; width: 100%; height: auto; }
+/* A rotary switch: the engine's and the selector's */
+.knob { width: 230px; outline-offset: 2px; }
+.knob svg { display: block; width: 100%; height: auto; }
 .knob-body { fill: var(--off); stroke: var(--line); stroke-width: 1.5; cursor: pointer; }
 .knob-pointer { stroke: var(--ink); stroke-width: 3; stroke-linecap: round;
                 pointer-events: none; }
@@ -76,7 +76,16 @@ button { cursor: pointer; }
 .detent circle { fill: var(--line); }
 .detent.chosen text { fill: var(--ink); font-weight: 600; }
 .detent.chosen circle { fill: var(--on); }
-#engine { font-weight: 600; }
+#engine, #selector { font-weight: 600; }
+/* A pot: every slider is drawn as one, and stays inside it out of sight */
+.pot { position: relative; display: inline-block; width: 44px; height: 44px;
+       border-radius: 50%; touch-action: none; cursor: ns-resize; }
+.pot svg { display: block; width: 100%; height: 100%; }
+.pot .knob-body { cursor: ns-resize; }
+.pot-end { fill: var(--dim); }
+.pot input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; margin: 0;
+             opacity: 0; pointer-events: none; }
+.pot:focus-within { outline: 2px solid var(--on); outline-offset: 1px; }
 /* Mode switches 7 to 3: a legend over five toggles, a column a switch */
 #mode-legend, #modes-spare { display: grid; grid-template-columns: repeat(5, 56px);
                              gap: 4px 6px; }
@@ -99,7 +108,6 @@ button { cursor: pointer; }
 #gate-led.lit { background: var(--gate); }
 #level-led { background: var(--on); border-color: var(--line); opacity: 0; }
 #clock-led.lit { background: var(--clock); }
-#tempo, #clock-ms { flex: 1; min-width: 200px; }
 #run.down { background: var(--on); border-color: var(--on); color: #1b1b1b; }
 #transport { font-weight: 600; }
 button:disabled { opacity: 0.5; cursor: default; }
@@ -119,6 +127,7 @@ details[open] > summary.head { margin-bottom: 8px; }
 .key code { font: 12px ui-monospace, monospace; white-space: nowrap; }
 .scroll { overflow-x: auto; }
 canvas { width: 100%; height: 240px; display: block; }
+#scope { height: 320px; }
 #log, #midi-log { height: 180px; overflow-y: auto; margin: 0;
                   font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
 #midi-log { height: 140px; margin-top: 8px; }

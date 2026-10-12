@@ -1,0 +1,73 @@
+    <section>
+        <h2>Patched gear</h2>
+        <div class="row">
+            <button id="gear-power">Gear: off</button>
+            <label>VCO wave <select id="vco-wave">
+                <option value="sine">Sine</option>
+                <option value="triangle" selected>Triangle</option>
+                <option value="sawtooth">Saw</option>
+                <option value="noise">White noise</option>
+            </select></label>
+            <label for="vco-tune">Tune</label>
+            <input type="range" id="vco-tune" min="-24" max="24" step="1" value="0">
+            <span class="num" id="vco-tune-reading"></span>
+        </div>
+        <div class="row spaced">
+            <label for="env-attack">Envelope attack</label>
+            <input type="range" id="env-attack" min="1" max="500" step="1" value="5">
+            <span class="num" id="env-attack-reading"></span>
+            <label for="env-release">Release</label>
+            <input type="range" id="env-release" min="1" max="2000" step="1" value="50">
+            <span class="num" id="env-release-reading"></span>
+            <label for="volume">Volume</label>
+            <input type="range" id="volume" min="0" max="100" step="1" value="20">
+        </div>
+        <canvas id="scope"></canvas>
+        <details>
+            <summary>The gear and the scope</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>What it is</th>
+                    <td>Not the board: what its jacks are plugged into, as
+                        in the smallest set-up. It is made in this page from
+                        the pitch CV and the gate shown under Outputs, and
+                        the board cannot tell it is there.</td></tr>
+                <tr><th>Patch</th>
+                    <td>Pitch CV to the VCO's pitch. Gate to the envelope,
+                        the envelope to the VCA's CV. The VCO through the
+                        VCA to the audio output.</td></tr>
+                <tr><th>Gear button</th>
+                    <td>Powers the gear. A browser plays nothing until it
+                        has been clicked.</td></tr>
+                <tr><th>VCO</th>
+                    <td>An octave up per volt. With the tune knob at its
+                        middle 0 V plays C, 130.81 Hz. White noise has no
+                        pitch and takes no notice of the CV.</td></tr>
+                <tr><th>Envelope</th>
+                    <td>Rises while the gate is high and stays up, then
+                        falls once it is low. Each time is how long it takes
+                        to get about 95% of the way.</td></tr>
+                <tr><th>Volume</th>
+                    <td>The listener's, after the audio output: the scope
+                        does not show it.</td></tr>
+                <tr><th>Scope, VCO out</th>
+                    <td>The VCO's wave before the VCA, a few milliseconds of
+                        it, held still on a rising crossing of zero.</td></tr>
+                <tr><th>Scope, VCO frequency</th>
+                    <td>The pitch the VCO is at, over the same four seconds
+                        as the trace under Outputs: the pitch CV and the
+                        tune knob together. The band is a whole number of
+                        octaves high, named in hertz, so a semitone is the
+                        same rise anywhere in it.</td></tr>
+                <tr><th>Scope, envelope</th>
+                    <td>The VCA's CV, over the same four seconds as the
+                        trace under Outputs.</td></tr>
+                <tr><th>Scope, audio out</th>
+                    <td>The same few milliseconds after the VCA: the VCO's
+                        wave at the height the envelope gives it.</td></tr>
+                <tr><th>Limits</th>
+                    <td>Paced by the browser, not the chip, so nothing here
+                        is a measurement. Full scale is the VCO's own peak,
+                        not a voltage.</td></tr>
+            </table></div>
+        </details>
+    </section>

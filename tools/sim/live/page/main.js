@@ -58,15 +58,8 @@ function connect() {
 }
 
 buildPanel();
+buildPots();
 el('tempo').addEventListener('input', () => post({ tempo: Number(el('tempo').value) }));
-SELECTOR_NAMES.forEach((name, position) => {
-    const option = document.createElement('option');
-
-    option.value = String(position);
-    option.textContent = name;
-    el('selector').append(option);
-});
-el('selector').addEventListener('change', () => post({ selector: Number(el('selector').value) }));
 el('lfo').addEventListener('input', () => post({ lfo: Number(el('lfo').value) }));
 el('lfo-centre').addEventListener('click', () => post({ lfo: LFO_CENTRE }));
 function powerCycle() {
@@ -75,7 +68,7 @@ function powerCycle() {
 
 el('run').addEventListener('click', () => post({ run: 'press' }));
 el('clock-on').addEventListener('change', () => post({ clockOn: el('clock-on').checked }));
-// The rate is posted when the slider is let go: a running clock starts
+// The rate is posted when the pot is let go: a running clock starts
 // again at each new period, with an edge at once
 el('clock-ms').addEventListener('input', () => showClockRate(Number(el('clock-ms').value)));
 el('clock-ms').addEventListener('change', () => {
@@ -91,7 +84,12 @@ el('power').addEventListener('click', powerCycle);
 // Choosing an image is a power cycle with it: until one, the image named
 // would not be the one running
 el('config').addEventListener('change', powerCycle);
-el('sound').addEventListener('click', toggleSound);
+el('gear-power').addEventListener('click', toggleGear);
+el('vco-wave').addEventListener('change', applyGear);
+for (const id of ['vco-tune', 'env-attack', 'env-release', 'volume']) {
+    el(id).addEventListener('input', applyGear);
+}
+applyGear();
 el('cal-enter').addEventListener('click', () => {
     const notes = state.notes.slice();
 
@@ -103,3 +101,5 @@ el('cal-enter').addEventListener('click', () => {
 });
 connect();
 requestAnimationFrame(drawTrace);
+requestAnimationFrame(drawScope);
+requestAnimationFrame(drawPots);

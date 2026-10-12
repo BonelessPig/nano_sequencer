@@ -14,6 +14,10 @@
   board read them from the chip's bytes, with the clocks counted by the
   server and not listed. This page only words them.
 
+  The patched gear is the one thing made here and not on the server: a VCO,
+  an envelope and a VCA that are no part of the board, driven by the pitch
+  CV and gate events as gear plugged into the jacks would be (page/gear.js).
+
   The panel is drawn as one that could be built: the steps in two rows of
   eight, the engine on one rotary switch that feeds the low three mode
   inputs its position as a number, and mode switches 7 to 3 as five toggles
@@ -50,7 +54,6 @@
             </select></label>
             <label><input type="checkbox" id="keep-eeprom" checked> Keep the EEPROM</label>
             <button id="power">Power cycle</button>
-            <button id="sound">Sound: off</button>
         </div>
     </section>
 
@@ -88,6 +91,8 @@
         <canvas id="trace"></canvas>
     </section>
 
+    <!-- part: gear.html -->
+
     <!-- part: midi.html -->
 
     <!-- part: watchdog.html -->
@@ -101,6 +106,8 @@
 <script src="panel.js"></script>
 <script src="outputs.js"></script>
 <script src="trace.js"></script>
+<script src="gear.js"></script>
+<script src="pots.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

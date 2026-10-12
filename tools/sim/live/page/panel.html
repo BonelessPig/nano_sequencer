@@ -50,7 +50,7 @@
 
         <div class="row spaced">
             <div>
-                <div id="engine-knob" role="slider" tabindex="0" aria-label="Engine"
+                <div id="engine-knob" class="knob" role="slider" tabindex="0" aria-label="Engine"
                      aria-valuemin="0" aria-valuemax="7"></div>
                 <div>Engine <span class="num" id="engine"></span></div>
             </div>
@@ -202,8 +202,11 @@
         </details>
 
         <div class="row spaced">
-            <label for="selector">Selector</label>
-            <select id="selector"></select>
+            <div>
+                <div id="selector-knob" class="knob" role="slider" tabindex="0"
+                     aria-label="Selector" aria-valuemin="0" aria-valuemax="7"></div>
+                <div>Selector <span class="num" id="selector"></span></div>
+            </div>
             <label for="tempo">Pot (A6)</label>
             <input type="range" id="tempo" min="0" max="1023" step="1">
             <span class="num" id="tempo-reading"></span>

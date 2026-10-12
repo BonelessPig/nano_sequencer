@@ -48,18 +48,12 @@ function showCrashLog() {
 
 function showGate(isHigh) {
     el('gate-led').classList.toggle('lit', isHigh);
-    if (sound !== null) {
-        sound.gain.gain.setTargetAtTime(
-            isHigh ? SOUND_LEVEL : 0, sound.context.currentTime, SOUND_EDGE_S);
-    }
+    gearGate(isHigh);
 }
 
 function showCv(millivolts) {
     el('cv').textContent = `${(millivolts / 1000).toFixed(3)} V`;
-    if (sound !== null) {
-        sound.oscillator.frequency.setValueAtTime(
-            SOUND_BASE_HZ * (2 ** (millivolts / 1000)), sound.context.currentTime);
-    }
+    gearPitch(millivolts);
 }
 
 function showClock(event) {

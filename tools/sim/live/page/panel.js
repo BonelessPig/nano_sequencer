@@ -15,40 +15,56 @@ function setEngine(engine) {
     post({ mode: (state.mode & ~ENGINE_MASK) | engine });
 }
 
-// Draws the engine's rotary switch: a dot and a name at each position, and
-// the knob with its pointer. A position is chosen by clicking its name, by
-// clicking the knob for the next one round, or with the arrow keys
-function buildKnob() {
-    const knob = el('engine-knob');
+// Draws a rotary switch of eight positions: a dot and a name at each, a
+// bare number where `names` has none, and the knob with its pointer. A
+// position is chosen by clicking its name, by clicking the knob for the
+// next one round, or with the arrow keys. `current` says where the switch
+// stands and `set` posts a new position
+function buildKnob(id, names, current, set) {
+    const knob = el(id);
     let marks = '';
 
-    for (let position = 0; position < ENGINE_POSITIONS; position++) {
+    for (let position = 0; position < KNOB_POSITIONS; position++) {
         const [dotX, dotY] = knobPoint(position, KNOB_DOT_RADIUS);
         const [textX, textY] = knobPoint(position, KNOB_LABEL_RADIUS);
 
-        marks += `<g class="detent" data-engine="${position}">`
+        marks += `<g class="detent" data-position="${position}">`
             + `<circle cx="${dotX.toFixed(1)}" cy="${dotY.toFixed(1)}" r="3"/>`
             + `<text x="${textX.toFixed(1)}" y="${textY.toFixed(1)}"`
             + ` text-anchor="${(textX < KNOB_X) ? 'end' : 'start'}">`
-            + `${ENGINE_NAMES[position] ?? position}</text></g>`;
+            + `${names[position] ?? position}</text></g>`;
     }
     knob.innerHTML = `<svg viewBox="0 0 ${KNOB_WIDTH} ${KNOB_HEIGHT}" aria-hidden="true">`
         + `${marks}<circle class="knob-body" cx="${KNOB_X}" cy="${KNOB_Y}"`
         + ` r="${KNOB_RADIUS}"/><line class="knob-pointer" x1="${KNOB_X}" y1="${KNOB_Y}"`
         + ` x2="${KNOB_X}" y2="${KNOB_Y - KNOB_RADIUS + 4}"/></svg>`;
     for (const detent of knob.querySelectorAll('.detent')) {
-        detent.addEventListener('click', () => setEngine(Number(detent.dataset.engine)));
+        detent.addEventListener('click', () => set(Number(detent.dataset.position)));
     }
     knob.querySelector('.knob-body').addEventListener('click',
-        () => setEngine((engineNumber() + 1) % ENGINE_POSITIONS));
+        () => set((current() + 1) % KNOB_POSITIONS));
     knob.addEventListener('keydown', (event) => {
         const turn = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[event.key];
 
         if (turn !== undefined) {
             event.preventDefault();
-            setEngine(Math.max(0, Math.min(ENGINE_POSITIONS - 1, engineNumber() + turn)));
+            set(Math.max(0, Math.min(KNOB_POSITIONS - 1, current() + turn)));
         }
     });
+}
+
+// Turns a rotary switch's picture to a position, which `name` words
+function turnKnob(id, position, name) {
+    const knob = el(id);
+    const degrees = KNOB_FIRST_DEG + (position * KNOB_STEP_DEG);
+
+    knob.setAttribute('aria-valuenow', String(position));
+    knob.setAttribute('aria-valuetext', name);
+    knob.querySelector('.knob-pointer')
+        .setAttribute('transform', `rotate(${degrees} ${KNOB_X} ${KNOB_Y})`);
+    for (const detent of knob.querySelectorAll('.detent')) {
+        detent.classList.toggle('chosen', Number(detent.dataset.position) === position);
+    }
 }
 
 function buildPanel() {
@@ -93,7 +109,9 @@ function buildPanel() {
         cell.append(button, String(bit));
         el('modes-spare').append(cell);
     }
-    buildKnob();
+    buildKnob('engine-knob', ENGINE_NAMES, engineNumber, setEngine);
+    buildKnob('selector-knob', SELECTOR_KNOB_NAMES, () => state.selector,
+        (selector) => post({ selector }));
 }
 
 // The number the low three mode switches make
@@ -217,18 +235,10 @@ function showKnob() {
     const engine = engineNumber();
     const name = (engine < ENGINE_NAMES.length)
         ? ENGINE_NAMES[engine] : `plain (no engine ${engine} yet)`;
-    const knob = el('engine-knob');
-    const degrees = KNOB_FIRST_DEG + (engine * KNOB_STEP_DEG);
 
     el('engine').textContent = `${engine}, ${name} `
         + `(code ${engine.toString(2).padStart(ENGINE_BITS, '0')})`;
-    knob.setAttribute('aria-valuenow', String(engine));
-    knob.setAttribute('aria-valuetext', name);
-    knob.querySelector('.knob-pointer')
-        .setAttribute('transform', `rotate(${degrees} ${KNOB_X} ${KNOB_Y})`);
-    for (const detent of knob.querySelectorAll('.detent')) {
-        detent.classList.toggle('chosen', Number(detent.dataset.engine) === engine);
-    }
+    turnKnob('engine-knob', engine, name);
 }
 
 function showModes() {
@@ -308,7 +318,8 @@ function showPanel() {
     }
     el('tempo-reading').textContent = `${state.tempo} (${volts.toFixed(2)} V)`;
     el('tempo-means').textContent = tempoMeaning();
-    el('selector').value = String(state.selector);
+    el('selector').textContent = SELECTOR_NAMES[state.selector];
+    turnKnob('selector-knob', state.selector, SELECTOR_NAMES[state.selector]);
     if (document.activeElement !== el('lfo')) {
         el('lfo').value = String(state.lfo);
     }

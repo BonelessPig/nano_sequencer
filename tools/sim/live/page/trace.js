@@ -1,5 +1,5 @@
 'use strict';
-// The trace of the outputs and inputs, and the sound
+// The trace of the outputs and inputs, and what readies a canvas
 // ---- Trace ----
 
 // Drops what has scrolled off, keeping the one point that says what the
@@ -47,22 +47,15 @@ function drawEdges(context, times, colour, top, height, width) {
     context.stroke();
 }
 
-function drawTrace() {
-    const canvas = el('trace');
+// Makes a canvas ready for a frame: sized to its box at the screen's own
+// pixels, cleared, with the line and the lettering every drawing here uses.
+// `colour` gives one of the style's colours by name
+function openCanvas(canvas) {
     const context = canvas.getContext('2d');
     const scale = window.devicePixelRatio || 1;
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     const style = getComputedStyle(document.documentElement);
-    const colour = (name) => style.getPropertyValue(name).trim();
-    const cvHeight = height * 0.42;
-    const pinHeight = height * 0.08;
-    // The four rows under the CV: where each starts, as a part of the height
-    const rows = { gate: 0.48, clock: 0.61, clockIn: 0.74, resetIn: 0.87 };
-    const labelDrop = height * 0.06;
-    const cvMax = Math.max(CV_SCALE_MIN_MV, ...trace.cv.map((point) => point[1]));
-    const cvFullScale = (cvMax <= CV_SCALE_MIN_MV)
-        ? CV_SCALE_MIN_MV : Math.ceil(cvMax / CV_SCALE_STEP_MV) * CV_SCALE_STEP_MV;
 
     if ((canvas.width !== Math.round(width * scale))
         || (canvas.height !== Math.round(height * scale))) {
@@ -73,6 +66,21 @@ function drawTrace() {
     context.clearRect(0, 0, width, height);
     context.lineWidth = 1.5;
     context.font = '11px system-ui, sans-serif';
+    return { context, width, height,
+        colour: (name) => style.getPropertyValue(name).trim() };
+}
+
+function drawTrace() {
+    const { context, width, height, colour } = openCanvas(el('trace'));
+    const cvHeight = height * 0.42;
+    const pinHeight = height * 0.08;
+    // The four rows under the CV: where each starts, as a part of the height
+    const rows = { gate: 0.48, clock: 0.61, clockIn: 0.74, resetIn: 0.87 };
+    const labelDrop = height * 0.06;
+    const cvMax = Math.max(CV_SCALE_MIN_MV, ...trace.cv.map((point) => point[1]));
+    const cvFullScale = (cvMax <= CV_SCALE_MIN_MV)
+        ? CV_SCALE_MIN_MV : Math.ceil(cvMax / CV_SCALE_STEP_MV) * CV_SCALE_STEP_MV;
+
     context.fillStyle = colour('--dim');
     context.fillText(`CV, 0 to ${(cvFullScale / 1000).toFixed(2)} V`, 4, 12);
     context.fillText('Gate', 4, (height * rows.gate) + labelDrop);
@@ -89,29 +97,4 @@ function drawTrace() {
     drawEdges(context, trace.resetIn, colour('--in'),
         height * rows.resetIn, pinHeight, width);
     requestAnimationFrame(drawTrace);
-}
-
-// ---- Sound: the pitch CV as an oscillator, opened by the gate ----
-
-function toggleSound() {
-    if (state === null) {
-        return; // Nothing to play until the server has answered
-    }
-    if (sound === null) {
-        const context = new AudioContext();
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-
-        oscillator.type = 'triangle';
-        gain.gain.value = 0;
-        oscillator.connect(gain).connect(context.destination);
-        oscillator.start();
-        sound = { context, oscillator, gain };
-        showCv(state.millivolts);
-        showGate(state.gate);
-    } else {
-        sound.context.close();
-        sound = null;
-    }
-    el('sound').textContent = `Sound: ${(sound === null) ? 'off' : 'on'}`;
 }

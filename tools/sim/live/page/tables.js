@@ -10,10 +10,11 @@ const MODE_BITS = 8;
 // rotary switch of eight positions that puts out its position as that number
 const ENGINE_BITS = 3;
 const ENGINE_MASK = (1 << ENGINE_BITS) - 1;
-const ENGINE_POSITIONS = 1 << ENGINE_BITS;
-// The rotary switch as drawn, in the units of its own picture: where its
+// The engine's rotary switch and the selector's are the same part, drawn
+// alike: eight positions, in the units of its own picture: where its
 // middle is, how big it is, how far out the dots and the names stand, and
 // the angle of position 0 and of each position on from it, clockwise from up
+const KNOB_POSITIONS = 8;
 const KNOB_WIDTH = 230;
 const KNOB_HEIGHT = 112;
 const KNOB_X = 115;
@@ -23,6 +24,16 @@ const KNOB_DOT_RADIUS = 35;
 const KNOB_LABEL_RADIUS = 46;
 const KNOB_FIRST_DEG = -126;
 const KNOB_STEP_DEG = 36;
+// A pot as drawn, in the units of its own picture: its size, its middle,
+// how big it is, how far out the dots at the ends of its travel stand, and
+// how far it turns from one end to the other. Then how far a drag has to
+// go, in pixels, to take it the whole way
+const POT_SIZE = 44;
+const POT_MIDDLE = 22;
+const POT_RADIUS = 15;
+const POT_DOT_RADIUS = 20;
+const POT_SWEEP_DEG = 270;
+const POT_DRAG_PX = 200;
 const ENGINE_PLAIN = 0;
 const ENGINE_STAGE = 1;
 const ENGINE_KLEE = 2;
@@ -87,9 +98,25 @@ const MIDI_LINES_MAX = 200;
 const MIDI_CLOCKS_PER_QUARTER = 24;
 // How a line of the MIDI monitor names each message, padded to one width
 const MIDI_NAMES = { start: 'Start', stop: 'Stop', noteOn: 'Note On ', noteOff: 'Note Off' };
-const SOUND_BASE_HZ = 130.81;   // What 0 V plays; an octave up per volt
-const SOUND_LEVEL = 0.2;
-const SOUND_EDGE_S = 0.005;
+const MS_PER_S = 1000;
+// The patched gear. The VCO: what 0 V plays with the tune knob at its
+// middle, an octave up per volt, and the wave that is not an oscillator's
+const VCO_BASE_HZ = 130.81;
+const VCO_NOISE = 'noise';
+const SEMITONES_PER_OCTAVE = 12;
+const NOISE_SECONDS = 2;        // Before the noise comes round again
+// An attack or release is the time to get about 95% of the way, which is
+// this many of the time constants the envelope is given
+const ENVELOPE_SETTLES = 3;
+const VOLUME_STEPS = 100;       // The volume pot's top
+// The scope: how much of a signal a probe holds, how much of that a wave
+// is drawn from, and its four bands, each under a label
+const SCOPE_PROBE_SAMPLES = 2048;
+const SCOPE_SAMPLES = 1024;
+const ENVELOPE_PROBE_SAMPLES = 32;
+const SCOPE_ROWS = 4;
+const SCOPE_LABEL_PX = 16;
+const SCOPE_GAP_PX = 4;
 // What the tempo pot's reading means, as the firmware takes it: a tempo on
 // the internal clock, and one of seven ratios to the external clock
 const BPM_MIN = 30;
@@ -101,6 +128,9 @@ const SELECTOR_NAMES = [
     '4 Step position (not built)', '5 Amplitude (not built)',
     '6 Attack/release (not built)', '7 Vibrato (not built)',
 ];
+// What the selector's rotary switch has at each position that does
+// something; the rest get their number, as the engine's do
+const SELECTOR_KNOB_NAMES = ['tempo', 'note', 'gate length', 'step chance'];
 const READING_PER_BPM = 4;
 const READING_PER_RATIO = 147;
 const RATIOS = [
@@ -127,7 +157,7 @@ const trace = { cv: [], gate: [], clock: [], clockIn: [], resetIn: [] };
 let state = null;       // The last `state` event
 let nowMs = 0;          // Chip time
 let lastClockRiseMs = null;
-let sound = null;
+let gear = null;        // The patched gear, while it is on
 
 function post(command) {
     return fetch('/control', {
