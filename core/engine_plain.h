@@ -8,6 +8,10 @@
  *         for a PC. See engine.h for the interface every engine follows.
  * @author BonelessPig
  *
+ * The offset (see engine.h) moves the step to another of the range, by up
+ * to half of it either way (see address_offset_step()), before its note
+ * value is read.
+ *
  * @copyright Copyright (c) 2026
  *
  */

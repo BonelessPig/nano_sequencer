@@ -36,4 +36,9 @@ Loaded with the files below, on top of `core/CLAUDE.md`, whose rules apply to al
   The stage engine leaves it off on the last step of a hold; the Klee engine's merge sets it on every note and lets the rest that follows end the gate at the boundary.
 - An engine with fewer than sixteen places (the stage engine's eight) takes the addressing range modulo its own count and hands `address_next()` a range that does not wrap, then folds the step it gets back.
   Direction, pendulum and one-shot then need no code of their own.
+- The offset in `engine_inputs_t` moves the step an engine gives, after it has worked out where it is and before it reads the note, and never the state that says where it is: the count, the register, the counters.
+  A new engine says what a place is to it and uses `address_offset_step()` (places of the range) or `address_turn()` (places of a ring of its own); a depth of 0 must give the step it would have given and draw nothing.
+  The Klee engine keeps the register as turned in `shown`, for the lights; `stages` is the one that moves on.
+- cppcheck takes an identifier made of hex digits and an `l` or `u` at its end for a number with a suffix (`cell` was two rule 7.3 findings).
+  Give the variable another name.
 - The stage engine's layout (which steps are controls, which switches are the length and which the mode, the order of the modes) is constants at the top of `engine_stage.c`, described in words in its header; the tests define their own.

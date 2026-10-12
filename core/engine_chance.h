@@ -21,6 +21,9 @@
  * numbers the engine is given; with none given, nothing is skipped and a
  * shuffled step is always the first of the range.
  *
+ * The offset (see engine.h) moves the step to another of the range, as for
+ * the plain engine, a shuffled one too, before the skip is drawn.
+ *
  * @copyright Copyright (c) 2026
  *
  */

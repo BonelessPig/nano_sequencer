@@ -140,9 +140,28 @@ static void engines_init(seq_state_t *p_state)
 
 
 /**
- * @brief  Asks the engine the mode switches choose for the step to play. An
- *         engine that was not the one to play the last step starts its
- *         pattern from the beginning.
+ * @brief  Works out how far the LFO, as it reads now, moves one of the
+ *         things it modulates. An LFO that could not be read is taken to be
+ *         at its centre, which moves nothing.
+ * @param  p_in     Inputs for this tick.
+ * @param  amount   That thing's amount, 0 to 1023.
+ * @param  p_depth  Receives the depth.
+ */
+static void mod_for(const seq_inputs_t *p_in, uint16_t amount, mod_depth_t *p_depth)
+{
+    const uint16_t lfo = p_in->mod.b_lfo_valid ? p_in->mod.lfo
+                                               : (uint16_t)MOD_SIGNAL_CENTRE;
+
+    mod_depth(amount, lfo, p_depth);
+}
+
+
+
+/**
+ * @brief  Asks the engine the mode switches choose for the step to play,
+ *         moved as far as the LFO moves the step position. An engine that
+ *         was not the one to play the last step starts its pattern from the
+ *         beginning.
  * @param  p_state  Sequencer state; the engine moves on.
  * @param  p_in     Inputs for this tick.
  * @param  p_step   Receives the step, if there is one.
@@ -152,6 +171,7 @@ static bool engine_step(seq_state_t *p_state, const seq_inputs_t *p_in,
                         engine_step_t *p_step)
 {
     engine_inputs_t engine_in;
+    mod_depth_t     depth  = { 0U, false };
     uint8_t         engine =
         (uint8_t)(panel_mode_value(p_in->raw_steps) & ENGINE_SELECT_MASK);
     bool            b_step;
@@ -169,6 +189,11 @@ static bool engine_step(seq_state_t *p_state, const seq_inputs_t *p_in,
     engine_in.p_raw_steps = p_in->raw_steps;
     engine_in.p_address   = &p_in->address;
     engine_in.p_prng      = &p_state->prng;
+
+    // The engine is handed the depth alone, and makes places of it
+    mod_for(p_in, p_in->mod.position, &depth);
+    engine_in.offset.depth      = depth.depth;
+    engine_in.offset.b_negative = depth.b_negative;
 
     switch (engine)
     {
@@ -205,14 +230,14 @@ static bool engine_step(seq_state_t *p_state, const seq_inputs_t *p_in,
 /**
  * @brief  Gives the step lights for a step that has just begun: the light
  *         of the step itself, or for the Klee engine the active stages of
- *         its register.
+ *         its register, as that step's offset turned it.
  * @param  p_state  Sequencer state, after the engine has given the step.
  * @param  step     The step it gave, 0 to PANEL_STEP_COUNT - 1.
  * @return One bit a light, bit n for step n.
  */
 static uint16_t step_leds(const seq_state_t *p_state, uint8_t step)
 {
-    uint16_t leds = p_state->klee.stages;
+    uint16_t leds = p_state->klee.shown;
 
     if (ENGINE_KLEE != p_state->engine)
     {
@@ -224,24 +249,6 @@ static uint16_t step_leds(const seq_state_t *p_state, uint8_t step)
     }
 
     return leds;
-}
-
-
-
-/**
- * @brief  Works out how far the LFO, as it reads now, moves one of the
- *         things it modulates. An LFO that could not be read is taken to be
- *         at its centre, which moves nothing.
- * @param  p_in     Inputs for this tick.
- * @param  amount   That thing's amount, 0 to 1023.
- * @param  p_depth  Receives the depth.
- */
-static void mod_for(const seq_inputs_t *p_in, uint16_t amount, mod_depth_t *p_depth)
-{
-    const uint16_t lfo = p_in->mod.b_lfo_valid ? p_in->mod.lfo
-                                               : (uint16_t)MOD_SIGNAL_CENTRE;
-
-    mod_depth(amount, lfo, p_depth);
 }
 
 

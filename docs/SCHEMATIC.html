@@ -390,9 +390,10 @@ the board yet, and the modulation input's stage is not designed.</p>
 </div>
 
 <ul>
-    <li><b>Selector.</b> Position 0 is the tempo. Positions 1, 2 and 3 are how much of the
-        LFO moves the note, the gate length and the chance of a step dropping out.
-        Positions 4 to 7 hold an amount and do nothing with it yet. With chip 9 not wired
+    <li><b>Selector.</b> Position 0 is the tempo. Positions 1 to 4 are how much of the
+        LFO moves the note, the gate length, the chance of a step dropping out and which
+        step is played.
+        Positions 5 to 7 hold an amount and do nothing with it yet. With chip 9 not wired
         the firmware reads position 0, so the pot is the tempo.</li>
     <li><b>The pot.</b> After the selector moves, the pot changes nothing until it has been
         turned to meet the amount that position holds.</li>

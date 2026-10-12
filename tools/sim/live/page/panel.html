@@ -230,7 +230,7 @@
                     <td>An 8-way coded rotary switch that says which of
                         eight amounts the pot sets. Position 0 is the
                         tempo. The others each hold how much of the LFO
-                        goes to one thing; 0 is off. Positions 4 to 7 hold
+                        goes to one thing; 0 is off. Positions 5 to 7 hold
                         an amount and do nothing with it yet.</td></tr>
                 <tr><th>Pot</th>
                     <td>After the selector moves, the pot changes nothing
@@ -257,6 +257,17 @@
                 <tr><th>3 Step chance</th>
                     <td>While the LFO is above its centre, makes steps drop
                         out at random, the more the further it goes.</td></tr>
+                <tr><th>4 Step position</th>
+                    <td>Plays another step in place of the one the pattern
+                        has got to: up to half the range of steps further
+                        on while the LFO is above its centre, or back while
+                        below, coming round past the ends. The pattern
+                        itself is not moved. The stage engine moves by
+                        stages, the Klee engine turns its register, and
+                        the Cartesian engine goes round the sixteen. With
+                        no log (the release and midi images) the step named
+                        here is the pattern's own; the step lights show
+                        the one played.</td></tr>
             </table></div>
         </details>
         <div class="row spaced">

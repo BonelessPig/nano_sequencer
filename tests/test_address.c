@@ -437,8 +437,229 @@ static void test_null_pointers_are_ignored(void)
 
 
 
+/**
+ * @brief An offset of a depth, forwards or back.
+ */
+static address_offset_t make_offset(uint8_t depth, bool b_negative)
+{
+    address_offset_t offset;
+
+    (void)memset(&offset, 0, sizeof(offset));
+    offset.depth      = depth;
+    offset.b_negative = b_negative;
+    return offset;
+}
+
+
+
+static void test_turn_at_no_depth_moves_nothing(void)
+{
+    const address_offset_t forward = make_offset(0U, false);
+    const address_offset_t back    = make_offset(0U, true);
+
+    for (uint8_t place = 0U; place < 16U; place++)
+    {
+        TEST_ASSERT_EQUAL(place, address_turn(place, 16U, &forward));
+        TEST_ASSERT_EQUAL(place, address_turn(place, 16U, &back));
+    }
+}
+
+
+
+static void test_turn_at_full_depth_moves_half_the_ring_rounded_down(void)
+{
+    const address_offset_t forward = make_offset(255U, false);
+    const address_offset_t back    = make_offset(255U, true);
+
+    // 8 of 16, 4 of 8, 2 of 4 and of 5, and nothing of 1
+    TEST_ASSERT_EQUAL(8, address_turn(0U, 16U, &forward));
+    TEST_ASSERT_EQUAL(8, address_turn(0U, 16U, &back));
+    TEST_ASSERT_EQUAL(4, address_turn(0U, 8U, &forward));
+    TEST_ASSERT_EQUAL(4, address_turn(0U, 8U, &back));
+    TEST_ASSERT_EQUAL(2, address_turn(0U, 4U, &forward));
+    TEST_ASSERT_EQUAL(2, address_turn(0U, 4U, &back));
+    TEST_ASSERT_EQUAL(2, address_turn(0U, 5U, &forward));
+    TEST_ASSERT_EQUAL(3, address_turn(0U, 5U, &back));
+    TEST_ASSERT_EQUAL(0, address_turn(0U, 1U, &forward));
+    TEST_ASSERT_EQUAL(0, address_turn(0U, 1U, &back));
+}
+
+
+
+static void test_turn_is_in_proportion_to_the_depth_rounded_to_the_nearest(void)
+{
+    // Of 16 places: 8 x 15 / 255 is 0.47, 8 x 16 / 255 is 0.502, 8 x 128 /
+    // 255 is 4.02 and 8 x 239 / 255 is 7.498, 8 x 240 / 255 is 7.53
+    static const struct
+    {
+        uint8_t depth;
+        uint8_t places;
+    } cases[] =
+    {
+        { 15U, 0U }, { 16U, 1U }, { 128U, 4U }, { 239U, 7U }, { 240U, 8U }
+    };
+
+    for (size_t i = 0U; i < (sizeof(cases) / sizeof(cases[0])); i++)
+    {
+        const address_offset_t forward = make_offset(cases[i].depth, false);
+        const address_offset_t back    = make_offset(cases[i].depth, true);
+
+        TEST_ASSERT_EQUAL(cases[i].places, address_turn(0U, 16U, &forward));
+        TEST_ASSERT_EQUAL((16U - cases[i].places) % 16U, address_turn(0U, 16U, &back));
+    }
+}
+
+
+
+static void test_turn_comes_round_past_either_end(void)
+{
+    const address_offset_t forward = make_offset(128U, false); // 4 of 16
+    const address_offset_t back    = make_offset(128U, true);
+
+    TEST_ASSERT_EQUAL(2, address_turn(14U, 16U, &forward));
+    TEST_ASSERT_EQUAL(14, address_turn(2U, 16U, &back));
+    TEST_ASSERT_EQUAL(9, address_turn(5U, 16U, &forward));
+    TEST_ASSERT_EQUAL(1, address_turn(5U, 16U, &back));
+}
+
+
+
+static void test_turn_wraps_a_place_beyond_the_ring_and_fits_the_largest(void)
+{
+    const address_offset_t none = make_offset(0U, false);
+    const address_offset_t full = make_offset(255U, false);
+    const address_offset_t back = make_offset(255U, true);
+
+    TEST_ASSERT_EQUAL(1, address_turn(9U, 8U, &none));
+    // 255 places: 254 forward by 127 is 126, and back by 127 is 127
+    TEST_ASSERT_EQUAL(126, address_turn(254U, 255U, &full));
+    TEST_ASSERT_EQUAL(127, address_turn(254U, 255U, &back));
+}
+
+
+
+static void test_turn_with_no_ring_or_no_offset_gives_the_place_back(void)
+{
+    const address_offset_t full = make_offset(255U, false);
+
+    TEST_ASSERT_EQUAL(9, address_turn(9U, 0U, &full));
+    TEST_ASSERT_EQUAL(9, address_turn(9U, 16U, NULL));
+}
+
+
+
+static void test_offset_step_moves_within_the_range(void)
+{
+    // Steps 4 to 7: four places, so two either way at the most
+    const address_config_t config = make_config(ADDRESS_FORWARD, 4U, 7U);
+    const address_offset_t one    = make_offset(128U, false);
+    const address_offset_t two    = make_offset(255U, false);
+    const address_offset_t back   = make_offset(128U, true);
+
+    TEST_ASSERT_EQUAL(5, address_offset_step(&config, 4U, &one));
+    TEST_ASSERT_EQUAL(4, address_offset_step(&config, 7U, &one));
+    TEST_ASSERT_EQUAL(6, address_offset_step(&config, 4U, &two));
+    TEST_ASSERT_EQUAL(5, address_offset_step(&config, 7U, &two));
+    TEST_ASSERT_EQUAL(7, address_offset_step(&config, 4U, &back));
+    TEST_ASSERT_EQUAL(6, address_offset_step(&config, 7U, &back));
+}
+
+
+
+static void test_offset_step_counts_towards_the_last_step_in_every_direction(void)
+{
+    static const address_direction_t directions[] =
+    {
+        ADDRESS_FORWARD, ADDRESS_REVERSE, ADDRESS_PENDULUM
+    };
+    const address_offset_t one = make_offset(128U, false);
+
+    for (size_t i = 0U; i < (sizeof(directions) / sizeof(directions[0])); i++)
+    {
+        const address_config_t config = make_config(directions[i], 4U, 7U);
+
+        TEST_ASSERT_EQUAL(6, address_offset_step(&config, 5U, &one));
+    }
+}
+
+
+
+static void test_offset_step_follows_a_range_round_through_step_zero(void)
+{
+    // Steps 14, 15, 0 and 1
+    const address_config_t config = make_config(ADDRESS_FORWARD, 14U, 1U);
+    const address_offset_t one    = make_offset(128U, false);
+    const address_offset_t back   = make_offset(128U, true);
+
+    TEST_ASSERT_EQUAL(0, address_offset_step(&config, 15U, &one));
+    TEST_ASSERT_EQUAL(14, address_offset_step(&config, 1U, &one));
+    TEST_ASSERT_EQUAL(15, address_offset_step(&config, 0U, &back));
+    TEST_ASSERT_EQUAL(1, address_offset_step(&config, 14U, &back));
+}
+
+
+
+static void test_offset_step_covers_the_whole_panel_by_eight(void)
+{
+    const address_config_t config = make_config(ADDRESS_FORWARD, 0U, 15U);
+    const address_offset_t full   = make_offset(255U, false);
+    const address_offset_t back   = make_offset(255U, true);
+
+    TEST_ASSERT_EQUAL(11, address_offset_step(&config, 3U, &full));
+    TEST_ASSERT_EQUAL(11, address_offset_step(&config, 3U, &back));
+}
+
+
+
+static void test_offset_step_leaves_a_range_of_one_alone(void)
+{
+    const address_config_t config = make_config(ADDRESS_FORWARD, 6U, 6U);
+    const address_offset_t full   = make_offset(255U, false);
+
+    TEST_ASSERT_EQUAL(6, address_offset_step(&config, 6U, &full));
+}
+
+
+
+static void test_offset_step_wraps_steps_beyond_the_panel_and_the_range(void)
+{
+    // 20 and 23 are steps 4 and 7; step 21 is step 5; step 9 is outside
+    // the range, five places on from its first step, which is one place
+    const address_config_t config = make_config(ADDRESS_FORWARD, 20U, 23U);
+    const address_offset_t none   = make_offset(0U, false);
+
+    TEST_ASSERT_EQUAL(5, address_offset_step(&config, 21U, &none));
+    TEST_ASSERT_EQUAL(5, address_offset_step(&config, 9U, &none));
+}
+
+
+
+static void test_offset_step_with_a_null_pointer_gives_the_step_back(void)
+{
+    const address_config_t config = make_config(ADDRESS_FORWARD, 4U, 7U);
+    const address_offset_t full   = make_offset(255U, false);
+
+    TEST_ASSERT_EQUAL(4, address_offset_step(NULL, 4U, &full));
+    TEST_ASSERT_EQUAL(4, address_offset_step(&config, 4U, NULL));
+}
+
+
+
 int main(void)
 {
+    RUN_TEST(test_turn_at_no_depth_moves_nothing);
+    RUN_TEST(test_turn_at_full_depth_moves_half_the_ring_rounded_down);
+    RUN_TEST(test_turn_is_in_proportion_to_the_depth_rounded_to_the_nearest);
+    RUN_TEST(test_turn_comes_round_past_either_end);
+    RUN_TEST(test_turn_wraps_a_place_beyond_the_ring_and_fits_the_largest);
+    RUN_TEST(test_turn_with_no_ring_or_no_offset_gives_the_place_back);
+    RUN_TEST(test_offset_step_moves_within_the_range);
+    RUN_TEST(test_offset_step_counts_towards_the_last_step_in_every_direction);
+    RUN_TEST(test_offset_step_follows_a_range_round_through_step_zero);
+    RUN_TEST(test_offset_step_covers_the_whole_panel_by_eight);
+    RUN_TEST(test_offset_step_leaves_a_range_of_one_alone);
+    RUN_TEST(test_offset_step_wraps_steps_beyond_the_panel_and_the_range);
+    RUN_TEST(test_offset_step_with_a_null_pointer_gives_the_step_back);
     RUN_TEST(test_init_goes_to_the_start_of_the_cycle);
     RUN_TEST(test_forward_plays_all_sixteen_steps_and_wraps);
     RUN_TEST(test_forward_stays_within_the_range);

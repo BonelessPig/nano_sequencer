@@ -15,6 +15,7 @@ Loaded with the files below, on top of `tools/sim/CLAUDE.md`, whose rules apply 
   Time their steps from the clock output, which pulses on every step, and its notes from the gate.
   The same measurements work on the debug image, where they are far steadier than the log (0.003 ms against 0.25 ms).
 - A scenario goes in the file for its topic, inside that file's loop over the three images if it should hold for every one: `transport.test.js`, `calibration.test.js`, `engines.test.js` (the mode switches or an engine), `watchdog.test.js`, `modulation.test.js`, and `midi.test.js` or `midi_clock.test.js` for the midi image alone.
+- The step the pattern has got to, on any image, is the number of clock output rises before the gate rise in question: the gate is written ahead of the clock output in a tick.
 - The board sorts the log: `serial.lines` holds the step lines, which scenarios count and time, and `serial.notices` every other line (start-up, calibration, errors).
   A new kind of line goes to the notices unless it begins `Step `.
 - There is one wire from the USART and the board knows from its config what is on it.

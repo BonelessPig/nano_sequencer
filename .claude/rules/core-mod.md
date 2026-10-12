@@ -20,3 +20,5 @@ Loaded with the files below, on top of `core/CLAUDE.md`, whose rules apply to al
   `mod_chance()` adds the draw to the depth in 16 bits and compares the sum: written as a draw above `255 - depth` it passes the host build and fails avr-gcc, as `core/CLAUDE.md` says of a saturating add.
 - Another thing for the LFO to move is an amount in `seq_mod_t`, a slot in `app.c` and a call in `seq.c`.
   `mod` is only touched if it needs a new kind of move.
+- The step position is the one move an engine makes and not `seq.c`: `engine_step()` works out the depth and hands it on as `offset` in `engine_inputs_t`, two plain values.
+  `engine.h` does not include `mod.h`, and an engine never sees the LFO or the amount.

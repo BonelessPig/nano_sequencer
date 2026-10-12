@@ -54,7 +54,9 @@ static bool next_stage(engine_stage_state_t *p_state, const engine_inputs_t *p_i
     b_stage = address_next(&p_state->address, &stages, &step);
     if (b_stage)
     {
-        const uint8_t stage   = (uint8_t)(step % STAGE_COUNT);
+        // The offset is taken here, so a stage of several steps stays put
+        const uint8_t moved   = address_offset_step(&stages, step, &p_in->offset);
+        const uint8_t stage   = (uint8_t)(moved % STAGE_COUNT);
         const uint8_t control =
             panel_step_value(p_in->p_raw_steps, (uint8_t)(stage + STAGE_COUNT));
 

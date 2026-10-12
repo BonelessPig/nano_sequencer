@@ -28,6 +28,12 @@
  * held into the step after it. The note value still has to go through the
  * note mapping to become a pitch.
  *
+ * The offset in engine_inputs_t moves the step that is played, and each
+ * engine's header says what a place is to it. It never moves where the
+ * engine has got to: the step after is the one it would have been, a
+ * one-shot pattern ends when it would have, and nothing more is drawn from
+ * the random numbers.
+ *
  * @copyright Copyright (c) 2026
  *
  */
@@ -48,6 +54,10 @@ typedef struct
     prng_state_t           *p_prng;      // The random numbers every engine
                                          // draws from; moved on by a draw. If
                                          // null, nothing is left to chance
+    address_offset_t        offset;      // How far to move the step played,
+                                         // in places of the engine's own
+                                         // cycle (see address_turn()); a
+                                         // depth of 0 moves nothing
 } engine_inputs_t;
 
 /**

@@ -37,6 +37,9 @@ static engine_inputs_t make_inputs(uint8_t first_step, uint8_t last_step)
 
     in.p_raw_steps = g_descending;
     in.p_address   = &g_address;
+    in.p_prng      = NULL;
+    in.offset.depth      = 0U;
+    in.offset.b_negative = false;
     return in;
 }
 
@@ -142,6 +145,57 @@ static void test_finished_one_shot_gives_no_step(void)
 
 
 
+static void test_offset_moves_the_step_played_and_not_the_pattern(void)
+{
+    // Steps 4 to 7 are four places, so a depth of 128 is one of the two
+    static const uint8_t expected_steps[] = { 5U, 6U, 7U, 4U, 5U };
+    engine_inputs_t      in = make_inputs(4U, 7U);
+    engine_plain_state_t state;
+    engine_step_t        played;
+
+    in.offset.depth = 128U;
+    engine_plain_init(&state);
+    for (size_t i = 0U; i < (sizeof(expected_steps) / sizeof(expected_steps[0])); i++)
+    {
+        TEST_ASSERT(engine_plain_step(&state, &in, &played));
+        TEST_ASSERT_EQUAL(expected_steps[i], played.step);
+        TEST_ASSERT_EQUAL(15U - expected_steps[i], played.note); // The note of that step
+    }
+
+    // The sixth step of the pattern is step 5, and with no offset it plays
+    in.offset.depth = 0U;
+    TEST_ASSERT(engine_plain_step(&state, &in, &played));
+    TEST_ASSERT_EQUAL(5, played.step);
+
+    // The seventh is step 6: back by two places is step 4
+    in.offset.depth      = 255U;
+    in.offset.b_negative = true;
+    TEST_ASSERT(engine_plain_step(&state, &in, &played));
+    TEST_ASSERT_EQUAL(4, played.step);
+    TEST_ASSERT_EQUAL(11, played.note);
+}
+
+
+
+static void test_offset_leaves_a_one_shot_its_number_of_steps(void)
+{
+    engine_inputs_t      in = make_inputs(4U, 5U);
+    engine_plain_state_t state;
+    engine_step_t        played;
+
+    // Two places, so the fullest offset is one: the two steps change places
+    g_address.b_one_shot = true;
+    in.offset.depth      = 255U;
+    engine_plain_init(&state);
+    TEST_ASSERT(engine_plain_step(&state, &in, &played));
+    TEST_ASSERT_EQUAL(5, played.step);
+    TEST_ASSERT(engine_plain_step(&state, &in, &played));
+    TEST_ASSERT_EQUAL(4, played.step);
+    TEST_ASSERT(!engine_plain_step(&state, &in, &played));
+}
+
+
+
 static void test_null_pointers_are_ignored(void)
 {
     engine_inputs_t      in = make_inputs(0U, 15U);
@@ -176,6 +230,8 @@ int main(void)
     RUN_TEST(test_addressing_controls_are_followed);
     RUN_TEST(test_note_is_read_from_the_panel_as_it_is_now);
     RUN_TEST(test_finished_one_shot_gives_no_step);
+    RUN_TEST(test_offset_moves_the_step_played_and_not_the_pattern);
+    RUN_TEST(test_offset_leaves_a_one_shot_its_number_of_steps);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();
 }

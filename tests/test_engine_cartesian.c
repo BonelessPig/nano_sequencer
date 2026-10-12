@@ -35,6 +35,8 @@ static engine_inputs_t make_inputs(uint8_t mode)
     in.p_raw_steps   = g_raw;
     in.p_address     = NULL;
     in.p_prng        = NULL;
+    in.offset.depth      = 0U;
+    in.offset.b_negative = false;
     return in;
 }
 
@@ -119,6 +121,38 @@ static void test_y_moves_every_so_many_steps(void)
 
 
 
+static void test_offset_moves_the_cell_round_the_sixteen_and_not_the_counters(void)
+{
+    engine_inputs_t          in = make_inputs(MODE(0U, 0U));
+    engine_cartesian_state_t state;
+    engine_step_t            played;
+
+    // A depth of 128 is four of the sixteen: the cell below
+    in.offset.depth = 128U;
+    engine_cartesian_init(&state);
+    for (unsigned int count = 0U; count < 18U; count++)
+    {
+        const unsigned int step = (count + 4U) % 16U;
+
+        TEST_ASSERT(engine_cartesian_step(&state, &in, &played));
+        TEST_ASSERT_EQUAL(step, played.step);
+        TEST_ASSERT_EQUAL(15U - step, played.note);
+    }
+
+    // Eighteen steps played, so cell 2 is next: back by eight is cell 10
+    in.offset.depth      = 255U;
+    in.offset.b_negative = true;
+    TEST_ASSERT(engine_cartesian_step(&state, &in, &played));
+    TEST_ASSERT_EQUAL(10, played.step);
+
+    // And with no offset the path is where it would have been
+    in.offset.depth = 0U;
+    TEST_ASSERT(engine_cartesian_step(&state, &in, &played));
+    TEST_ASSERT_EQUAL(3, played.step);
+}
+
+
+
 static void test_init_is_the_reset(void)
 {
     const engine_inputs_t    in = make_inputs(MODE(0U, 1U));
@@ -168,6 +202,7 @@ int main(void)
     RUN_TEST(test_switches_off_is_the_sixteen_steps_in_order);
     RUN_TEST(test_x_moves_every_so_many_steps);
     RUN_TEST(test_y_moves_every_so_many_steps);
+    RUN_TEST(test_offset_moves_the_cell_round_the_sixteen_and_not_the_counters);
     RUN_TEST(test_init_is_the_reset);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();

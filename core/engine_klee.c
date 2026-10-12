@@ -74,6 +74,30 @@ static uint16_t moved_on(uint16_t stages, bool b_invert)
 
 
 /**
+ * @brief  Gives the register as an offset turns it: moved on by as many
+ *         stages as the offset moves a place round the sixteen, with
+ *         nothing turned over on the way.
+ * @param  stages    The register.
+ * @param  p_offset  How far to turn it, and which way; not null.
+ * @return The register as turned.
+ */
+static uint16_t turned(uint16_t stages, const address_offset_t *p_offset)
+{
+    // Back by some is on by the rest of the sixteen
+    const uint8_t moves  = address_turn(0U, (uint8_t)PANEL_STEP_COUNT, p_offset);
+    uint16_t      result = stages;
+
+    for (uint8_t move = 0U; move < moves; move++)
+    {
+        result = moved_on(result, false);
+    }
+
+    return result;
+}
+
+
+
+/**
  * @brief  Adds up the values of the active stages.
  * @param  stages       The register.
  * @param  p_raw_steps  The panel bits; not null.
@@ -107,6 +131,7 @@ void engine_klee_init(engine_klee_state_t *p_state)
     if (NULL != p_state)
     {
         p_state->stages        = 0U;
+        p_state->shown         = 0U;
         p_state->position      = 0U;
         p_state->b_loaded      = false;
         p_state->b_load_switch = false;
@@ -145,9 +170,10 @@ bool engine_klee_step(engine_klee_state_t *p_state, const engine_inputs_t *p_in,
         }
         p_state->b_loaded      = true;
         p_state->b_load_switch = b_load_switch;
+        p_state->shown         = turned(p_state->stages, &p_in->offset);
 
         p_step->step  = p_state->position;
-        p_step->note  = sum_of_active(p_state->stages, p_in->p_raw_steps);
+        p_step->note  = sum_of_active(p_state->shown, p_in->p_raw_steps);
         p_step->b_tie = (0U != (mode & MODE_MERGE));
         b_step        = true;
     }

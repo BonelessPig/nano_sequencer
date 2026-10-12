@@ -27,6 +27,10 @@
  * address.h), with the first and last step each taken as a stage, 0 to 7 (a
  * larger value wraps round, so a last step of 15 is stage 7).
  *
+ * The offset (see engine.h) moves the stage to another of that range, by up
+ * to half of it either way. It is taken when a stage begins, like the
+ * stage's length, so a stage of several steps stays on one stage.
+ *
  * @copyright Copyright (c) 2026
  *
  */

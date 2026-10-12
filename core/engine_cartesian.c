@@ -62,7 +62,10 @@ bool engine_cartesian_step(engine_cartesian_state_t *p_state, const engine_input
         const uint8_t mode      = panel_mode_value(p_in->p_raw_steps);
         const uint8_t x_setting = (uint8_t)((uint8_t)(mode >> X_SHIFT) & SETTING_MASK);
         const uint8_t y_setting = (uint8_t)((uint8_t)(mode >> Y_SHIFT) & SETTING_MASK);
-        const uint8_t step      = (uint8_t)((uint8_t)(p_state->y * GRID_SIDE) + p_state->x);
+        const uint8_t place     = (uint8_t)((uint8_t)(p_state->y * GRID_SIDE) + p_state->x);
+        // The offset goes round the sixteen places of the grid, row by row
+        const uint8_t step      =
+            address_turn(place, (uint8_t)PANEL_STEP_COUNT, &p_in->offset);
 
         p_step->step  = step;
         p_step->note  = panel_step_value(p_in->p_raw_steps, step);

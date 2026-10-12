@@ -240,6 +240,27 @@ static void test_positions_2_and_3_are_the_gate_length_and_the_chance(void)
 
 
 
+static void test_position_4_is_the_step_played(void)
+{
+    start_app();
+    run_ticks(2U);
+    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
+
+    // Full amount and the LFO half way up is four of the sixteen places
+    // on: step 1 plays as step 5, with step 5's note
+    set_amount(4U, 1023U);
+    host_set_mod(768U, STATUS_OK);
+    run_ticks(TICKS_PER_STEP);
+    expect_event(1U, HOST_EVENT_STEP_NOTE, 5U, 9U);
+
+    // At its bottom, eight back: step 2 plays as step 10
+    host_set_mod(0U, STATUS_OK);
+    run_ticks(TICKS_PER_STEP);
+    expect_event(2U, HOST_EVENT_STEP_NOTE, 10U, 4U);
+}
+
+
+
 static void test_the_level_light_shows_the_amount_the_selector_is_on(void)
 {
     // Written on every tick, a tick behind: nothing has been worked out
@@ -306,6 +327,7 @@ int main(void)
     RUN_TEST(test_the_pot_sets_the_tempo_only_while_the_selector_is_on_it);
     RUN_TEST(test_the_lfo_and_the_note_amount_reach_the_sequencer);
     RUN_TEST(test_positions_2_and_3_are_the_gate_length_and_the_chance);
+    RUN_TEST(test_position_4_is_the_step_played);
     RUN_TEST(test_the_level_light_shows_the_amount_the_selector_is_on);
     RUN_TEST(test_the_level_light_is_dark_in_calibration_mode);
     RUN_TEST(test_calibration_mode_leaves_the_transport_alone);
