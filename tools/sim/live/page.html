@@ -80,7 +80,7 @@
     </section>
 
     <section>
-        <h2>Outputs</h2>
+        <h2>Signals</h2>
         <div class="row">
             <span><span class="led" id="gate-led"></span> Gate (D4)</span>
             <span><span class="led" id="clock-led"></span> Clock (D5)</span>
@@ -90,18 +90,54 @@
         </div>
         <canvas id="trace"></canvas>
         <details>
-            <summary>The trace</summary>
+            <summary>The chart</summary>
             <div class="scroll"><table class="key">
                 <tr><th>What it shows</th>
-                    <td>The last four seconds, the present at the right:
-                        the pitch CV, the gate and the clock output.</td></tr>
+                    <td>Every signal on one chart, in two sections, each
+                        under its heading. Board: the clock input, the
+                        clock output, the gate, the reset input and the
+                        pitch CV. Patched gear: its four signals, while it
+                        is on. Each band's name is over it.</td></tr>
+                <tr><th>Colours</th>
+                    <td>By what a signal is, as the key at the chart's top
+                        right says: one for what comes into the board, one
+                        for what goes out of it, and one for the gear's,
+                        which is outside the board. A band's name is in
+                        its colour, and the gate and clock lights above
+                        are in the outputs'.</td></tr>
+                <tr><th>Time</th>
+                    <td>All but the last two bands are the last four
+                        seconds, the present at the right. The last two
+                        are each one wave, a few milliseconds across.</td></tr>
                 <tr><th>Clock in, Reset in</th>
                     <td>A mark for each edge arriving at that input. Only
                         the instant is known, not how long it was high.</td></tr>
+                <tr><th>VCO frequency</th>
+                    <td>The pitch the gear's VCO is at: the pitch CV and
+                        its tune knob together. The band is a whole number
+                        of octaves high, named in hertz, so a semitone is
+                        the same rise anywhere in it.</td></tr>
+                <tr><th>Envelope</th>
+                    <td>The gear's own, into its VCA's CV. The board's
+                        envelope CV is the figure above.</td></tr>
+                <tr><th>VCO out</th>
+                    <td>The VCO's wave before the VCA, held still on a
+                        rising crossing of zero.</td></tr>
+                <tr><th>Audio out</th>
+                    <td>The same few milliseconds after the VCA: the VCO's
+                        wave at the height the envelope gives it. The
+                        volume pot is after it and is not shown.</td></tr>
                 <tr><th>Axes</th>
-                    <td>A line across the pitch CV at each volt, and a line
-                        down every row at each second back from the
-                        present.</td></tr>
+                    <td>A line across the pitch CV at each volt, across
+                        the frequency at each octave, at the envelope's 0
+                        and 1, and at each wave's zero and peaks. A line
+                        down every four-second band at each second back
+                        from the present, and down each wave every 5 ms.</td></tr>
+                <tr><th>Limits</th>
+                    <td>The gear's bands are paced by the browser, not the
+                        chip, so nothing in them is a measurement. A
+                        wave's full scale is the VCO's own peak, not a
+                        voltage.</td></tr>
             </table></div>
         </details>
     </section>

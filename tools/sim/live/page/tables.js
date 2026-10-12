@@ -100,7 +100,7 @@ const MIDI_CLOCKS_PER_QUARTER = 24;
 const MIDI_NAMES = { start: 'Start', stop: 'Stop', noteOn: 'Note On ', noteOff: 'Note Off' };
 const MS_PER_S = 1000;
 // The patched gear. The VCO: what 0 V plays with the tune knob at its
-// middle, an octave up per volt, and the wave that is not an oscillator's
+// middle, an octave up per volt, and the one wave that is not a wavetable
 const VCO_BASE_HZ = 130.81;
 const VCO_NOISE = 'noise';
 const SEMITONES_PER_OCTAVE = 12;
@@ -137,7 +137,45 @@ const PWM_DUTIES = [50, 40, 30, 20, 15, 10, 7, 4];     // Percent
 const FORMANT_GAIN = 6;         // How far the peak stands over the saw
 const FORMANT_WIDTH = 1.5;      // And how many harmonics wide it is
 const SYNC_STEP = 0.5;          // How much further each synced wave is tuned up
+const BEND_STEP = 0.5;          // How much harder each sine bends its own phase
+// How much of its cycle each wave of the triangle's table takes to rise,
+// in percent: a triangle at half of it, all but a saw at the last
+const TRIANGLE_RISES = [50, 57, 64, 71, 78, 85, 91, 96];
+// A wave that rises from -1 to 1 in `rise` of its cycle and falls back in
+// the rest, going up through zero where the others do
+const slopedPart = (rise) => shapePart((phase) => {
+    const along = (phase + (rise / 2)) % 1;
+
+    return (along < rise) ? ((2 * along) / rise) - 1
+        : 1 - ((2 * (along - rise)) / (1 - rise));
+});
+// A saw and a second one `turn` of a cycle behind it, in equal parts
+const twoSawPart = (turn) => (n) => {
+    const [, sine] = sawPart(n);
+    const angle = 2 * Math.PI * n * turn;
+
+    return [-(sine * Math.sin(angle)) / 2, (sine * (1 + Math.cos(angle))) / 2];
+};
 const WAVETABLES = {
+    // The three plain waves, each the first of a table of its own. A sine
+    // that bends its own phase further and further: phase modulation
+    sine: seriesOf((i) => ({
+        name: (i === 0) ? 'sine' : `sine bent ×${(i * BEND_STEP).toFixed(1)}`,
+        part: shapePart((phase) => Math.sin((2 * Math.PI * phase)
+            + (i * BEND_STEP * Math.sin(2 * Math.PI * phase)))),
+    })),
+    // A triangle whose rise takes more and more of the cycle, towards a saw
+    triangle: TRIANGLE_RISES.map((percent, i) => ({
+        name: (i === 0) ? 'triangle' : `${percent}% rise`,
+        part: slopedPart(percent / 100),
+    })),
+    // A saw with a second one further and further behind it, until at half
+    // a cycle the two make a saw an octave up
+    saw: seriesOf((i) => ({
+        name: (i === 0) ? 'saw'
+            : `second saw ${Math.round((i * 180) / (SERIES_WAVES - 1))}° behind`,
+        part: twoSawPart(i / (2 * (SERIES_WAVES - 1))),
+    })),
     classic: [
         { name: 'sine', part: (n) => [0, (n === 1) ? 1 : 0] },
         { name: 'triangle', part: (n) => [0, ((n % 2) === 0) ? 0
@@ -256,25 +294,37 @@ const NOISE_SECONDS = 2;        // Before the noise comes round again
 // this many of the time constants the envelope is given
 const ENVELOPE_SETTLES = 3;
 const VOLUME_STEPS = 100;       // The volume pot's top
-// The scope: how much of a signal a probe holds, how much of that a wave
-// is drawn from, and its four bands, each under a label
+// The gear's probes: how much of a signal one holds, and how much of that
+// a wave is drawn from
 const SCOPE_PROBE_SAMPLES = 2048;
 const SCOPE_SAMPLES = 1024;
 const ENVELOPE_PROBE_SAMPLES = 32;
-const SCOPE_ROWS = 4;
-const SCOPE_LABEL_PX = 16;
-const SCOPE_GAP_PX = 4;
-// The axes of the trace and the scope, shown when asked for: how faint and
-// how dashed their lines are, how often there is one down a band that is
-// the trace's window wide, and down one that is a wave. A level's name is
-// over its line, or this far under it where the line is this far up the band
+// The chart's sections from the top, each [heading, its bands], a band
+// being [name, share of the room]. Then the line a heading has to itself,
+// the line each band's label has over the band, and the gap under a band
+const CHART_SECTIONS = [
+    ['Board', [['clockIn', 1], ['clock', 1], ['gate', 1], ['resetIn', 1], ['cv', 5]]],
+    ['Patched gear', [['pitch', 3], ['envelope', 2], ['vco', 3], ['out', 3]]],
+];
+// A band's signal and its name are in the colour of what it is, and the
+// chart's key says which is which: each [the style's colour, what it is]
+const CHART_KINDS = [['--in', 'into the board'], ['--out', 'out of the board'],
+    ['--gear', 'the gear\'s, outside the board']];
+const CHART_KEY_GAP_PX = 14;    // Between one entry of the key and the next
+const CHART_HEADING_PX = 22;
+const CHART_LABEL_PX = 16;
+const CHART_GAP_PX = 4;
+// The chart's axes, shown when asked for: how faint and how dashed their
+// lines are, how often there is one down a band that is the chart's
+// window wide, and down one that is a wave. A level's name is over its
+// line, or this far under it where the line is this far up the band
 const AXIS_ALPHA = 0.45;
 const AXIS_DASH = [2, 3];
 const AXIS_TICK_MS = 1000;
 const SCOPE_TICK_MS = 5;
 const AXIS_LABEL_UNDER = 0.8;
 const AXIS_LABEL_DROP_PX = 11;
-// What is named up a band of the scope, as [part of the way up, name]
+// What is named up a band of the gear's, as [part of the way up, name]
 const SCOPE_WAVE_LEVELS = [[0, '-1'], [0.5, '0'], [1, '+1']];
 const SCOPE_ENVELOPE_LEVELS = [[0, '0'], [1, '1']];
 // What the tempo pot's reading means, as the firmware takes it: a tempo on

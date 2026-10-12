@@ -1,6 +1,7 @@
 'use strict';
-// The trace of the outputs and inputs, and what readies a canvas
-// ---- Trace ----
+// The chart of every signal, the board's own bands of it, and what readies
+// a canvas. The gear's bands are in gear.js
+// ---- Chart ----
 
 // Drops what has scrolled off, keeping the one point that says what the
 // level was at the left edge
@@ -125,41 +126,112 @@ function openCanvas(canvas) {
         } };
 }
 
-function drawTrace() {
-    const { context, width, height, colour } = openCanvas(el('trace'));
-    const cvHeight = height * 0.42;
-    const pinHeight = height * 0.08;
-    // The four rows under the CV: where each starts, as a part of the height
-    const rows = { gate: 0.48, clock: 0.61, clockIn: 0.74, resetIn: 0.87 };
-    const labelDrop = height * 0.06;
+// Where everything is on a chart this high. `bands` has each band by name
+// as { label, top, height }: where its name is written, over it, and its
+// own room. `headings` has each section's as { text, y }
+function chartLayout(height) {
+    const all = CHART_SECTIONS.flatMap((section) => section[1]);
+    const shares = all.reduce((sum, band) => sum + band[1], 0);
+    const unit = (height - (CHART_SECTIONS.length * CHART_HEADING_PX)
+        - (all.length * (CHART_LABEL_PX + CHART_GAP_PX))) / shares;
+    const bands = {};
+    const headings = [];
+    let y = 0;
+
+    for (const [text, members] of CHART_SECTIONS) {
+        headings.push({ text, y: y + CHART_HEADING_PX - 6 });
+        y += CHART_HEADING_PX;
+        for (const [name, share] of members) {
+            bands[name] = { label: y + CHART_LABEL_PX - 4, top: y + CHART_LABEL_PX,
+                height: unit * share };
+            y += CHART_LABEL_PX + (unit * share) + CHART_GAP_PX;
+        }
+    }
+    return { bands, headings };
+}
+
+// The chart's section headings, each with a rule over it but the first
+function drawHeadings({ context, width, colour }, headings) {
+    context.save();
+    context.font = '600 12px system-ui, sans-serif';
+    context.fillStyle = colour('--ink');
+    context.strokeStyle = colour('--line');
+    context.lineWidth = 1;
+    context.beginPath();
+    for (const { text, y } of headings) {
+        context.fillText(text, 4, y);
+        if (y > CHART_HEADING_PX) {
+            context.moveTo(0, y - CHART_HEADING_PX + 8);
+            context.lineTo(width, y - CHART_HEADING_PX + 8);
+        }
+    }
+    context.stroke();
+    context.restore();
+}
+
+// The chart's key, at the right of its first heading: each kind of signal
+// named in its colour, the last of them against the right edge
+function drawKey({ context, width, colour }, y) {
+    let x = width - 4;
+
+    context.save();
+    context.textAlign = 'right';
+    for (const [name, text] of [...CHART_KINDS].reverse()) {
+        context.fillStyle = colour(name);
+        context.fillText(`■ ${text}`, x, y);
+        x -= context.measureText(`■ ${text}`).width + CHART_KEY_GAP_PX;
+    }
+    context.restore();
+}
+
+// The seconds back from the present, as lines down a section's bands that
+// are the window wide, from the first to the last, named under the last
+function drawSeconds({ context, width, colour }, first, last) {
+    drawAxes(context, colour, first.top, last.top + last.height - first.top,
+        width, [], secondsBack());
+}
+
+// The one chart, in two sections: the board's signals over the window,
+// the clocks first, and the gear's bands, which gear.js draws. `time` is
+// the frame's, in ms
+function drawTrace(time) {
+    const chart = openCanvas(el('trace'));
+    const { context, width, colour } = chart;
+    const { bands, headings } = chartLayout(chart.height);
+    const hasAxes = el('trace-axes').checked;
     const cvMax = Math.max(CV_SCALE_MIN_MV, ...trace.cv.map((point) => point[1]));
     const cvFullScale = (cvMax <= CV_SCALE_MIN_MV)
         ? CV_SCALE_MIN_MV : Math.ceil(cvMax / CV_SCALE_STEP_MV) * CV_SCALE_STEP_MV;
 
-    context.fillStyle = colour('--dim');
-    context.fillText(`CV, 0 to ${(cvFullScale / 1000).toFixed(2)} V`, 4, 12);
-    context.fillText('Gate', 4, (height * rows.gate) + labelDrop);
-    context.fillText('Clock out', 4, (height * rows.clock) + labelDrop);
-    context.fillText('Clock in', 4, (height * rows.clockIn) + labelDrop);
-    context.fillText('Reset in', 4, (height * rows.resetIn) + labelDrop);
-    if (el('trace-axes').checked) {
+    drawHeadings(chart, headings);
+    drawKey(chart, headings[0].y);
+    context.fillStyle = colour('--in');
+    context.fillText('Clock in', 4, bands.clockIn.label);
+    context.fillText('Reset in', 4, bands.resetIn.label);
+    context.fillStyle = colour('--out');
+    context.fillText('Clock out', 4, bands.clock.label);
+    context.fillText('Gate', 4, bands.gate.label);
+    context.fillText(`Pitch CV, 0 to ${(cvFullScale / 1000).toFixed(2)} V`,
+        4, bands.cv.label);
+    if (hasAxes) {
         const volts = [];
 
         for (let mv = 0; mv <= cvFullScale; mv += CV_SCALE_STEP_MV) {
             volts.push([mv / cvFullScale, `${mv / 1000} V`]);
         }
-        drawAxes(context, colour, 16, cvHeight - 16, width, volts, []);
-        // The seconds go down through every row, named under the last
-        drawAxes(context, colour, 16, height - 16, width, [], secondsBack());
+        drawAxes(context, colour, bands.cv.top, bands.cv.height, width, volts, []);
+        drawSeconds(chart, bands.clockIn, bands.cv);
     }
-    drawSignal(context, trace.cv, colour('--cv'), 16, cvHeight - 16, cvFullScale, width);
-    drawSignal(context, trace.gate, colour('--gate'),
-        height * rows.gate, pinHeight, 1, width);
-    drawSignal(context, trace.clock, colour('--clock'),
-        height * rows.clock, pinHeight, 1, width);
+    drawSignal(context, trace.cv, colour('--out'),
+        bands.cv.top, bands.cv.height, cvFullScale, width);
+    drawSignal(context, trace.gate, colour('--out'),
+        bands.gate.top, bands.gate.height, 1, width);
+    drawSignal(context, trace.clock, colour('--out'),
+        bands.clock.top, bands.clock.height, 1, width);
     drawEdges(context, trace.clockIn, colour('--in'),
-        height * rows.clockIn, pinHeight, width);
+        bands.clockIn.top, bands.clockIn.height, width);
     drawEdges(context, trace.resetIn, colour('--in'),
-        height * rows.resetIn, pinHeight, width);
+        bands.resetIn.top, bands.resetIn.height, width);
+    drawGearBands(chart, bands, time, hasAxes);
     requestAnimationFrame(drawTrace);
 }

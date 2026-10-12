@@ -105,5 +105,4 @@ el('cal-enter').addEventListener('click', () => {
 });
 connect();
 requestAnimationFrame(drawTrace);
-requestAnimationFrame(drawScope);
 requestAnimationFrame(drawPots);

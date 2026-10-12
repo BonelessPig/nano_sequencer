@@ -9,10 +9,9 @@
             <fieldset class="group">
                 <legend>VCO</legend>
                 <label>Wave <select id="vco-wave">
-                    <option value="sine">Sine</option>
-                    <option value="triangle" selected>Triangle</option>
-                    <option value="sawtooth">Saw</option>
-                    <option value="noise">White noise</option>
+                    <option value="sine">Wavetable: sine</option>
+                    <option value="triangle" selected>Wavetable: triangle</option>
+                    <option value="saw">Wavetable: saw</option>
                     <option value="classic">Wavetable: classic</option>
                     <option value="harmonics">Wavetable: harmonics</option>
                     <option value="odd">Wavetable: odd harmonics</option>
@@ -20,6 +19,7 @@
                     <option value="formant">Wavetable: formant</option>
                     <option value="fold">Wavetable: wavefolder</option>
                     <option value="sync">Wavetable: hard sync</option>
+                    <option value="noise">White noise</option>
                 </select></label>
                 <div class="pots">
                     <div><label for="vco-tune">Tune</label>
@@ -57,19 +57,15 @@
             </fieldset>
         </div>
         <canvas id="wavetable" hidden></canvas>
-        <div class="row spaced">
-            <span class="dim">Scope</span>
-            <label><input type="checkbox" id="scope-axes"> Axes</label>
-        </div>
-        <canvas id="scope"></canvas>
         <details>
-            <summary>The gear and the scope</summary>
+            <summary>The gear</summary>
             <div class="scroll"><table class="key">
                 <tr><th>What it is</th>
                     <td>Not the board: what its jacks are plugged into, as
                         in the smallest set-up. It is made in this page from
-                        the pitch CV and the gate shown under Outputs, and
-                        the board cannot tell it is there.</td></tr>
+                        the pitch CV and the gate shown under Signals, and
+                        the board cannot tell it is there. Its signals are
+                        the last four bands of the chart there.</td></tr>
                 <tr><th>Patch</th>
                     <td>Pitch CV to the VCO's pitch. Gate to the envelope,
                         the envelope to the VCA's CV. The VCO through the
@@ -83,13 +79,15 @@
                         pitch and takes no notice of the CV.</td></tr>
                 <tr><th>Wavetables</th>
                     <td>A row of waves the position pot goes through, the
-                        VCO playing a mix of the two it is between. Each is
-                        in the table below.</td></tr>
+                        VCO playing a mix of the two it is between. Every
+                        wave but the noise is one, and each is in the table
+                        below. The sine's, the triangle's and the saw's are
+                        the plain wave with the position pot at 0.</td></tr>
                 <tr><th>Position</th>
-                    <td>Where in the wavetable the VCO is. No use on the
-                        other waves.</td></tr>
+                    <td>Where in the wavetable the VCO is. No use on
+                        noise.</td></tr>
                 <tr><th>Wavetable picture</th>
-                    <td>Shown while a wavetable is chosen: one cycle of
+                    <td>Shown on every wave but the noise: one cycle of
                         its waves and of some between each two, the first
                         at the front, lightest, and the last at the back,
                         darkest. The thick line is the wave the position
@@ -102,7 +100,7 @@
                         note, up the table at the attack's rate and back at
                         the release's. At the top it is the whole table; at
                         0 it is off. The chorus's voices go with it. Needs
-                        the gear on; no use on the other waves.</td></tr>
+                        the gear on; no use on noise.</td></tr>
                 <tr><th>Scan in the picture</th>
                     <td>With the gear on, a bright length goes along the
                         thick line from left to right and round again. Its
@@ -117,56 +115,40 @@
                         to 15 cents either way: two as the pot leaves 0, and
                         more the faster the further up it goes, about 8 at
                         half way and 36 at the top, each coming in between
-                        the ones there. On a wavetable each also
+                        the ones there. Each also
                         has its own place in the table: all at the position
                         pot's with the chorus at 0, which is one wave, and
                         going out from it as the pot comes up, until at the
                         top they reach both ends of the table, standing
                         closer together near the position pot's wave and
-                        further apart further out. On the
-                        other waves they are only off pitch. No use on
-                        noise.</td></tr>
+                        further apart further out. No use on noise.</td></tr>
                 <tr><th>Envelope</th>
                     <td>Rises while the gate is high and stays up, then
                         falls once it is low. Each time is how long it takes
                         to get about 95% of the way.</td></tr>
                 <tr><th>Volume</th>
-                    <td>The listener's, after the audio output: the scope
+                    <td>The listener's, after the audio output: the chart
                         does not show it.</td></tr>
-                <tr><th>Scope, VCO out</th>
-                    <td>The VCO's wave before the VCA, a few milliseconds of
-                        it, held still on a rising crossing of zero.</td></tr>
-                <tr><th>Scope, VCO frequency</th>
-                    <td>The pitch the VCO is at, over the same four seconds
-                        as the trace under Outputs: the pitch CV and the
-                        tune knob together. The band is a whole number of
-                        octaves high, named in hertz, so a semitone is the
-                        same rise anywhere in it.</td></tr>
-                <tr><th>Scope, envelope</th>
-                    <td>The VCA's CV, over the same four seconds as the
-                        trace under Outputs.</td></tr>
-                <tr><th>Scope, audio out</th>
-                    <td>The same few milliseconds after the VCA: the VCO's
-                        wave at the height the envelope gives it.</td></tr>
-                <tr><th>Scope, axes</th>
-                    <td>On the two waves: a line at zero and at each peak,
-                        and one down every 5 ms. On the frequency: a line
-                        at each octave, named in hertz. On the envelope:
-                        its 0 and its 1. Those two have a line down at each
-                        second back from the present.</td></tr>
                 <tr><th>Pots</th>
                     <td>Drag one up or down, or click it and use the arrow
                         keys. Shift held makes a drag go slowly, and a
                         double click puts a pot of the gear back where it
-                        started. A dimmed pot has no use on the wave
-                        chosen.</td></tr>
-                <tr><th>Limits</th>
-                    <td>Paced by the browser, not the chip, so nothing here
-                        is a measurement. Full scale is the VCO's own peak,
-                        not a voltage.</td></tr>
+                        started. A dimmed pot has no use on noise.</td></tr>
             </table></div>
             <div class="scroll"><table class="key">
                 <thead><tr><th>Wavetable</th><th>From its first wave to its last</th></tr></thead>
+                <tr><th>Sine</th>
+                    <td>A sine, then one that bends its own phase harder
+                        and harder, up to 3.5 times: brighter and more
+                        nasal, as phase modulation (FM) is.</td></tr>
+                <tr><th>Triangle</th>
+                    <td>A triangle, then one whose rise takes more of the
+                        cycle and whose fall less, from half of it to 96%:
+                        all but a saw.</td></tr>
+                <tr><th>Saw</th>
+                    <td>A saw, then two, the second further behind the
+                        first, to half a cycle, where they make a saw an
+                        octave up.</td></tr>
                 <tr><th>Classic</th>
                     <td>Sine, triangle, saw, square, 25% pulse, 10% pulse.</td></tr>
                 <tr><th>Harmonics</th>
