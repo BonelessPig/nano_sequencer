@@ -28,7 +28,7 @@ Timing figures marked as measured come from the emulated board; the rest are cal
 | Emulated board | 193 scenarios across the three images |
 | MISRA | Zero findings from cppcheck's addon over four runs; one inline suppression (see "Static analysis") |
 
-These figures are kept by hand and were last measured on 2026-10-11 (open item 23).
+The sizes and counts are copied from [FIGURES.md](FIGURES.md), which `make figures` writes.
 
 ## Structure: ports and adapters
 
@@ -491,34 +491,12 @@ The chip has one USART, so an image has the log or MIDI out, not both.
 
 ### Where the flash goes
 
-From `avr-nm --size-sort` on each `output.elf`, grouped by source:
+[FIGURES.md](FIGURES.md) has the flash and the static RAM of each image by source file.
+`make figures` writes it from the linker's map files.
 
-| Part | Debug | Release | Midi |
-|---|---:|---:|---:|
-| Core (code and scale tables) | 6595 | 6596 | 6596 |
-| App loop and `main` | 1480 | 1480 | 1480 |
-| Logger (code and message text) | 1309 | 24 | 24 |
-| Step input, step lights and ADC adapters | 316 | 316 | 316 |
-| EEPROM adapter | 308 | 308 | 308 |
-| Vector table and startup code | 132 | 132 | 132 |
-| Init adapters | 112 | 112 | 112 |
-| libgcc helpers | 102 | 102 | 102 |
-| Timebase | 90 | 90 | 90 |
-| Pitch CV output | 82 | 82 | 82 |
-| Transport inputs (clock, reset, run) | 76 | 76 | 76 |
-| SPI driver | 70 | 70 | 70 |
-| Level light | 36 | 36 | 36 |
-| Gate and clock outputs | 24 | 24 | 24 |
-| Watchdog | 20 | 20 | 20 |
-| Reset cause and breadcrumb | 24 | 24 | 24 |
-| MIDI output adapter | 10 | 10 | 162 |
-| **Total** | **10786** | **9502** | **9654** |
-
-The largest core modules are the sequencer (1314), MIDI out (508), calibration mode (496) and the clock (484).
-What each phase cost when it was added is in the git history of this file.
-
-**Static RAM**, debug build: the 128-byte log queue, 429 bytes of message text and 51 bytes of scale tables (constant data that this toolchain also copies to RAM), and 208 bytes of state, of which 177 are the app's (the sequencer's state is 52 of them), 20 the EEPROM adapter's, 6 the logger's and 2 the timebase's.
-The release build has the tables and 202 bytes of state; the midi build adds a 32-byte queue and two counters.
+The core is the largest part of every image.
+The serial logger is nearly all of the difference between the debug build and the other two, in flash and in RAM: its queue and its message text are most of the debug build's static RAM.
+The scale tables are constant data that this toolchain also copies to RAM.
 
 ## Static analysis
 
@@ -709,8 +687,7 @@ The pattern starts on the internal clock, so with a master already running step 
 A stop and a start puts the two in step.
 A jack with a switch contact on a spare pin (PD3) would tell at power-on that a clock is coming.
 
-### 23. The figures in this document are kept by hand
+### 23. Closed: the figures were kept by hand
 
-The flash by part, the static RAM, the test counts and the scenario counts are written here by hand and were last measured on 2026-10-11, from `avr-nm -S -l --size-sort` on the three `output.elf` files, a count of `RUN_TEST` in each test source, and `node --test` on each scenario file.
-Measure before relying on any of them.
-A script or make target that prints them would leave nothing here to drift (roadmap, "Next").
+`make figures` now measures them and writes [FIGURES.md](FIGURES.md).
+The totals in "At a glance", in the build table and in the README are still copies of it: bring them up to date from that file when it changes.

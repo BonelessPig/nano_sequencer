@@ -115,14 +115,12 @@ Verified against the Claude Code documentation:
 - A subagent starts cold and spends its own tokens.
   The four research agents behind this document used about 554,000 between them; CLAUDE.md now keeps work in the main session.
 
-Done: the split into a short root file and one per folder (decision 9), a quiet `make check`, the "Next" section at the top of this file, and one kind of line ending (LF, enforced by `.gitattributes`).
+Done: the split into a short root file and one per folder (decision 9), a quiet `make check` and `make test-quiet`, `make figures` for the sizes and counts, the "Next" section at the top of this file, and one kind of line ending (LF, enforced by `.gitattributes`).
 
 Not done:
 
 - **A fresh session for each piece of work**, started from "Next".
   The session that built the first stage of the modulation did six steps, and its length was its largest cost.
-- **Generate the figures in ARCHITECTURE.md.** The flash and RAM by part and the test and scenario counts are measured and rewritten by hand in every phase (ARCHITECTURE.md open item 23).
-- **A quiet `make test`**, printing failures and a total only.
 - **Run coverage, the analysis and the emulated board side by side in `make check`**: about 45 s each, so three minutes could be about one.
 - **Settle what changes behaviour before the work starts.** Removing the sync switch meant reworking about forty host tests and thirteen scenarios.
 - **Deny reads of `build/**`, `*.hex`, `*.o` and `*.gcov`, and deny `make flash`**, in `.claude/settings.json`.

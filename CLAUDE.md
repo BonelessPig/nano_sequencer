@@ -78,8 +78,10 @@ The owner runs it themselves and reports back; don't run it.
 - Do the work in the main session.
   Don't spin off subagents, for the live view, the docs or anything else, unless I ask for them in that piece of work: each one starts cold and re-reads the project, and a run split across several used far more tokens and took far longer than doing it in one.
 - Keep `README.md` and `docs/ARCHITECTURE.md` in step with the code in the same piece of work.
-  ARCHITECTURE.md describes what the firmware does today and carries the size figures, test counts, MISRA status and the open items list; `docs/ROADMAP.md` carries the plan and `docs/DECISIONS.md` the decisions taken, by number.
+  ARCHITECTURE.md describes what the firmware does today and carries the MISRA status and the open items list, and quotes the totals from `docs/FIGURES.md`; `docs/ROADMAP.md` carries the plan and `docs/DECISIONS.md` the decisions taken, by number.
   Don't repeat any of those here.
+- `docs/FIGURES.md` holds the sizes and the test and scenario counts, and `make figures` writes it.
+  Run that once before the commit of a change to the firmware or its tests, never edit the file by hand, and copy any total that moved into the documents that quote it.
 - When a change alters what the board has or does that someone could see or work (a pin, a part, a control, a mode, a log line, an output), bring the live view (`make live`, `tools/sim/live/`) up to date in the same piece of work, along with anything it needs from `tools/sim/boards/`.
   Read `tools/sim/CLAUDE.md` first.
   Run `make sim` before calling the change done; the page cannot be checked from here, so say what the owner should look at in the browser.
