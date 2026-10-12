@@ -91,22 +91,24 @@ function addPoint(points, value) {
     points.push([nowMs, value]);
 }
 
-// The pitch CV at the VCO: an octave a volt, from where the tune knob is
+// The pitch CV at the VCO: an octave a volt, from where the tune knob is.
+// The pitch is kept in octaves over VCO_BASE_HZ
 function gearPitch(millivolts) {
     if (gear !== null) {
         const octaves = (millivolts / 1000)
             + (Number(el('vco-tune').value) / SEMITONES_PER_OCTAVE);
+        const hertz = VCO_BASE_HZ * (2 ** octaves);
 
         addPoint(gear.pitchPoints, octaves);
         for (const one of gear.oscillators) {
-            one.frequency.setValueAtTime(
-                VCO_BASE_HZ * (2 ** octaves), gear.context.currentTime);
+            one.frequency.setValueAtTime(hertz, gear.context.currentTime);
         }
     }
 }
 
 const chorusAmount = () => Number(el('chorus').value) / CHORUS_STEPS;
 const sweepAmount = () => Number(el('env-position').value) / SWEEP_STEPS;
+const clamp = (value) => Math.max(0, Math.min(1, value));
 
 // Where in a wavetable the VCO is, 0 its first wave and 1 its last: where
 // the position pot is, and on from there by as much of the envelope as the
@@ -119,23 +121,16 @@ function tableCentre() {
         + (level * sweepAmount()));
 }
 
-// The VCO's pitch in octaves over VCO_BASE_HZ: the pitch CV, an octave a
-// volt, from where the tune knob is. 0 until there is a CV to go by
-function pitchOctaves() {
-    const millivolts = (trace.cv.length === 0) ? 0 : lastValue(trace.cv);
-
-    return (millivolts / 1000) + (Number(el('vco-tune').value) / SEMITONES_PER_OCTAVE);
-}
-
 // Brings the wavetable's picture up to this frame, at `time` in ms: the
 // envelope's level from its probe, which is how bright the picture's scan
 // is, and the scan moved on along the wave by the time since the last
-// frame, the faster the higher the pitch
+// frame, the faster the higher the pitch. The gear has had a pitch since
+// it was turned on
 function followGear(time) {
-    const rate = Math.min(PICTURE_SCAN_MAX_HZ, PICTURE_SCAN_HZ * (2 ** pitchOctaves()));
+    const rate = Math.min(PICTURE_SCAN_MAX_HZ,
+        PICTURE_SCAN_HZ * (2 ** lastValue(gear.pitchPoints)));
     const wave = el('vco-wave').value;
-    const level = Math.max(0, Math.min(1,
-        gear.envelopeProbe.samples[ENVELOPE_PROBE_SAMPLES - 1]));
+    const level = clamp(gear.envelopeProbe.samples[ENVELOPE_PROBE_SAMPLES - 1]);
     const hasMoved = Math.abs(level - gear.envelopeLevel) >= ENVELOPE_STEP;
 
     gear.envelopeLevel = level;
@@ -149,22 +144,14 @@ function followGear(time) {
     drawWavetable();
 }
 
-// How far a voice stands from the first, which is voice 0 and stands at 0:
-// the chorus's own voices are spread evenly from -1 to 1
-function voiceSpread(k) {
-    return (k === 0) ? 0 : ((2 * CHORUS_STANDS[k - 1]) / (CHORUS_VOICES - 1)) - 1;
-}
+// How much of each voice of the chorus is there, 0 to 1, at where the
+// chorus pot is: the more of them the further up it is, their number going
+// up exponentially, the last fully in at the pot's top. Voice 0, the
+// VCO's first, is not the chorus's and is not to be read from this
+function voicePresences() {
+    const chorus = chorusAmount();
 
-// How much of a voice of the chorus is there, 0 to 1, at where the chorus
-// pot is: the more of them the further up it is
-function voicePresence(k) {
-    // Where on the pot voice k begins to come in: the number of voices
-    // there goes up exponentially, the last fully in at the pot's top
-    const from = (1 - CHORUS_VOICE_FADE)
-        * (Math.log(Math.max(1, k / CHORUS_FIRST_VOICES))
-            / Math.log(CHORUS_VOICES / CHORUS_FIRST_VOICES));
-
-    return Math.max(0, Math.min(1, (chorusAmount() - from) / CHORUS_VOICE_FADE));
+    return VOICE_COMES_IN.map((from) => clamp((chorus - from) / CHORUS_VOICE_FADE));
 }
 
 // Where each voice is in a table of this many waves, counted in waves from
@@ -175,14 +162,15 @@ function voicePresence(k) {
 // so they stand close together near it and further apart further out
 function voicePlaces(waves) {
     const centre = tableCentre();
+    const chorus = chorusAmount();
 
     return gearVoices.map((k) => {
-        const away = ((voiceSpread(k) + 1) / 2) - centre;   // Spread evenly
+        const away = ((VOICE_SPREAD[k] + 1) / 2) - centre;  // Spread evenly
         const room = (away < 0) ? centre : 1 - centre;      // To that end
         const out = ((k === 0) || (room === 0)) ? 0
             : Math.sign(away) * room * ((Math.abs(away) / room) ** CHORUS_BUNCHING);
 
-        return (centre + (chorusAmount() * out)) * (waves - 1);
+        return (centre + (chorus * out)) * (waves - 1);
     });
 }
 
@@ -214,9 +202,8 @@ function applyVoices(wave) {
     const chorus = chorusAmount();
     const places = (WAVETABLES[wave] === undefined)
         ? null : voicePlaces(WAVETABLES[wave].length);
-
-    const amounts = gearVoices.map((k) => ((k === 0)
-        ? 0 : (chorus * voicePresence(k)) / (CHORUS_VOICES + 1)));
+    const amounts = voicePresences().map(
+        (presence, k) => ((k === 0) ? 0 : (chorus * presence) / (CHORUS_VOICES + 1)));
 
     amounts[0] = 1 - amounts.reduce((sum, amount) => sum + amount, 0);
     gear.oscillators.forEach((oscillator, k) => {
@@ -231,7 +218,7 @@ function applyVoices(wave) {
                 oscillator.setPeriodicWave(waveAt(wave, places[k]));
             }
         }
-        oscillator.detune.value = chorus * CHORUS_DETUNE_CENTS * voiceSpread(k);
+        oscillator.detune.value = chorus * CHORUS_DETUNE_CENTS * VOICE_SPREAD[k];
         gear.gains[k].gain.value = amounts[k];
     });
 }
@@ -272,27 +259,27 @@ function gearGate(isHigh) {
     }
 }
 
+// A pot that is off at 0, worded: its part of the way up as a percentage
+const offOrPercent = (part) => ((part === 0) ? 'off' : `${Math.round(part * 100)}%`);
+
 // The gear's knobs, worded, and put on the gear if it is on
 function applyGear() {
     const tune = Number(el('vco-tune').value);
-    const chorus = chorusAmount();
 
     el('vco-tune-reading').textContent = `${(tune > 0) ? '+' : ''}${tune} semitones`;
     el('vco-position-reading').textContent = positionReading();
-    el('chorus-reading').textContent = (chorus === 0)
-        ? 'off' : `${Math.round(chorus * 100)}%`;
-    el('env-position-reading').textContent = (sweepAmount() === 0)
-        ? 'off' : `${Math.round(sweepAmount() * 100)}%`;
-    el('volume-reading').textContent = `${el('volume').value}%`;
-    drawWavetable();
+    el('chorus-reading').textContent = offOrPercent(chorusAmount());
     el('env-attack-reading').textContent = `${el('env-attack').value} ms`;
     el('env-release-reading').textContent = `${el('env-release').value} ms`;
+    el('env-position-reading').textContent = offOrPercent(sweepAmount());
+    el('volume-reading').textContent = `${el('volume').value}%`;
     el('gear-power').textContent = `Gear: ${(gear === null) ? 'off' : 'on'}`;
     if (gear !== null) {
         applyWave();
         gear.volume.gain.value = Number(el('volume').value) / VOLUME_STEPS;
         gearPitch(lastValue(trace.cv));
     }
+    drawWavetable();
 }
 
 function toggleGear() {
@@ -358,17 +345,17 @@ function readProbes() {
 // whole number of octaves, so a semitone is the same rise wherever it is.
 // Returns the band's label
 function drawPitch(context, colour, top, height, width) {
-    let low = 0;
-    let high = 0;
-
+    // Trimmed here, not left to drawSignal(), which gets a copy; and before
+    // the noise is let off, or the points would pile up while it plays
+    trim(gear.pitchPoints);
     if (el('vco-wave').value === VCO_NOISE) {
         return 'VCO frequency: white noise has none';
     }
-    trim(gear.pitchPoints);
-    low = Math.floor(Math.min(...gear.pitchPoints.map((point) => point[1])));
-    high = Math.max(low + 1,
-        Math.ceil(Math.max(...gear.pitchPoints.map((point) => point[1]))));
-    drawSignal(context, gear.pitchPoints.map(([ms, octaves]) => [ms, octaves - low]),
+    const octaves = gear.pitchPoints.map((point) => point[1]);
+    const low = Math.floor(Math.min(...octaves));
+    const high = Math.max(low + 1, Math.ceil(Math.max(...octaves)));
+
+    drawSignal(context, gear.pitchPoints.map(([ms, value]) => [ms, value - low]),
         colour, top, height, high - low, width);
     return `VCO frequency, ${(VCO_BASE_HZ * (2 ** low)).toFixed(0)} to `
         + `${(VCO_BASE_HZ * (2 ** high)).toFixed(0)} Hz, `

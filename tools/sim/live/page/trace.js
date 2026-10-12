@@ -10,9 +10,12 @@ function trim(points) {
     }
 }
 
+// Where a chip time is across a trace this wide, the present at its right
+const traceX = (ms, width) => width * (1 - ((nowMs - ms) / TRACE_WINDOW_MS));
+
 // Draws one signal as steps, in a band of the canvas from top to top + height
 function drawSignal(context, points, colour, top, height, fullScale, width) {
-    const x = (ms) => width * (1 - ((nowMs - ms) / TRACE_WINDOW_MS));
+    const x = (ms) => traceX(ms, width);
     const y = (value) => top + (height * (1 - (value / fullScale)));
 
     trim(points);
@@ -39,7 +42,7 @@ function drawEdges(context, times, colour, top, height, width) {
     context.strokeStyle = colour;
     context.beginPath();
     for (const ms of times) {
-        const x = width * (1 - ((nowMs - ms) / TRACE_WINDOW_MS));
+        const x = traceX(ms, width);
 
         context.moveTo(x, top);
         context.lineTo(x, top + height);
@@ -49,13 +52,15 @@ function drawEdges(context, times, colour, top, height, width) {
 
 // Makes a canvas ready for a frame: sized to its box at the screen's own
 // pixels, cleared, with the line and the lettering every drawing here uses.
-// `colour` gives one of the style's colours by name
+// `colour` gives one of the style's colours by name, read from the style
+// once a frame however often it is asked for
 function openCanvas(canvas) {
     const context = canvas.getContext('2d');
     const scale = window.devicePixelRatio || 1;
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     const style = getComputedStyle(document.documentElement);
+    const read = {};
 
     if ((canvas.width !== Math.round(width * scale))
         || (canvas.height !== Math.round(height * scale))) {
@@ -67,7 +72,10 @@ function openCanvas(canvas) {
     context.lineWidth = 1.5;
     context.font = '11px system-ui, sans-serif';
     return { context, width, height,
-        colour: (name) => style.getPropertyValue(name).trim() };
+        colour: (name) => {
+            read[name] ??= style.getPropertyValue(name).trim();
+            return read[name];
+        } };
 }
 
 function drawTrace() {

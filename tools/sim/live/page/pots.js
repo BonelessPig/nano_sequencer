@@ -1,5 +1,67 @@
 'use strict';
-// Every slider of the page drawn as a pot
+// The page's knobs: its two rotary switches, and every slider drawn as a pot
+// ---- Rotary switches ----
+
+// Where a position of the rotary switch is on its picture, at a distance
+// from the middle
+function knobPoint(position, radius) {
+    const radians = ((KNOB_FIRST_DEG + (position * KNOB_STEP_DEG)) * Math.PI) / 180;
+
+    return [KNOB_X + (radius * Math.sin(radians)), KNOB_Y - (radius * Math.cos(radians))];
+}
+
+// Draws a rotary switch of eight positions: a dot and a name at each, a
+// bare number where `names` has none, and the knob with its pointer. A
+// position is chosen by clicking its name, by clicking the knob for the
+// next one round, or with the arrow keys. `current` says where the switch
+// stands and `set` posts a new position
+function buildKnob(id, names, current, set) {
+    const knob = el(id);
+    let marks = '';
+
+    for (let position = 0; position < KNOB_POSITIONS; position++) {
+        const [dotX, dotY] = knobPoint(position, KNOB_DOT_RADIUS);
+        const [textX, textY] = knobPoint(position, KNOB_LABEL_RADIUS);
+
+        marks += `<g class="detent" data-position="${position}">`
+            + `<circle cx="${dotX.toFixed(1)}" cy="${dotY.toFixed(1)}" r="3"/>`
+            + `<text x="${textX.toFixed(1)}" y="${textY.toFixed(1)}"`
+            + ` text-anchor="${(textX < KNOB_X) ? 'end' : 'start'}">`
+            + `${names[position] ?? position}</text></g>`;
+    }
+    knob.innerHTML = `<svg viewBox="0 0 ${KNOB_WIDTH} ${KNOB_HEIGHT}" aria-hidden="true">`
+        + `${marks}<circle class="knob-body" cx="${KNOB_X}" cy="${KNOB_Y}"`
+        + ` r="${KNOB_RADIUS}"/><line class="knob-pointer" x1="${KNOB_X}" y1="${KNOB_Y}"`
+        + ` x2="${KNOB_X}" y2="${KNOB_Y - KNOB_RADIUS + 4}"/></svg>`;
+    for (const detent of knob.querySelectorAll('.detent')) {
+        detent.addEventListener('click', () => set(Number(detent.dataset.position)));
+    }
+    knob.querySelector('.knob-body').addEventListener('click',
+        () => set((current() + 1) % KNOB_POSITIONS));
+    knob.addEventListener('keydown', (event) => {
+        const turn = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[event.key];
+
+        if (turn !== undefined) {
+            event.preventDefault();
+            set(Math.max(0, Math.min(KNOB_POSITIONS - 1, current() + turn)));
+        }
+    });
+}
+
+// Turns a rotary switch's picture to a position, which `name` words
+function turnKnob(id, position, name) {
+    const knob = el(id);
+    const degrees = KNOB_FIRST_DEG + (position * KNOB_STEP_DEG);
+
+    knob.setAttribute('aria-valuenow', String(position));
+    knob.setAttribute('aria-valuetext', name);
+    knob.querySelector('.knob-pointer')
+        .setAttribute('transform', `rotate(${degrees} ${KNOB_X} ${KNOB_Y})`);
+    for (const detent of knob.querySelectorAll('.detent')) {
+        detent.classList.toggle('chosen', Number(detent.dataset.position) === position);
+    }
+}
+
 // ---- Pots ----
 
 // The slider itself stays, out of sight inside its pot, and is still what
