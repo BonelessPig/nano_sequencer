@@ -1,2 +1,4 @@
-# Shell scripts must keep LF endings or bash fails on the stray carriage returns
-*.sh text eol=lf
+# Every text file is LF in the working tree, on every platform and whatever
+# core.autocrlf says. A mix of LF and CRLF made edits that match text across
+# lines fail, and bash fails on a stray carriage return in a shell script.
+* text=auto eol=lf

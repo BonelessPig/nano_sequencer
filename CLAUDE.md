@@ -99,4 +99,5 @@ The owner runs it themselves and reports back; don't run it.
   Outputs go to `build/<config>/`; objects are shared in `build/obj/`.
 - Git Bash heredocs mangle backslashes in inline Python and sed scripts here.
   Write helper scripts to a file with the Write tool and run them, or use the Edit tool.
-- `*.sh` files must stay LF (`.gitattributes` enforces it); the repo otherwise checks out as CRLF on Windows.
+- Every text file is LF in the working tree (`.gitattributes` enforces it), on Windows too.
+  Write new files with LF.
