@@ -29,12 +29,15 @@ The only code that knows about both the core and the ports.
 - The pot is read into the app's own snapshot, not the sequencer's inputs.
   Calibration mode takes it as read.
   Otherwise `bank_tick()` runs ahead of `seq_tick()`, with the selector as `panel_selector_value()` gives it, and the sequencer's tempo reading is the bank's tempo slot, always valid.
-  The slots are named by `SLOT_*` at the top of `app.c`: the tempo is position 0, which is what a board with no selector wired reads, and positions 1 to 4 are how much of the LFO goes to the note, the gate length, the chance of a step dropping out and the step played.
+  The slots are named by `SLOT_*` at the top of `app.c`: the tempo is position 0, which is what a board with no selector wired reads, and positions 1 to 5 are how much of the LFO goes to the note, the gate length, the chance of a step dropping out, the step played and the amplitude, and position 6 is the envelope's time, which goes to `env_tick()` and not to the sequencer.
   Their amounts are copied into the sequencer's inputs on every tick.
 - The LFO is read in the scan with the panel and the pot, straight into the sequencer's inputs with its valid flag.
   A read that fails is not logged: the core takes it as an LFO at its centre.
 - The level light is given `bank_level()`, worked out with the bank and written in the apply step of the next tick, after the step lights, on every tick.
   In calibration mode it stays at 0.
+- The envelope is `env_tick()`, called after `seq_tick()` and MIDI out with the gate and the amplitude the sequencer gave, and not called in calibration mode, where its level stays 0.
+  Its level is written to the envelope port in the apply step of the next tick, on every tick, after the clock output: the second DAC frame must not come between the pitch and the gate, or every gate edge moves.
+  A failed write of it is logged with the step as a failed pitch write is, under the same error, and only if the pitch's own write went.
 - MIDI out is `midi_out_tick()`, called after `seq_tick()` with plain values from the sequencer's outputs, and not called in calibration mode, which sends nothing.
   Its bytes are written in the apply step of the next tick, after the step lights and ahead of the log, on every tick, a count of 0 included, so the apply step takes the same path every time.
 - The MIDI output's room is read in the gather step on every tick.

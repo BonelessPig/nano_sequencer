@@ -20,6 +20,12 @@ const POSITION_NOTE = 1;         // Selector positions
 const POSITION_GATE = 2;
 const POSITION_CHANCE = 3;
 const POSITION_STEP = 4;
+const POSITION_AMPLITUDE = 5;
+const POSITION_ENV_TIME = 6;
+const ENV_TOP = 4095;            // The envelope CV at its highest, in millivolts
+const READING_16_MS = 128;       // Over 4, squared, over 64: a slope of 16 ms
+const SLOPE_MS = 16;
+const LFO_HALF_DOWN = 256;
 const STEP_COUNT = 16;
 // Step n holds the note n + 1, so a pitch says which step played it; the
 // last two share the top note
@@ -178,6 +184,74 @@ for (const config of CONFIGS) {
 
         assert.equal(back.gateRises, 6);
         assertAllEqual(back.pitches, noteMillivolts(NOTE), 'pitches');
+    });
+
+    test(`${config}: with no time set the envelope CV is the gate at full height`, () => {
+        const board = playingBoard(config);
+
+        board.runForMs(4 * STEP_MS);
+
+        const ms = (count) => board.machine.msToCycles(count);
+        const gates = board.gate.pulses();
+
+        // A tick after each edge of the gate the envelope has followed it
+        assert.ok(gates.length >= 3);
+        for (const gate of gates) {
+            const fall = gate.rise + gate.width;
+
+            assert.equal(board.envMillivoltsAt(gate.rise + ms(1)), ENV_TOP);
+            assert.equal(board.envMillivoltsAt(fall), ENV_TOP);
+            assert.equal(board.envMillivoltsAt(fall + ms(1)), 0);
+        }
+        assert.equal(board.envWrites[0].millivolts, 0);
+    });
+
+    test(`${config}: position 6 makes the envelope a one-shot that long each way`, () => {
+        const board = playingBoard(config);
+
+        setAmount(board, POSITION_ENV_TIME, READING_16_MS);
+        board.runForMs(4 * STEP_MS);
+
+        const ms = (count) => board.machine.msToCycles(count);
+        const gates = board.gate.pulses().slice(-2);
+
+        // Up in 16 ms and down in 16 more, with the gate still open at the
+        // end of it: half a step is 50 ms
+        for (const gate of gates) {
+            const half = board.envMillivoltsAt(gate.rise + ms(SLOPE_MS / 2));
+
+            assert.ok(gate.width > ms(2 * SLOPE_MS + 2));
+            assert.ok((half > 1800) && (half < 2300), `${half} mV half way up`);
+            assert.equal(board.envMillivoltsAt(gate.rise + ms(SLOPE_MS)), ENV_TOP);
+            assert.equal(board.envMillivoltsAt(gate.rise + ms((2 * SLOPE_MS) + 2)), 0);
+        }
+    });
+
+    test(`${config}: the LFO lowers the envelope's peak by the amount at position 5`, () => {
+        const board = playingBoard(config);
+        const peakAfter = (from) => {
+            const rise = board.gate.rises().find((cycle) => cycle > from);
+
+            return board.envMillivoltsAt(rise + board.machine.msToCycles(1));
+        };
+
+        // Half way down with no amount: nothing taken off
+        assert.equal(peakAfter(playWithLfo(board, LFO_HALF_DOWN, 2).from), ENV_TOP);
+
+        // With all of it: a depth of 128 off 255, which is 2039 mV, and on
+        // the midi image a velocity of 50 in place of 100
+        setAmount(board, POSITION_AMPLITUDE, TOP);
+        assert.equal(peakAfter(playWithLfo(board, LFO_HALF_DOWN, 2).from), 2039);
+        if (board.sendsMidi) {
+            const notes = board.midi.messages.filter((message) => message.type === 'noteOn');
+
+            assert.equal(notes[0].velocity, 100);
+            assert.equal(notes[notes.length - 1].velocity, 50);
+        }
+
+        // At the bottom there is no peak at all, and above the centre it is whole
+        assert.equal(peakAfter(playWithLfo(board, 0, 2).from), 0);
+        assert.equal(peakAfter(playWithLfo(board, TOP, 2).from), ENV_TOP);
     });
 
     test(`${config}: the LFO moves the step played by the amount at position 4`, () => {

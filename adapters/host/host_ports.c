@@ -14,6 +14,7 @@
 #include "clock_input_port.h"
 #include "clock_output_port.h"
 #include "cv_output_port.h"
+#include "env_output_port.h"
 #include "gate_output_port.h"
 #include "led_output_port.h"
 #include "level_output_port.h"
@@ -67,6 +68,10 @@ static port_status_t g_cv_status = STATUS_OK;
 static uint16_t      g_cv_millivolts = 0U;
 static uint16_t      g_cv_write_count = 0U;
 static uint16_t      g_cv_millivolts_at_gate_rise = 0U;
+
+static port_status_t g_host_env_status = STATUS_OK;
+static uint16_t      g_host_env_millivolts = 0U;
+static uint16_t      g_host_env_write_count = 0U;
 
 static uint8_t       g_reset_cause = 0U;
 
@@ -175,7 +180,11 @@ void host_reset(void)
     g_cv_write_count             = 0U;
     g_cv_millivolts_at_gate_rise = 0U;
 
-    g_reset_cause          = 0U;
+    g_host_env_status      = STATUS_OK;
+    g_host_env_millivolts  = 0U;
+    g_host_env_write_count = 0U;
+
+    g_reset_cause         = 0U;
     g_b_clock_edge         = false;
     g_b_reset_edge         = false;
     g_b_run_button         = false;
@@ -470,6 +479,13 @@ void host_set_cv_status(port_status_t status)
 
 
 
+void host_set_env_status(port_status_t status)
+{
+    g_host_env_status = status;
+}
+
+
+
 uint16_t host_event_count(void)
 {
     return g_event_count;
@@ -591,6 +607,20 @@ uint16_t host_cv_millivolts(void)
 uint16_t host_cv_write_count(void)
 {
     return g_cv_write_count;
+}
+
+
+
+uint16_t host_env_millivolts(void)
+{
+    return g_host_env_millivolts;
+}
+
+
+
+uint16_t host_env_write_count(void)
+{
+    return g_host_env_write_count;
 }
 
 
@@ -720,6 +750,30 @@ port_status_t cv_output_write(uint16_t millivolts)
     else if (STATUS_OK == status)
     {
         g_cv_millivolts = millivolts;
+    }
+    else
+    {
+        // Scripted failure: the voltage stays as it was
+    }
+    return status;
+}
+
+
+
+port_status_t env_output_write(uint16_t millivolts)
+{
+    port_status_t status = g_host_env_status;
+
+    g_host_env_write_count++;
+
+    // Same parameter contract as the real adapter (see env_output_port.h)
+    if (millivolts > CV_OUTPUT_MILLIVOLTS_MAX)
+    {
+        status = ERR_INVALID_PARAM;
+    }
+    else if (STATUS_OK == status)
+    {
+        g_host_env_millivolts = millivolts;
     }
     else
     {

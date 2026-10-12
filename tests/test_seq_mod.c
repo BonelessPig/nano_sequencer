@@ -278,8 +278,53 @@ static void test_the_lfo_turns_the_klee_register_and_its_lights(void)
 
 
 
+static void test_the_lfo_below_its_centre_brings_the_amplitude_down(void)
+{
+    static const struct
+    {
+        uint16_t lfo;
+        bool     b_lfo_valid;
+        uint16_t amount;
+        uint8_t  amplitude;
+    } cases[] =
+    {
+        { LFO_CENTRE,  true,  AMOUNT_TOP, 255U }, // Nothing taken off
+        { 0U,          true,  AMOUNT_TOP, 0U   }, // All of it
+        { 256U,        true,  AMOUNT_TOP, 127U }, // A depth of 128
+        { LFO_TOP,     true,  AMOUNT_TOP, 255U }, // Above the centre: none
+        { LFO_HALF_UP, true,  AMOUNT_TOP, 255U },
+        { 0U,          true,  0U,         255U }, // No amount
+        { 0U,          false, AMOUNT_TOP, 255U }  // Not readable
+    };
+
+    for (size_t i = 0U; i < (sizeof(cases) / sizeof(cases[0])); i++)
+    {
+        seq_state_t   state;
+        seq_inputs_t  in = make_mod_inputs();
+        seq_outputs_t out;
+
+        in.mod.lfo         = cases[i].lfo;
+        in.mod.b_lfo_valid = cases[i].b_lfo_valid;
+        in.mod.amplitude   = cases[i].amount;
+
+        seq_init(&state);
+        seq_tick(&state, &in, &out);
+        TEST_ASSERT(out.b_step_started);
+        TEST_ASSERT_EQUAL(cases[i].amplitude, out.amplitude);
+        TEST_ASSERT_EQUAL(4, out.semitone); // And nothing else is moved
+
+        // Given with the step, and 0 on the ticks between
+        seq_tick(&state, &in, &out);
+        TEST_ASSERT(!out.b_step_started);
+        TEST_ASSERT_EQUAL(0, out.amplitude);
+    }
+}
+
+
+
 int main(void)
 {
+    RUN_TEST(test_the_lfo_below_its_centre_brings_the_amplitude_down);
     RUN_TEST(test_the_lfo_moves_the_step_played_and_not_the_pattern);
     RUN_TEST(test_the_lfo_turns_the_klee_register_and_its_lights);
     RUN_TEST(test_the_lfo_moves_the_note_in_the_scale);

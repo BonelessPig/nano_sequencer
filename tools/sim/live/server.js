@@ -9,7 +9,8 @@
  *                  in where its `part:` comment stands.
  *   GET  /name.css, /name.js   The page's style and scripts, from page/.
  *   GET  /events   A stream of server-sent events: `state` (the panel, which
- *                  image is running, its mode, the output levels and the
+ *                  image is running, its mode, the output levels (the two
+ *                  pins, the pitch CV and the envelope CV) and the
  *                  step lights) when a page
  *                  connects and when a control changes, and `run` every
  *                  slice with the chip time and what happened in it.
@@ -226,6 +227,7 @@ function powerUp(config, eeprom) {
         stageStep: 0,   // The stage engine: which step of its stage, from 1,
         stageSteps: 0,  // and how many steps the stage lasts
         millivolts: 0,
+        envMillivolts: 0, // The envelope CV, the DAC's channel B
         leds: 0,        // The step lights as last latched, bit n for step n
         transport: isCalibrating ? null : runningTransport(),
         transportFrom: 'controls',
@@ -559,6 +561,13 @@ function record(item, events) {
                 events.push({ t, k: 'cv', v: item.value });
             }
             break;
+        case 'env':
+            // Written every tick too, and told the same way
+            if (item.value !== outputs.envMillivolts) {
+                outputs.envMillivolts = item.value;
+                events.push({ t, k: 'env', v: item.value });
+            }
+            break;
         case 'read':
             // The chip has read the panel. The controls only change between
             // slices, so it read them as they stand now
@@ -622,6 +631,7 @@ function drain() {
     board.gate.edges.forEach((edge) => add(edge.cycle, 'gate', edge.high));
     board.clockOut.edges.forEach((edge) => add(edge.cycle, 'clock', edge.high));
     board.cvWrites.forEach((write) => add(write.cycle, 'cv', write.millivolts));
+    board.envWrites.forEach((write) => add(write.cycle, 'env', write.millivolts));
     board.ledLatches.forEach((latch) => add(latch.cycle, 'led', latch.value));
     board.panelReads.forEach((read) => add(read.cycle, 'read'));
     board.clockIn.rises.forEach((cycle) => add(cycle, 'clockin'));
@@ -642,6 +652,7 @@ function drain() {
     addMidiClockQuiet(events);
 
     for (const list of [board.gate.edges, board.clockOut.edges, board.cvWrites,
+        board.envWrites,
         board.cvIgnoredFrames, board.panelReads, board.spiSent,
         board.ledLatches, board.clockIn.rises, board.resetIn.rises,
         board.resets, serial.lines, serial.notices, midi.bytes, midi.messages]) {

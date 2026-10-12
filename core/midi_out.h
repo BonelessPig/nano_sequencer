@@ -29,8 +29,9 @@
  *     always its downbeat. The downbeat of a start that was never sent still
  *     goes, as a clock of the stopped pattern. A change of clock while
  *     running is neither a start nor a stop, and changes nothing.
- *   - Note On (0x90, note, 100) when a note starts. The lowest pitch is note
- *     24 (C1).
+ *   - Note On (0x90, note, velocity) when a note starts. The lowest pitch is
+ *     note 24 (C1). The velocity is 100 for a note as loud as can be (an
+ *     amplitude of 255) and less in proportion, down to 1.
  *   - Note Off (0x80, note, 0) when the gate is low and a note is sounding.
  *
  * A note that starts while another sounds, the gate having stayed high, is a
@@ -81,6 +82,7 @@ typedef struct
                           // its Note Off after a tie; 255 if there is none
     uint8_t note_wait;    // Note whose Note On has still to be sent; 255 if
                           // there is none
+    uint8_t velocity_wait; // The velocity that Note On is to carry
 } midi_out_state_t;
 
 /**
@@ -97,6 +99,8 @@ typedef struct
     uint8_t semitone;       // Its pitch in semitones above the lowest, 0 to
                             // 45. A higher value is treated as 45, so the
                             // note is 69 at most. Only used when
+                            // b_note_started is true
+    uint8_t amplitude;      // How loud it is, 0 to 255. Only used when
                             // b_note_started is true
     bool    b_gate;         // Level of the gate after this tick
     uint8_t pulses;         // Clock pulses (96 to the quarter note) that

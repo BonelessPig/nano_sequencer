@@ -38,6 +38,8 @@ Read the part a change concerns, not all of them.
 - What explains the page goes in a table inside a `<details>`, closed until opened, not in a paragraph.
 - A watchdog reset is taken from the board's `resets`, never from the log, so the release image shows it too.
   What the server works out (calibration mode, the transport, the step) is then worked out afresh as at power-on (`startAgain()`); anything new it predicts has to be put back there as well as in `powerUp()`.
+- The envelope CV is shown as a figure under Outputs, from the board's `envWrites`, as an `env` event when it changes.
+  The patched gear's own envelope is still made in the page from the gate; it does not listen to this one.
 - The level light goes out as `level` in every `run` message, the part of the slice it was on for, from `takeLevel()`; it is not an event and is not in `drain()`'s list.
   The selector and the LFO reading are panel controls, kept in `panel` and set again in `powerUp()`.
 - "Stop the tick" is asked of the board again every slice until the reset comes: a slice can end inside the tick interrupt, where `stopTick()` does nothing.

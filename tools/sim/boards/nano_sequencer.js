@@ -232,7 +232,9 @@ function createBoard(config, options = {}) {
         sendsMidi: WIRES[config] === WIRE_MIDI,
         panelReads: chain.reads,
         spiSent,
-        cvWrites: dac.writes,
+        // The DAC's frames: the pitch CV on channel A, the envelope on B
+        cvWrites: dac.writes.A,
+        envWrites: dac.writes.B,
         cvIgnoredFrames: dac.ignored,
         ledLatches: leds.latches,
         gate,
@@ -323,7 +325,7 @@ function createBoard(config, options = {}) {
             this.pressRunButton(60);
             this.pulseClockIn(2);
             this.runForMs(60);
-            for (const list of [gate.edges, clockOut.edges, dac.writes, dac.ignored,
+            for (const list of [gate.edges, clockOut.edges, dac.writes.A, dac.writes.B, dac.ignored,
                 chain.reads, spiSent, leds.latches, clockIn.rises, resetIn.rises,
                 serial.lines, serial.notices, midi.bytes, midi.messages]) {
                 list.length = 0;
@@ -362,13 +364,28 @@ function createBoard(config, options = {}) {
          */
         cvWriteBefore(cycle) {
             let latest = null;
-            for (const write of dac.writes) {
+            for (const write of dac.writes.A) {
                 if (write.cycle >= cycle) {
                     break;
                 }
                 latest = write;
             }
             return latest;
+        },
+
+        /**
+         * The envelope CV as it stood at a cycle, in millivolts: what the
+         * last frame for it before then set, or 0 if there was none.
+         */
+        envMillivoltsAt(cycle) {
+            let millivolts = 0;
+            for (const write of dac.writes.B) {
+                if (write.cycle >= cycle) {
+                    break;
+                }
+                millivolts = write.millivolts;
+            }
+            return millivolts;
         },
 
         /** Runs until the clock output has finished this many pulses. */

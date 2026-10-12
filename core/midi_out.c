@@ -22,8 +22,13 @@
 #define LOWEST_NOTE       (24U) // Semitone 0 is C1
 #define SEMITONE_MAX      (45U)
 #define NOTE_NONE         (0xFFU) // No note; not a valid note number
-#define NOTE_ON_VELOCITY  (100U)
 #define NOTE_OFF_VELOCITY (0U)
+
+// A Note On's velocity: the lowest that is still a Note On for an amplitude
+// of 0, and this much more for one of 255
+#define VELOCITY_MIN      (1U)
+#define VELOCITY_RANGE    (99U)
+#define AMPLITUDE_MAX     (255U)
 
 #define PULSES_PER_CLOCK  (4U) // 96 pulses to the quarter note, 24 clocks
 #define CLOCKS_OWED_MAX   (255U)
@@ -47,6 +52,22 @@ static uint8_t note_number(uint8_t semitone)
 
     // At most 24 + 45 = 69, so it fits in a byte
     return (uint8_t)(LOWEST_NOTE + limited);
+}
+
+
+
+/**
+ * @brief  Gives the velocity of a Note On.
+ * @param  amplitude  How loud the note is, 0 to 255.
+ * @return The velocity, VELOCITY_MIN to VELOCITY_MIN + VELOCITY_RANGE.
+ */
+static uint8_t note_velocity(uint8_t amplitude)
+{
+    const uint16_t wide   = amplitude;
+    // At most 255 * 99, which fits in 16 bits
+    const uint16_t scaled = (uint16_t)((uint16_t)(wide * VELOCITY_RANGE) / AMPLITUDE_MAX);
+
+    return (uint8_t)(VELOCITY_MIN + scaled);
 }
 
 
@@ -173,7 +194,8 @@ static void mark_note(midi_out_state_t *p_state, const midi_out_inputs_t *p_in)
         // other takes the place of a note that was still waiting
         const bool b_held = (note == p_state->note_on) && !p_state->b_release;
 
-        p_state->note_wait = b_held ? (uint8_t)NOTE_NONE : note;
+        p_state->note_wait     = b_held ? (uint8_t)NOTE_NONE : note;
+        p_state->velocity_wait = note_velocity(p_in->amplitude);
     }
 
     if (!p_in->b_gate)
@@ -243,7 +265,7 @@ static void send_note_on(midi_out_state_t *p_state, midi_out_bytes_t *p_out, uin
 
     if (b_waiting && b_clear && fits(p_out, limit, NOTE_BYTES))
     {
-        put_note(p_out, STATUS_NOTE_ON, p_state->note_wait, NOTE_ON_VELOCITY);
+        put_note(p_out, STATUS_NOTE_ON, p_state->note_wait, p_state->velocity_wait);
         p_state->note_off  = p_state->note_on;
         p_state->note_on   = p_state->note_wait;
         p_state->note_wait = NOTE_NONE;
@@ -290,6 +312,7 @@ void midi_out_init(midi_out_state_t *p_state)
         p_state->note_on      = NOTE_NONE;
         p_state->note_off     = NOTE_NONE;
         p_state->note_wait    = NOTE_NONE;
+        p_state->velocity_wait = 0U;
     }
 }
 

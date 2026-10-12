@@ -598,7 +598,7 @@ static void test_null_pointers_are_ignored(void)
     midi_out_state_t        before;
     midi_out_bytes_t        out;
     midi_out_bytes_t        poisoned;
-    const midi_out_inputs_t in = { true, false, true, PITCH_A, true, 4U, PLENTY };
+    const midi_out_inputs_t in = { true, false, true, PITCH_A, 255U, true, 4U, PLENTY };
 
     midi_out_init(NULL); // Must not crash
 

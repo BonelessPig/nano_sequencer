@@ -7,9 +7,9 @@ Run that again after a change to the firmware or its tests, and commit what it w
 
 | | Flash | Of the flash available | Static RAM |
 |---|---:|---:|---:|
-| debug | 11066 bytes | 36.0% | 820 bytes |
-| release | 9782 bytes | 31.8% | 258 bytes |
-| midi | 9934 bytes | 32.3% | 292 bytes |
+| debug | 11740 bytes | 38.2% | 837 bytes |
+| release | 10456 bytes | 34.0% | 275 bytes |
+| midi | 10608 bytes | 34.5% | 309 bytes |
 
 The flash available is the 30720 bytes below the old Nano bootloader.
 Static RAM is initialised data, zeroed data and the one byte kept through a reset;
@@ -19,14 +19,14 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 
 | | Debug | Release | Midi |
 |---|---:|---:|---:|
-| **All of `adapters/target/`** | **2477** | **1192** | **1344** |
-| **All of `app/`** | **1506** | **1506** | **1506** |
-| **All of `core/`** | **6849** | **6849** | **6849** |
+| **All of `adapters/target/`** | **2505** | **1220** | **1372** |
+| **All of `app/`** | **1626** | **1626** | **1626** |
+| **All of `core/`** | **7375** | **7375** | **7375** |
 | `adapters/target/analog_reader.c` | 92 | 92 | 92 |
 | `adapters/target/breadcrumb.c` | 12 | 12 | 12 |
 | `adapters/target/clock_input.c` | 36 | 36 | 36 |
 | `adapters/target/clock_output.c` | 12 | 12 | 12 |
-| `adapters/target/cv_output.c` | 82 | 82 | 82 |
+| `adapters/target/cv_output.c` | 110 | 110 | 110 |
 | `adapters/target/eeprom.c` | 308 | 308 | 308 |
 | `adapters/target/gate_output.c` | 12 | 12 | 12 |
 | `adapters/target/init.c` | 64 | 64 | 64 |
@@ -43,7 +43,7 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `adapters/target/spi.c` | 70 | 70 | 70 |
 | `adapters/target/timebase.c` | 90 | 90 | 90 |
 | `adapters/target/watchdog.c` | 20 | 20 | 20 |
-| `app/app.c` | 1490 | 1490 | 1490 |
+| `app/app.c` | 1610 | 1610 | 1610 |
 | `app/main.c` | 16 | 16 | 16 |
 | `core/address.c` | 294 | 294 | 294 |
 | `core/bank.c` | 296 | 296 | 296 |
@@ -58,28 +58,29 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `core/engine_klee.c` | 406 | 406 | 406 |
 | `core/engine_plain.c` | 146 | 146 | 146 |
 | `core/engine_stage.c` | 378 | 378 | 378 |
+| `core/env.c` | 454 | 454 | 454 |
 | `core/errlog.c` | 364 | 364 | 364 |
 | `core/gate.c` | 68 | 68 | 68 |
-| `core/midi_out.c` | 508 | 508 | 508 |
+| `core/midi_out.c` | 538 | 538 | 538 |
 | `core/mod.c` | 302 | 302 | 302 |
 | `core/note_map.c` | 157 | 157 | 157 |
 | `core/panel.c` | 80 | 80 | 80 |
 | `core/pickup.c` | 156 | 156 | 156 |
 | `core/pitch_cal.c` | 152 | 152 | 152 |
 | `core/prng.c` | 76 | 76 | 76 |
-| `core/seq.c` | 1288 | 1288 | 1288 |
+| `core/seq.c` | 1330 | 1330 | 1330 |
 | `core/transport.c` | 190 | 190 | 190 |
 | startup object | 128 | 128 | 128 |
 | libgcc | 106 | 106 | 106 |
 | padding | 0 | 1 | 1 |
-| **Total** | **11066** | **9782** | **9934** |
+| **Total** | **11740** | **10456** | **10608** |
 
 ## Static RAM by source file, in bytes
 
 | | Debug | Release | Midi |
 |---|---:|---:|---:|
 | **All of `adapters/target/`** | **588** | **25** | **59** |
-| **All of `app/`** | **181** | **181** | **181** |
+| **All of `app/`** | **198** | **198** | **198** |
 | **All of `core/`** | **51** | **51** | **51** |
 | `adapters/target/breadcrumb.c` | 1 | 1 | 1 |
 | `adapters/target/eeprom.c` | 20 | 20 | 20 |
@@ -87,20 +88,20 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `adapters/target/serial_logger.c` | 563 | 0 | 0 |
 | `adapters/target/shift_reg_reader.c` | 2 | 2 | 2 |
 | `adapters/target/timebase.c` | 2 | 2 | 2 |
-| `app/app.c` | 181 | 181 | 181 |
+| `app/app.c` | 198 | 198 | 198 |
 | `core/note_map.c` | 51 | 51 | 51 |
 | padding | 0 | 1 | 1 |
-| **Total** | **820** | **258** | **292** |
+| **Total** | **837** | **275** | **309** |
 
 ## Host tests
 
 | Area | Programs | Tests |
 |---|---:|---:|
-| Core | 30 | 395 |
-| App loop | 5 | 84 |
-| Target adapters | 21 | 153 |
+| Core | 31 | 415 |
+| App loop | 6 | 90 |
+| Target adapters | 21 | 155 |
 | `main.c` | 1 | 3 |
-| **Total** | **57** | **635** |
+| **Total** | **59** | **663** |
 
 | Program | Tests |
 |---|---:|
@@ -110,6 +111,7 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_app_cal` | 15 |
 | `test_app_controls` | 11 |
 | `test_app_crash` | 13 |
+| `test_app_env` | 6 |
 | `test_app_midi` | 11 |
 | `test_bank` | 12 |
 | `test_breadcrumb` | 2 |
@@ -119,7 +121,7 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_clock_input` | 7 |
 | `test_clock_output` | 3 |
 | `test_crc8` | 5 |
-| `test_cv_output` | 7 |
+| `test_cv_output` | 9 |
 | `test_debounce` | 8 |
 | `test_eeprom` | 15 |
 | `test_engine_cartesian` | 7 |
@@ -128,6 +130,7 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_engine_klee` | 15 |
 | `test_engine_plain` | 8 |
 | `test_engine_stage` | 13 |
+| `test_env` | 17 |
 | `test_errlog` | 16 |
 | `test_gate` | 10 |
 | `test_gate_output` | 3 |
@@ -135,7 +138,7 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_level_output` | 5 |
 | `test_main` | 3 |
 | `test_midi_out` | 21 |
-| `test_midi_out_notes` | 20 |
+| `test_midi_out_notes` | 22 |
 | `test_midi_output` | 15 |
 | `test_mod` | 12 |
 | `test_note_map` | 12 |
@@ -152,7 +155,7 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_seq` | 27 |
 | `test_seq_engines` | 11 |
 | `test_seq_gate` | 15 |
-| `test_seq_mod` | 7 |
+| `test_seq_mod` | 8 |
 | `test_seq_pulses` | 8 |
 | `test_seq_transport` | 19 |
 | `test_serial_logger` | 22 |
@@ -164,7 +167,7 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 
 ## Coverage
 
-Firmware total: lines 1711/1711 (100.0%), branches 770/770 (100.0%), in `core/`, `app/` and `adapters/target/`.
+Firmware total: lines 1826/1826 (100.0%), branches 803/803 (100.0%), in `core/`, `app/` and `adapters/target/`.
 
 ## Emulated board scenarios
 
@@ -175,8 +178,8 @@ Firmware total: lines 1711/1711 (100.0%), branches 770/770 (100.0%), in `core/`,
 | `engines.test.js` | 41 |
 | `midi.test.js` | 10 |
 | `midi_clock.test.js` | 7 |
-| `modulation.test.js` | 15 |
-| `release.test.js` | 14 |
+| `modulation.test.js` | 24 |
+| `release.test.js` | 15 |
 | `transport.test.js` | 48 |
 | `watchdog.test.js` | 21 |
-| **Total** | **196** |
+| **Total** | **206** |
