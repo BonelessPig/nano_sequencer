@@ -1,7 +1,7 @@
 # nano_sequencer decisions
 
 The decisions taken while planning and building the firmware, moved here from [ROADMAP.md](ROADMAP.md) on 2026-10-11.
-The roadmap carries the plan, and its "Next" section says which decisions the next piece of work depends on; a "section N" or "phase N" below is the roadmap's, and an "open item" is ARCHITECTURE.md's.
+The roadmap carries the plan, and its "Next" section says which decisions the next piece of work depends on; a "section N" or "phase N" below is the roadmap's, and an "open item" is one of OPEN_ITEMS.md's.
 
 Decision numbers are referred to from the code's docs; never renumber them.
 Unless a group says otherwise, its decisions were left to recommendation, are **provisional**, and have not been heard or run on hardware.

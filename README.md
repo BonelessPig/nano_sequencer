@@ -21,7 +21,7 @@ The firmware plays a 16-step pattern at 30 to 285 BPM, and its main loop never b
 
 **Most of this has not run on the real board.** It has been checked by host tests and on an emulated board, and most of the hardware it expects is not wired yet.
 The outputs are bare logic pins and the DAC's own output, with no buffer or protection.
-What the firmware does in detail, and what is left to check on the board, is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+What the firmware does in detail is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and what is left to check on the board in [docs/OPEN_ITEMS.md](docs/OPEN_ITEMS.md).
 
 ## Why bare-metal?
 
@@ -44,7 +44,7 @@ tools/sim/          # Emulated board (make sim, make live)
 tools/misra/        # cppcheck MISRA addon config and helper scripts
 tools/coverage/     # Coverage report script
 tools/check/        # Runs every check and summarizes (make check)
-docs/               # Architecture, roadmap, schematic, parts list
+docs/               # Architecture, open items, roadmap, schematic, parts list
 ```
 
 The rules are in [CLAUDE.md](CLAUDE.md), with each folder's own rules in a `CLAUDE.md` beside its source and, topic by topic for the core, the MCU adapters and the emulated board, in `.claude/rules/`.
@@ -62,7 +62,7 @@ The wiring is drawn pin by pin in [docs/SCHEMATIC.html](docs/SCHEMATIC.html) (op
 - **USART** (D1): the log at 115200 baud in the debug build, MIDI out at 31250 baud in the midi build.
 - **EEPROM:** 52 bytes, for the calibration record and the crash log.
   A chip erase by an ISP programmer wipes it unless the EESAVE fuse is set; an upload through the bootloader does not.
-- **Watchdog:** with the Nano's stock old bootloader a watchdog reset does not recover until the power is cycled; see open item 15 in `docs/ARCHITECTURE.md`.
+- **Watchdog:** with the Nano's stock old bootloader a watchdog reset does not recover until the power is cycled; see item 15 in `docs/OPEN_ITEMS.md`.
 
 ## Dependencies
 

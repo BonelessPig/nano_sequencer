@@ -22,7 +22,7 @@ Keep it to a screen, and bring it up to date at the end of each piece of work.
 - **After the modulation: MIDI in**, the second piece of phase 10 (decision 117), and then phase 11.
 - **To settle before starting stage 2:** whether the offset is in steps of the pattern or places in the range, and what it does in the engines that do not step through sixteen places (stage, Klee, Cartesian).
 - **Waiting on the board, not on firmware:** everything from phase 1 on is unrun on hardware.
-  Section 8 lists what to check, and ARCHITECTURE.md's open items the order to check it in.
+  Section 8 lists what to check, and OPEN_ITEMS.md the order to check it in.
 - **Start each piece of work in a fresh session**, from this section and the decisions it names.
   A long session costs more in every step than anything else does (section 6).
 
@@ -218,7 +218,7 @@ ADC7, PD6 and the pot are now taken (decisions 133 and 144), so an option that a
 ## 8. Not verified
 
 Check these before relying on them.
-Each "on the board" item has the order to check things in under ARCHITECTURE.md's open items.
+Each "on the board" item has the order to check things in under its number in OPEN_ITEMS.md.
 
 **Verified since first listed**, against the toolchain's `iom328p.h` and by the emulator running from them: the register addresses and bit positions in use for Timer2, Timer/Counter0, Timer/Counter1's capture, the external interrupt, the SPI, the EEPROM, MCUSR and the watchdog; `__vector_7` as the Timer2 compare A symbol.
 Against the datasheets: the MCP4822's frame layout, pinout and SPI mode 0 (DS20002249B), and the 74HC165 and 74HC595 pinouts (SCLS116H, SCLS041J).

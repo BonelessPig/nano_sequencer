@@ -17,4 +17,4 @@ Loaded with the files below, on top of `adapters/target/CLAUDE.md`, whose rules 
 - It leaves `MCUSR` alone.
   The reset cause is read, and the flags cleared, by `reset_cause.c` afterwards.
 - `wdr` comes from `__builtin_avr_wdr`, called inside a `static inline` function the fake header replaces (`adapters/target/CLAUDE.md`, under Compiler, has its prototype).
-- The stock old bootloader does not turn the watchdog off, so on that bootloader a watchdog reset loops until the power is cycled (`docs/ARCHITECTURE.md` open item 15).
+- The stock old bootloader does not turn the watchdog off, so on that bootloader a watchdog reset loops until the power is cycled (`docs/OPEN_ITEMS.md` item 15).

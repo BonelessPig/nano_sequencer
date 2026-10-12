@@ -24,7 +24,7 @@ Loaded with the files below, on top of `adapters/target/CLAUDE.md`, whose rules 
   Both use a static helper instead (`queue_room()` behind `midi_output_room()` and `midi_output_write()`).
 - `midi_output_init()` returns nothing, since it cannot fail, and goes with the driver inits in `platform_init()`, before the watchdog.
 - PD1 floats from reset until the transmitter is enabled.
-  That matters for the MIDI out circuit and has not been tried (`docs/ARCHITECTURE.md` open item 16).
+  That matters for the MIDI out circuit and has not been tried (`docs/OPEN_ITEMS.md` item 16).
 - The serial logger never waits for the UART.
   A message is written into a 128-byte queue and `log_poll()` sends one byte per call when the transmitter is ready.
   A message that does not fit is dropped whole, so write every message between `begin_message()` and `end_message()`.
