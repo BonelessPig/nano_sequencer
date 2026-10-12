@@ -86,9 +86,11 @@ el('power').addEventListener('click', powerCycle);
 el('config').addEventListener('change', powerCycle);
 el('gear-power').addEventListener('click', toggleGear);
 el('vco-wave').addEventListener('change', applyGear);
-for (const id of ['vco-tune', 'vco-position', 'env-attack', 'env-release', 'volume']) {
+for (const id of ['vco-tune', 'vco-position', 'chorus', 'env-attack', 'env-release',
+    'env-position', 'volume']) {
     el(id).addEventListener('input', applyGear);
 }
+window.addEventListener('resize', drawWavetable);
 applyGear();
 el('cal-enter').addEventListener('click', () => {
     const notes = state.notes.slice();

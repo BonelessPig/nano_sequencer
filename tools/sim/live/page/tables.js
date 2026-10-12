@@ -115,6 +115,28 @@ const sawPart = (n) => [0, (((n % 2) === 1) ? 1 : -1) / n];
 // edge is where the other waves rise through zero and a mix keeps its level
 const pulsePart = (duty) => (n) => [Math.sin(2 * Math.PI * n * duty) / n,
     (1 - Math.cos(2 * Math.PI * n * duty)) / n];
+// The harmonics of a wave given as its height through a cycle, the phase
+// going from 0 to 1: found by adding it up at ANALYSIS_POINTS places
+const ANALYSIS_POINTS = 256;
+const shapePart = (height) => (n) => {
+    let cosine = 0;
+    let sine = 0;
+
+    for (let j = 0; j < ANALYSIS_POINTS; j++) {
+        const angle = (2 * Math.PI * n * j) / ANALYSIS_POINTS;
+
+        cosine += height(j / ANALYSIS_POINTS) * Math.cos(angle);
+        sine += height(j / ANALYSIS_POINTS) * Math.sin(angle);
+    }
+    return [(2 * cosine) / ANALYSIS_POINTS, (2 * sine) / ANALYSIS_POINTS];
+};
+// The tables made as a series are each this many waves, wave i from make(i)
+const SERIES_WAVES = 8;
+const seriesOf = (make) => Array.from({ length: SERIES_WAVES }, (unused, i) => make(i));
+const PWM_DUTIES = [50, 40, 30, 20, 15, 10, 7, 4];     // Percent
+const FORMANT_GAIN = 6;         // How far the peak stands over the saw
+const FORMANT_WIDTH = 1.5;      // And how many harmonics wide it is
+const SYNC_STEP = 0.5;          // How much further each synced wave is tuned up
 const WAVETABLES = {
     classic: [
         { name: 'sine', part: (n) => [0, (n === 1) ? 1 : 0] },
@@ -130,7 +152,97 @@ const WAVETABLES = {
         name: (i === 0) ? 'harmonic 1' : `harmonics 1 to ${i + 1}`,
         part: (n) => ((n <= (i + 1)) ? sawPart(n) : [0, 0]),
     })),
+    // A pulse narrowing from a square: pulse width modulation by hand
+    pwm: PWM_DUTIES.map((percent) => ({
+        name: `${percent}% pulse`, part: pulsePart(percent / 100),
+    })),
+    // A square built up an odd harmonic at a time: hollow, then buzzing
+    odd: seriesOf((i) => ({
+        name: (i === 0) ? 'harmonic 1' : `odd harmonics to ${(2 * i) + 1}`,
+        part: (n) => ((((n % 2) === 1) && (n <= ((2 * i) + 1))) ? [0, 1 / n] : [0, 0]),
+    })),
+    // A saw with a peak in its harmonics that goes up them, as a vowel's or
+    // a resonant filter's does
+    formant: seriesOf((i) => ({
+        name: `peak at harmonic ${(2 * i) + 2}`,
+        part: (n) => sawPart(n).map((amount) => amount * (1 + (FORMANT_GAIN
+            * Math.exp(-((((n - ((2 * i) + 2)) / FORMANT_WIDTH)) ** 2))))),
+    })),
+    // A sine driven harder and harder into a wavefolder
+    fold: seriesOf((i) => ({
+        name: `folded ×${i + 1}`,
+        part: shapePart((phase) => Math.sin(((i + 1) * Math.PI * Math.sin(
+            2 * Math.PI * phase)) / 2)),
+    })),
+    // A saw synced to the VCO and tuned up from it: hard sync
+    sync: seriesOf((i) => ({
+        name: `synced ×${(1 + (i * SYNC_STEP)).toFixed(1)}`,
+        part: shapePart((phase) => (2 * ((phase * (1 + (i * SYNC_STEP))) % 1)) - 1),
+    })),
 };
+// The wavetable's picture: the points a wave's cycle is drawn through, and
+// as parts of the canvas where the front wave starts, a wave's width and
+// half height, and how far right and up the back wave is from the front.
+// Then the room under the front wave for its name, and the chosen wave's line
+const WAVE_PICTURE_POINTS = 96;
+const PICTURE_LEFT = 0.04;
+const PICTURE_WAVE_WIDTH = 0.6;
+const PICTURE_WAVE_HEIGHT = 0.14;
+const PICTURE_DEPTH_X = 0.32;
+const PICTURE_DEPTH_Y = 0.5;
+const PICTURE_FOOT_PX = 18;
+const PICTURE_CHOSEN_WIDTH = 2.5;
+// How many lines the picture draws a table with, about: its waves and as
+// many between each two as bring it near this. Then the line of each of
+// the chorus's voices, and how solid it is
+const PICTURE_LINES_ABOUT = 72;
+const PICTURE_TABLE_WIDTH = 1;  // A line of the table itself
+const PICTURE_VOICE_WIDTH = 1.5;
+const PICTURE_VOICE_ALPHA = 0.7;
+// The chorus: the voices it adds to the VCO's first, how far off pitch the
+// outermost two are at the top of the chorus pot, and the pot's top
+const CHORUS_VOICES = 36;
+const CHORUS_DETUNE_CENTS = 15;
+const CHORUS_STEPS = 100;
+// The chorus's voices stand evenly from one end of its spread to the
+// other. This is which of those stands each takes, in the order the voices
+// come in as the chorus pot comes up: the two ends first, then each one in
+// the middle of the widest gap left
+const CHORUS_STANDS = [0, CHORUS_VOICES - 1];
+while (CHORUS_STANDS.length < CHORUS_VOICES) {
+    const taken = [...CHORUS_STANDS].sort((a, b) => a - b);
+    let widest = 1;
+
+    for (let i = 2; i < taken.length; i++) {
+        if ((taken[i] - taken[i - 1]) > (taken[widest] - taken[widest - 1])) {
+            widest = i;
+        }
+    }
+    CHORUS_STANDS.push(Math.floor((taken[widest - 1] + taken[widest]) / 2));
+}
+// How much the voices' places are drawn in towards the VCO's first voice:
+// 1 would leave them evenly spread, more stands them closer together near it
+const CHORUS_BUNCHING = 1.6;
+// The first two voices are there from the start, and the number goes up
+// by the same ratio for each step up the pot, to all of them at its top.
+// Any voice takes this much of the pot to come in fully
+const CHORUS_FIRST_VOICES = 2;
+const CHORUS_VOICE_FADE = 0.06;
+// The envelope's position pot's top, and how far the envelope has to move
+// before the wavetable is moved with it
+const SWEEP_STEPS = 100;
+const ENVELOPE_STEP = 0.002;
+// The picture's scan along the chosen wave: how often it goes along it at
+// VCO_BASE_HZ, twice as often an octave up, and the most often it goes.
+// Then how much of the wave it is long, its line and its glow
+const PICTURE_SCAN_HZ = 1;
+const PICTURE_SCAN_MAX_HZ = 8;
+const PICTURE_SCAN_TAIL = 0.12;
+const PICTURE_SCAN_WIDTH = 5;
+const PICTURE_VOICE_SCAN_WIDTH = 3;     // On a voice of the chorus
+const PICTURE_SCAN_GLOW_PX = 10;
+// Every voice by number: 0 the VCO's first, the rest the chorus's
+const gearVoices = Array.from({ length: CHORUS_VOICES + 1 }, (unused, k) => k);
 const NOISE_SECONDS = 2;        // Before the noise comes round again
 // An attack or release is the time to get about 95% of the way, which is
 // this many of the time constants the envelope is given

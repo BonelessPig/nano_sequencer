@@ -27,31 +27,16 @@ function probe(context, signal, size) {
     return { analyser, samples: new Float32Array(size) };
 }
 
-// A wavetable's waves, each made from its harmonics
-function buildTable(context, waves) {
-    return waves.map((wave) => {
-        const real = new Float32Array(WAVETABLE_HARMONICS + 1);
-        const imag = new Float32Array(WAVETABLE_HARMONICS + 1);
-
-        for (let n = 1; n <= WAVETABLE_HARMONICS; n++) {
-            [real[n], imag[n]] = wave.part(n);
-        }
-        return context.createPeriodicWave(real, imag);
-    });
-}
-
-// The patch: the oscillator and the noise each through a switch to the VCO's
-// output, that through the VCA to the audio output, and a steady 1 through
-// the envelope to the VCA's CV. The volume is the listener's, after the
-// audio output, so the scope does not show it. The oscillator is two, kept
-// in step and mixed: a wavetable is played as two waves next to each other
-// in it, more of one and less of the other as the position moves
+// The patch: the oscillators and the noise each through a switch to the
+// VCO's output, that through the VCA to the audio output, and a steady 1
+// through the envelope to the VCA's CV. The volume is the listener's, after
+// the audio output, so the scope does not show it. The VCO is one
+// oscillator and CHORUS_VOICES more, each through its own gain: the first
+// plays alone until the chorus pot brings the rest in
 function buildGear() {
     const context = new AudioContext();
-    const oscillator = context.createOscillator();
-    const oscillatorB = context.createOscillator();
-    const mixA = context.createGain();
-    const mixB = context.createGain();
+    const oscillators = [];
+    const gains = [];
     const noise = context.createBufferSource();
     const oscillatorOn = context.createGain();
     const noiseOn = context.createGain();
@@ -65,22 +50,21 @@ function buildGear() {
     noise.loop = true;
     envelope.gain.value = 0;
     vca.gain.value = 0;
-    mixB.gain.value = 0;
-    oscillator.connect(mixA).connect(oscillatorOn).connect(vcoOut);
-    oscillatorB.connect(mixB).connect(oscillatorOn);
+    for (let k = 0; k <= CHORUS_VOICES; k++) {
+        oscillators.push(context.createOscillator());
+        gains.push(context.createGain());
+        gains[k].gain.value = (k === 0) ? 1 : 0;
+        oscillators[k].connect(gains[k]).connect(oscillatorOn);
+    }
+    oscillatorOn.connect(vcoOut);
     noise.connect(noiseOn).connect(vcoOut);
     vcoOut.connect(vca).connect(volume).connect(context.destination);
     one.connect(envelope).connect(vca.gain);
-    oscillator.start();
-    oscillatorB.start();
+    oscillators.forEach((oscillator) => oscillator.start());
     noise.start();
     one.start();
     return {
-        context, oscillator, oscillatorB, mixA, mixB, oscillatorOn, noiseOn,
-        envelope, volume,
-        tables: Object.fromEntries(Object.entries(WAVETABLES)
-            .map(([name, waves]) => [name, buildTable(context, waves)])),
-        held: [null, null],     // The table's wave each oscillator is on
+        context, oscillators, gains, oscillatorOn, noiseOn, envelope, volume,
         vcoProbe: probe(context, vcoOut, SCOPE_PROBE_SAMPLES),
         outProbe: probe(context, vca, SCOPE_PROBE_SAMPLES),
         envelopeProbe: probe(context, envelope, ENVELOPE_PROBE_SAMPLES),
@@ -89,6 +73,10 @@ function buildGear() {
         envelopePoints: [],
         pitchPoints: [],
         sampledMs: 0,
+        held: [],               // What wave each voice was last given
+        envelopeLevel: 0,       // As last taken from the envelope's probe
+        scan: 0,                // How far along the wave the picture's scan is
+        scannedAt: null,        // The frame time it was last moved at
     };
 }
 
@@ -110,64 +98,167 @@ function gearPitch(millivolts) {
             + (Number(el('vco-tune').value) / SEMITONES_PER_OCTAVE);
 
         addPoint(gear.pitchPoints, octaves);
-        for (const one of [gear.oscillator, gear.oscillatorB]) {
+        for (const one of gear.oscillators) {
             one.frequency.setValueAtTime(
                 VCO_BASE_HZ * (2 ** octaves), gear.context.currentTime);
         }
     }
 }
 
-// Puts one of the two oscillators on a wave of a table, if it is not on it
-function holdWave(which, oscillator, wave) {
-    if (gear.held[which] !== wave) {
-        oscillator.setPeriodicWave(wave);
-        gear.held[which] = wave;
+const chorusAmount = () => Number(el('chorus').value) / CHORUS_STEPS;
+const sweepAmount = () => Number(el('env-position').value) / SWEEP_STEPS;
+
+// Where in a wavetable the VCO is, 0 its first wave and 1 its last: where
+// the position pot is, and on from there by as much of the envelope as the
+// envelope's position pot lets through. With the gear off there is no
+// envelope
+function tableCentre() {
+    const level = (gear === null) ? 0 : gear.envelopeLevel;
+
+    return Math.min(1, (Number(el('vco-position').value) / POSITION_STEPS)
+        + (level * sweepAmount()));
+}
+
+// The VCO's pitch in octaves over VCO_BASE_HZ: the pitch CV, an octave a
+// volt, from where the tune knob is. 0 until there is a CV to go by
+function pitchOctaves() {
+    const millivolts = (trace.cv.length === 0) ? 0 : lastValue(trace.cv);
+
+    return (millivolts / 1000) + (Number(el('vco-tune').value) / SEMITONES_PER_OCTAVE);
+}
+
+// Brings the wavetable's picture up to this frame, at `time` in ms: the
+// envelope's level from its probe, which is how bright the picture's scan
+// is, and the scan moved on along the wave by the time since the last
+// frame, the faster the higher the pitch
+function followGear(time) {
+    const rate = Math.min(PICTURE_SCAN_MAX_HZ, PICTURE_SCAN_HZ * (2 ** pitchOctaves()));
+    const wave = el('vco-wave').value;
+    const level = Math.max(0, Math.min(1,
+        gear.envelopeProbe.samples[ENVELOPE_PROBE_SAMPLES - 1]));
+    const hasMoved = Math.abs(level - gear.envelopeLevel) >= ENVELOPE_STEP;
+
+    gear.envelopeLevel = level;
+    if (hasMoved && (sweepAmount() > 0) && (WAVETABLES[wave] !== undefined)) {
+        // The envelope is carrying the VCO along the table
+        applyVoices(wave);
+        el('vco-position-reading').textContent = positionReading();
     }
+    gear.scan = (gear.scan + (((time - (gear.scannedAt ?? time)) / MS_PER_S) * rate)) % 1;
+    gear.scannedAt = time;
+    drawWavetable();
 }
 
-// Plays a wavetable at where the position pot is: the two waves it is
-// between, the even one of the table on the first oscillator and the odd on
-// the second, so the one moved to a new wave is the one mixed out just then.
-// Returns the two waves' places in the table and how far it is to the second
-function playTable(name) {
-    const waves = gear.tables[name];
-    const place = (Number(el('vco-position').value) / POSITION_STEPS) * (waves.length - 1);
-    const low = Math.min(Math.floor(place), waves.length - 2);
-    const part = place - low;
-    const even = low + (low % 2);
-    const odd = (low + 1) - (low % 2);
-
-    holdWave(0, gear.oscillator, waves[even]);
-    holdWave(1, gear.oscillatorB, waves[odd]);
-    gear.mixA.gain.value = (even === low) ? (1 - part) : part;
-    gear.mixB.gain.value = (odd === low) ? (1 - part) : part;
-    return { low, part };
+// How far a voice stands from the first, which is voice 0 and stands at 0:
+// the chorus's own voices are spread evenly from -1 to 1
+function voiceSpread(k) {
+    return (k === 0) ? 0 : ((2 * CHORUS_STANDS[k - 1]) / (CHORUS_VOICES - 1)) - 1;
 }
 
-// The wave chosen, put on the gear: a wavetable, the noise, or one of the
-// oscillator's own on the first oscillator alone. Says what the position
-// pot is doing
+// How much of a voice of the chorus is there, 0 to 1, at where the chorus
+// pot is: the more of them the further up it is
+function voicePresence(k) {
+    // Where on the pot voice k begins to come in: the number of voices
+    // there goes up exponentially, the last fully in at the pot's top
+    const from = (1 - CHORUS_VOICE_FADE)
+        * (Math.log(Math.max(1, k / CHORUS_FIRST_VOICES))
+            / Math.log(CHORUS_VOICES / CHORUS_FIRST_VOICES));
+
+    return Math.max(0, Math.min(1, (chorusAmount() - from) / CHORUS_VOICE_FADE));
+}
+
+// Where each voice is in a table of this many waves, counted in waves from
+// the first. Voice 0 is where the position pot is. The chorus's voices are
+// there too with the chorus pot at 0, and go out from it as the pot comes
+// up, until at the top they reach both ends of the table. They are not
+// spread evenly over it: each one's even place is drawn in towards voice 0,
+// so they stand close together near it and further apart further out
+function voicePlaces(waves) {
+    const centre = tableCentre();
+
+    return gearVoices.map((k) => {
+        const away = ((voiceSpread(k) + 1) / 2) - centre;   // Spread evenly
+        const room = (away < 0) ? centre : 1 - centre;      // To that end
+        const out = ((k === 0) || (room === 0)) ? 0
+            : Math.sign(away) * room * ((Math.abs(away) / room) ** CHORUS_BUNCHING);
+
+        return (centre + (chorusAmount() * out)) * (waves - 1);
+    });
+}
+
+// The two waves of a table a place is between: the lower one, and how far
+// the place is on to the next
+function between(place, waves) {
+    const low = Math.min(Math.floor(place), waves - 2);
+
+    return { low, part: place - low };
+}
+
+// The wave at a place in a table, for an oscillator: the two waves it is
+// between, mixed harmonic by harmonic
+function waveAt(name, place) {
+    const waves = tableWaves(name);
+    const { low, part } = between(place, waves.length);
+    const mix = (from, to) => from.map((value, n) => ((1 - part) * value) + (part * to[n]));
+
+    return gear.context.createPeriodicWave(mix(waves[low].real, waves[low + 1].real),
+        mix(waves[low].imag, waves[low + 1].imag), { disableNormalization: true });
+}
+
+// The wave chosen and the chorus, put on the gear's voices: each voice's
+// wave, how far off pitch it is and how much of it there is. On a wavetable
+// each has the wave at its own place; on one of the oscillator's own waves
+// all have that wave, so the chorus is only the voices being off pitch. The
+// gains add up to 1, so the VCO's output keeps its full scale
+function applyVoices(wave) {
+    const chorus = chorusAmount();
+    const places = (WAVETABLES[wave] === undefined)
+        ? null : voicePlaces(WAVETABLES[wave].length);
+
+    const amounts = gearVoices.map((k) => ((k === 0)
+        ? 0 : (chorus * voicePresence(k)) / (CHORUS_VOICES + 1)));
+
+    amounts[0] = 1 - amounts.reduce((sum, amount) => sum + amount, 0);
+    gear.oscillators.forEach((oscillator, k) => {
+        // A wave is made only for a voice that is heard and has moved
+        const held = (places === null) ? wave : `${wave} ${places[k].toFixed(3)}`;
+
+        if ((amounts[k] > 0) && (held !== gear.held[k])) {
+            gear.held[k] = held;
+            if (places === null) {
+                oscillator.type = wave;
+            } else {
+                oscillator.setPeriodicWave(waveAt(wave, places[k]));
+            }
+        }
+        oscillator.detune.value = chorus * CHORUS_DETUNE_CENTS * voiceSpread(k);
+        gear.gains[k].gain.value = amounts[k];
+    });
+}
+
+// The wave chosen, put on the gear: the oscillators, or the noise with
+// them switched out and left as they are
 function applyWave() {
     const wave = el('vco-wave').value;
     const isNoise = wave === VCO_NOISE;
-    let reading = 'no use on this wave';
 
-    if (WAVETABLES[wave] !== undefined) {
-        const { low, part } = playTable(wave);
-
-        reading = `${WAVETABLES[wave][low].name} to ${WAVETABLES[wave][low + 1].name}, `
-            + `${Math.round(part * 100)}%`;
-    } else if (!isNoise) {
-        gear.oscillator.type = wave;
-        gear.held[0] = null;
-        gear.mixA.gain.value = 1;
-        gear.mixB.gain.value = 0;
-    } else {
-        // The noise: the oscillators are left as they are, switched out
+    if (!isNoise) {
+        applyVoices(wave);
     }
     gear.oscillatorOn.gain.value = isNoise ? 0 : 1;
     gear.noiseOn.gain.value = isNoise ? 1 : 0;
-    el('vco-position-reading').textContent = reading;
+}
+
+// What the position pot is doing, whether the gear is on or not
+function positionReading() {
+    const waves = WAVETABLES[el('vco-wave').value];
+
+    if (waves === undefined) {
+        return 'no use on this wave';
+    }
+    const { low, part } = between(voicePlaces(waves.length)[0], waves.length);
+
+    return `${waves[low].name} to ${waves[low + 1].name}, ${Math.round(part * 100)}%`;
 }
 
 // The gate at the envelope: up at the attack's rate while it is high, down
@@ -184,8 +275,16 @@ function gearGate(isHigh) {
 // The gear's knobs, worded, and put on the gear if it is on
 function applyGear() {
     const tune = Number(el('vco-tune').value);
+    const chorus = chorusAmount();
 
     el('vco-tune-reading').textContent = `${(tune > 0) ? '+' : ''}${tune} semitones`;
+    el('vco-position-reading').textContent = positionReading();
+    el('chorus-reading').textContent = (chorus === 0)
+        ? 'off' : `${Math.round(chorus * 100)}%`;
+    el('env-position-reading').textContent = (sweepAmount() === 0)
+        ? 'off' : `${Math.round(sweepAmount() * 100)}%`;
+    el('volume-reading').textContent = `${el('volume').value}%`;
+    drawWavetable();
     el('env-attack-reading').textContent = `${el('env-attack').value} ms`;
     el('env-release-reading').textContent = `${el('env-release').value} ms`;
     el('gear-power').textContent = `Gear: ${(gear === null) ? 'off' : 'on'}`;
@@ -279,7 +378,7 @@ function drawPitch(context, colour, top, height, width) {
 // Four bands: the VCO's output and the audio output as waves a few
 // milliseconds long, and between them the VCO's frequency and the envelope
 // over the trace's window
-function drawScope() {
+function drawScope(time) {
     const { context, width, height, colour } = openCanvas(el('scope'));
     const row = height / SCOPE_ROWS;
     const bandHeight = row - SCOPE_LABEL_PX - SCOPE_GAP_PX;
@@ -294,6 +393,7 @@ function drawScope() {
         let start = 0;
 
         readProbes();
+        followGear(time);
         start = triggerAt(gear.vcoProbe.samples, SCOPE_PROBE_SAMPLES - SCOPE_SAMPLES);
         label(`VCO out, ${spanMs.toFixed(0)} ms`, 0);
         label(drawPitch(context, colour('--cv'), top(1), bandHeight, width), 1);

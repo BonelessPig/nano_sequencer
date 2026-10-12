@@ -207,21 +207,21 @@
                      aria-label="Selector" aria-valuemin="0" aria-valuemax="7"></div>
                 <div>Selector <span class="num" id="selector"></span></div>
             </div>
-            <label for="tempo">Pot (A6)</label>
-            <input type="range" id="tempo" min="0" max="1023" step="1">
-            <span class="num" id="tempo-reading"></span>
+            <div class="pots">
+                <div><label for="tempo">Pot (A6)</label>
+                    <input type="range" id="tempo" min="0" max="1023" step="1">
+                    <span class="num" id="tempo-reading"></span></div>
+                <div><label for="lfo">LFO input (A7)</label>
+                    <input type="range" id="lfo" min="0" max="1023" step="1">
+                    <span class="num" id="lfo-reading"></span>
+                    <button id="lfo-centre">Centre</button></div>
+            </div>
             <span><span class="led" id="level-led"></span> Level light (D6)
                 <span class="num dim" id="level-reading"></span></span>
         </div>
         <div class="row spaced">
             <span class="num" id="tempo-means"></span>
             <span class="num dim" id="bpm"></span>
-        </div>
-        <div class="row spaced">
-            <label for="lfo">LFO input (A7)</label>
-            <input type="range" id="lfo" min="0" max="1023" step="1">
-            <span class="num" id="lfo-reading"></span>
-            <button id="lfo-centre">Centre</button>
         </div>
         <details>
             <summary>The selector, the pot and the LFO</summary>

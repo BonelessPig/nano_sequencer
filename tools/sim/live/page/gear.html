@@ -9,24 +9,37 @@
                 <option value="noise">White noise</option>
                 <option value="classic">Wavetable: classic</option>
                 <option value="harmonics">Wavetable: harmonics</option>
+                <option value="odd">Wavetable: odd harmonics</option>
+                <option value="pwm">Wavetable: pulse width</option>
+                <option value="formant">Wavetable: formant</option>
+                <option value="fold">Wavetable: wavefolder</option>
+                <option value="sync">Wavetable: hard sync</option>
             </select></label>
-            <label for="vco-position">Position</label>
-            <input type="range" id="vco-position" min="0" max="1000" step="1" value="0">
-            <span class="num" id="vco-position-reading"></span>
-            <label for="vco-tune">Tune</label>
-            <input type="range" id="vco-tune" min="-24" max="24" step="1" value="0">
-            <span class="num" id="vco-tune-reading"></span>
         </div>
-        <div class="row spaced">
-            <label for="env-attack">Envelope attack</label>
-            <input type="range" id="env-attack" min="1" max="500" step="1" value="5">
-            <span class="num" id="env-attack-reading"></span>
-            <label for="env-release">Release</label>
-            <input type="range" id="env-release" min="1" max="2000" step="1" value="50">
-            <span class="num" id="env-release-reading"></span>
-            <label for="volume">Volume</label>
-            <input type="range" id="volume" min="0" max="100" step="1" value="20">
+        <div class="pots">
+            <div><label for="vco-tune">Tune</label>
+                <input type="range" id="vco-tune" min="-24" max="24" step="1" value="0">
+                <span class="num" id="vco-tune-reading"></span></div>
+            <div><label for="vco-position">Position</label>
+                <input type="range" id="vco-position" min="0" max="1000" step="1" value="0">
+                <span class="num" id="vco-position-reading"></span></div>
+            <div><label for="chorus">Chorus</label>
+                <input type="range" id="chorus" min="0" max="100" step="1" value="0">
+                <span class="num" id="chorus-reading"></span></div>
+            <div><label for="env-attack">Attack</label>
+                <input type="range" id="env-attack" min="1" max="500" step="1" value="5">
+                <span class="num" id="env-attack-reading"></span></div>
+            <div><label for="env-release">Release</label>
+                <input type="range" id="env-release" min="1" max="2000" step="1" value="50">
+                <span class="num" id="env-release-reading"></span></div>
+            <div><label for="env-position">Envelope to position</label>
+                <input type="range" id="env-position" min="0" max="100" step="1" value="0">
+                <span class="num" id="env-position-reading"></span></div>
+            <div><label for="volume">Volume</label>
+                <input type="range" id="volume" min="0" max="100" step="1" value="20">
+                <span class="num" id="volume-reading"></span></div>
         </div>
+        <canvas id="wavetable" hidden></canvas>
         <canvas id="scope"></canvas>
         <details>
             <summary>The gear and the scope</summary>
@@ -49,14 +62,49 @@
                         pitch and takes no notice of the CV.</td></tr>
                 <tr><th>Wavetables</th>
                     <td>A row of waves the position pot goes through, the
-                        VCO playing a mix of the two it is between. Classic:
-                        sine, triangle, saw, square, 25% pulse, 10% pulse.
-                        Harmonics: a saw let through one harmonic at a time,
-                        1 to 16, like a filter opening.</td></tr>
+                        VCO playing a mix of the two it is between. Each is
+                        in the table below.</td></tr>
                 <tr><th>Position</th>
                     <td>Where in the wavetable the VCO is. No use on the
-                        other waves. Until the gear is on it says
-                        nothing.</td></tr>
+                        other waves.</td></tr>
+                <tr><th>Wavetable picture</th>
+                    <td>Shown while a wavetable is chosen: one cycle of
+                        its waves and of some between each two, the first
+                        at the front, lightest, and the last at the back,
+                        darkest. The thick line is the wave the position
+                        pot is at; the thin ones are the chorus's voices.
+                        The table is drawn solid, so a part of any of them
+                        that a nearer peak stands in front of is hidden.</td></tr>
+                <tr><th>Envelope to position</th>
+                    <td>How far the envelope carries the VCO along the
+                        wavetable from where the position pot is: on every
+                        note, up the table at the attack's rate and back at
+                        the release's. At the top it is the whole table; at
+                        0 it is off. The chorus's voices go with it. Needs
+                        the gear on; no use on the other waves.</td></tr>
+                <tr><th>Scan in the picture</th>
+                    <td>With the gear on, a bright length goes along the
+                        thick line from left to right and round again. Its
+                        speed is the pitch, from the pitch CV and the tune
+                        knob: once a second at 130.81 Hz, twice as often
+                        for each octave above, 8 times at most. It is far
+                        slower than the wave itself. Its brightness is the
+                        envelope, so it is dark between notes. Each of the
+                        chorus's lines has a fainter one.</td></tr>
+                <tr><th>Chorus</th>
+                    <td>More voices in the VCO, each a little off pitch, up
+                        to 15 cents either way: two as the pot leaves 0, and
+                        more the faster the further up it goes, about 8 at
+                        half way and 36 at the top, each coming in between
+                        the ones there. On a wavetable each also
+                        has its own place in the table: all at the position
+                        pot's with the chorus at 0, which is one wave, and
+                        going out from it as the pot comes up, until at the
+                        top they reach both ends of the table, standing
+                        closer together near the position pot's wave and
+                        further apart further out. On the
+                        other waves they are only off pitch. No use on
+                        noise.</td></tr>
                 <tr><th>Envelope</th>
                     <td>Rises while the gate is high and stays up, then
                         falls once it is low. Each time is how long it takes
@@ -83,6 +131,31 @@
                     <td>Paced by the browser, not the chip, so nothing here
                         is a measurement. Full scale is the VCO's own peak,
                         not a voltage.</td></tr>
+            </table></div>
+            <div class="scroll"><table class="key">
+                <thead><tr><th>Wavetable</th><th>From its first wave to its last</th></tr></thead>
+                <tr><th>Classic</th>
+                    <td>Sine, triangle, saw, square, 25% pulse, 10% pulse.</td></tr>
+                <tr><th>Harmonics</th>
+                    <td>A saw let through one harmonic at a time, 1 to 16,
+                        like a filter opening.</td></tr>
+                <tr><th>Odd harmonics</th>
+                    <td>A square built up one odd harmonic at a time, 1 to
+                        15: hollow, then buzzing.</td></tr>
+                <tr><th>Pulse width</th>
+                    <td>A pulse narrowing from a square, 50% to 4%.</td></tr>
+                <tr><th>Formant</th>
+                    <td>A saw with a peak in its harmonics that goes up
+                        them, from harmonic 2 to 16, as a vowel's or a
+                        resonant filter's does.</td></tr>
+                <tr><th>Wavefolder</th>
+                    <td>A sine driven harder and harder into a folder, so
+                        its tops turn over on themselves, once to 8 times
+                        as hard.</td></tr>
+                <tr><th>Hard sync</th>
+                    <td>A saw started again with every cycle of the VCO and
+                        tuned up from it, from the same pitch to 4.5 times
+                        it.</td></tr>
             </table></div>
         </details>
     </section>
