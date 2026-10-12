@@ -518,8 +518,64 @@ static void test_a_stop_while_a_note_sounds_ends_the_note(void)
 
 
 
+static void test_the_velocity_is_in_proportion_to_the_amplitude(void)
+{
+    // 1 for none, 100 for the most, and 99 parts of 255 in between
+    static const uint8_t amplitudes[] = { 0U, 1U, 3U, 128U, 254U, 255U };
+    static const uint8_t velocities[] = { 1U, 1U, 2U, 50U, 99U, 100U };
+    midi_out_state_t     state;
+    midi_out_bytes_t     out;
+
+    start_running(&state);
+    for (size_t i = 0U; i < (sizeof(amplitudes) / sizeof(amplitudes[0])); i++)
+    {
+        g_amplitude = amplitudes[i];
+        out = note(&state, PITCH_A, PLENTY);
+        TEST_ASSERT_EQUAL(3, out.count);
+        TEST_ASSERT_EQUAL(NOTE_ON, out.bytes[0]);
+        TEST_ASSERT_EQUAL(NOTE_A, out.bytes[1]);
+        TEST_ASSERT_EQUAL(velocities[i], out.bytes[2]);
+        out = hold(&state, false, PLENTY);
+        EXPECT_BYTES(out, NOTE_OFF, NOTE_A, 0U);
+    }
+    g_amplitude = 255U;
+}
+
+
+
+static void test_a_note_that_waits_keeps_its_velocity_and_a_later_one_has_its_own(void)
+{
+    midi_out_state_t state;
+    midi_out_bytes_t out;
+
+    // No room: the note waits, and goes with the amplitude it began with
+    // although the ticks since were given another
+    start_running(&state);
+    g_amplitude = 128U;
+    out = note(&state, PITCH_A, 0U);
+    EXPECT_NOTHING(out);
+    g_amplitude = 255U;
+    out = hold(&state, true, PLENTY);
+    EXPECT_BYTES(out, NOTE_ON, NOTE_A, 50U);
+    out = hold(&state, false, PLENTY);
+    EXPECT_BYTES(out, NOTE_OFF, NOTE_A, 0U);
+
+    // A note that takes the place of one still waiting goes with its own
+    g_amplitude = 128U;
+    out = note(&state, PITCH_A, 0U);
+    EXPECT_NOTHING(out);
+    g_amplitude = 0U;
+    out = note(&state, PITCH_B, PLENTY);
+    EXPECT_BYTES(out, NOTE_ON, NOTE_B, 1U);
+    g_amplitude = 255U;
+}
+
+
+
 int main(void)
 {
+    RUN_TEST(test_the_velocity_is_in_proportion_to_the_amplitude);
+    RUN_TEST(test_a_note_that_waits_keeps_its_velocity_and_a_later_one_has_its_own);
     RUN_TEST(test_a_note_sends_note_on_and_its_gate_falling_sends_note_off);
     RUN_TEST(test_the_lowest_pitch_is_note_24_and_the_pitch_is_limited);
     RUN_TEST(test_the_pitch_is_ignored_when_no_note_starts);

@@ -95,6 +95,12 @@ uint16_t host_mod_read_count(void);
 void host_set_cv_status(port_status_t status);
 
 /**
+ * @brief Sets the status env_output_write() returns. The voltage is only
+ *        taken when it is STATUS_OK.
+ */
+void host_set_env_status(port_status_t status);
+
+/**
  * @brief Sets what timebase_elapsed_ticks() returns, on every call until it
  *        is set again.
  * @param ticks  Elapsed ticks to report, 0 to 255.
@@ -348,6 +354,17 @@ uint16_t host_cv_millivolts(void);
  * @brief Number of times cv_output_write() has been called since host_reset().
  */
 uint16_t host_cv_write_count(void);
+
+/**
+ * @brief The voltage, in millivolts, of the last env_output_write() call that
+ *        succeeded (0 if none has).
+ */
+uint16_t host_env_millivolts(void);
+
+/**
+ * @brief Number of times env_output_write() has been called since host_reset().
+ */
+uint16_t host_env_write_count(void);
 
 /**
  * @brief What host_cv_millivolts() was when the gate last went high (0 if it

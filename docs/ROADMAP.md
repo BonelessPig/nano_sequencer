@@ -3,7 +3,7 @@
 Written 2026-10-10 from four research passes (existing sequencers, hardware emulation, the output-stage hardware, and Claude Code context cost) and a working emulation spike.
 Condensed on 2026-10-11; the fuller wording of every decision is in this file's git history.
 
-**Built so far, as firmware:** the emulated board (`make sim`) and phases 1 to 9, the first piece of phase 10 (MIDI out) and the first two stages of the modulation (phase 10a, and step position from 10b).
+**Built so far, as firmware:** the emulated board (`make sim`) and phases 1 to 9, the first piece of phase 10 (MIDI out) and the first three stages of the modulation (phase 10a, and step position and the envelope output from 10b).
 **None of it from phase 1 on has run on the board.** Everything else here is still a plan.
 What the firmware does today is in ARCHITECTURE.md, not here.
 
@@ -16,9 +16,10 @@ One marked **unverified** is from memory or a secondary source; check it before 
 Read this section to know what comes next; the rest of the document is the record behind it.
 Keep it to a screen, and bring it up to date at the end of each piece of work.
 
-- **Next piece of work: modulation, stage 3, the DAC's channel B** as a level and envelope output: amplitude setting its peak and the MIDI velocity, attack/release its slopes (decision 146).
-  Nothing about it is settled beyond that; put the options to the owner before any code, as stage 2 was.
-  The stages after it, in order: vibrato, an LFO of the sequencer's own, profiles with their button, and a status light.
+- **Next piece of work: modulation, stage 4, vibrato**, at selector position 7, the last one free (decision 146).
+  It needs the LFO every tick, not once a step (decision 143), and moves the pitch CV between notes, which nothing does today.
+  Nothing about it is settled beyond that; put the options to the owner before any code, as stages 2 and 3 were.
+  The stages after it, in order: an LFO of the sequencer's own, profiles with their button, and a status light.
 - **After the modulation: MIDI in**, the second piece of phase 10 (decision 117), and then phase 11.
 - **Waiting on the board, not on firmware:** everything from phase 1 on is unrun on hardware.
   Section 8 lists what to check, and OPEN_ITEMS.md the order to check it in.
@@ -145,7 +146,7 @@ The firmware of every phase down to 10a, and the step position of 10b, is done b
 | 9. Watchdog and crash log | The watchdog, `errlog`, the breadcrumb | Optiboot, and the reset cause taken from it (decision 115, firmware) |
 | 10. MIDI | Out: `CONFIG=midi`, the clock, Start, Stop and notes | DIN socket and two 220 Ω resistors. **In is firmware still to write** (decision 117), with an optocoupler |
 | 10a. Modulation, stage 1 | The clock choosing itself; `pickup`, `bank`, `mod`; the selector, level light and LFO input | Tenth 74HC165, coded rotary switch, LED, a jack and its input stage |
-| 10b. Modulation, later stages | Step position (decisions 147 to 154). **The rest is firmware still to write** (decision 146) | Buffer and jack for channel B, a pot, a button, an LED |
+| 10b. Modulation, later stages | Step position (decisions 147 to 154); the envelope on the DAC's channel B, with amplitude and its time (155 to 164). **The rest is firmware still to write** (decision 146) | Buffer and jack for channel B, a pot, a button, an LED |
 | 11. Later | **Firmware still to write**: 24 PPQN sync, timing an edge more finely than a tick (Timer1 timestamps), slide, swing and ratchets | — |
 
 Each phase is one or more small commits, leaves every check green, and updates README and ARCHITECTURE in the same piece of work.

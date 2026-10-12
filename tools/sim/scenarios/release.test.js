@@ -8,7 +8,7 @@ const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 
 const CLOCKS_PER_READ = 80;     // 16 steps of 4 bits, 8 mode switches, the selector
 const CLOCKS_PER_LED_WRITE = 16; // The step lights, sent ahead of each read
-const CLOCKS_PER_CV_WRITE = 16; // One DAC frame, sent on every tick
+const CLOCKS_PER_CV_WRITE = 32; // Two DAC frames, sent on every tick
 const SCAN_PERIOD_TICKS = 8;
 const SCAN_PERIOD_MS = 8;       // The panel and pot are read every 8 ticks
 const SCAN_JITTER_MAX_MS = 0.01; // Nothing else happens at the tick boundary
@@ -46,6 +46,8 @@ const MILLIVOLTS_PER_OCTAVE = 1000;
 const SEMITONES_PER_OCTAVE = 12;
 // The DAC takes its frame this long before the gate is written, at most
 const CV_LEAD_MAX_MS = 0.01;
+// The envelope's frame follows the pitch's, the gate and the clock output
+const ENV_AFTER_CV_MAX_MS = 0.1;
 
 // The firmware plays the chromatic scale at 1 V to the octave: a note value
 // is one semitone above the one before, and note value 1 is 0 V
@@ -192,6 +194,34 @@ test('sends the DAC one whole frame a tick: channel A, gain 2, output on', () =>
     }
 });
 
+test('sends the DAC a second frame a tick for the envelope: channel B, gain 2', () => {
+    const board = playedBoard();
+    const writes = board.envWrites;
+
+    // As many as for the pitch, each a little after the pitch's in its tick
+    assert.equal(board.cvIgnoredFrames.length, 0);
+    // (the run can end between the two, with the last envelope still to go)
+    assert.ok(board.cvWrites.length - writes.length <= 1);
+    assert.ok(writes.length > STEP_COUNT * STEP_MS);
+    writes.forEach((write, i) => {
+        const afterMs = board.machine.cyclesToMs(write.cycle - board.cvWrites[i].cycle);
+
+        assert.equal(write.channel, 'B');
+        assert.equal(write.gain, 2);
+        assert.equal(write.active, true);
+        assert.ok((afterMs > 0) && (afterMs < ENV_AFTER_CV_MAX_MS),
+            `envelope write ${i} came ${afterMs} ms after the pitch's`);
+    });
+    // It goes after the gate and the clock output, so it holds neither up:
+    // every gate rise has the pitch's frame before it and the envelope's after
+    for (const rise of board.gate.rises()) {
+        const pitch = board.cvWriteBefore(rise);
+        const envelope = writes.find((write) => write.cycle > pitch.cycle);
+
+        assert.ok(envelope.cycle > rise);
+    }
+});
+
 test('the pitch CV is 0 V until the first note', () => {
     const board = playedBoard();
 
@@ -269,7 +299,7 @@ test('reads the panel every 8 ms, with 80 clock pulses', () => {
     board.runUntilPanelReads(readCount + 1, RUN_LIMIT_MS);
 
     // The chain has no chip select, so after the 80 clocks of its own read
-    // it is also clocked by the eight DAC frames sent before the next load
+    // it is also clocked by the sixteen DAC frames sent before the next load
     for (const read of board.panelReads.slice(0, readCount)) {
         assert.equal(read.clocks,
             CLOCKS_PER_READ + (SCAN_PERIOD_TICKS * CLOCKS_PER_CV_WRITE) + CLOCKS_PER_LED_WRITE);

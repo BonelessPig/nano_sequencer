@@ -23,5 +23,6 @@ Loaded with the files below, on top of `adapters/target/CLAUDE.md`, whose rules 
   SS (PB2) stays an output: as a low input it cancels master mode.
 - The 74HC165 chain is ten chips: eight for the steps, one for the mode switches and, farthest from the MCU, one whose low three inputs are the selector.
   Another chip goes on the far end, so the bytes already read keep their places; it costs a constant in `shift_reg_reader.c`, the port header's range and the two fakes.
-- The MCP4822 is used on channel A at a gain of 2 from its internal reference (1 mV a step), with LDAC tied low.
+- The MCP4822 is used on both channels at a gain of 2 from its internal reference (1 mV a step), with LDAC tied low: A is the pitch CV and B the envelope CV, a frame each a tick.
+  `cv_output.c` implements both ports through one function that sends a frame.
   Its frame layout and pinout have been checked against the datasheet (`docs/ROADMAP.md` section 8).

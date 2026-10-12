@@ -8,7 +8,7 @@ const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
 const PANEL = [1, 4, 7, 10, 13, 0, 3, 6, 9, 12, 15, 2, 5, 8, 11, 14];
 const CLOCKS_PER_READ = 80;     // 16 steps of 4 bits, 8 mode switches, the selector
 const CLOCKS_PER_LED_WRITE = 16; // The step lights, sent ahead of each read
-const CLOCKS_PER_CV_WRITE = 16; // One DAC frame, sent on every tick
+const CLOCKS_PER_CV_WRITE = 32; // Two DAC frames, sent on every tick
 const SCAN_PERIOD_TICKS = 8;
 const SCAN_PERIOD_MS = 8;      // The panel and pot are read every 8 ticks
 // On a tick that also queues a log line the read starts about 0.11 ms later

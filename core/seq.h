@@ -81,6 +81,7 @@ typedef struct
     uint16_t gate_length; // Amount for the gate length, the same
     uint16_t chance;      // Amount for the chance of a step dropping out
     uint16_t position;    // Amount for the step played, the same
+    uint16_t amplitude;   // Amount for how loud a note is, the same
 } seq_mod_t;
 
 /**
@@ -102,7 +103,7 @@ typedef struct
     bool              b_clock_edge;  // true if an edge arrived on the external clock
                                      // since the previous tick
     bool              b_run_button;  // true while the run button is held down, as read
-    seq_mod_t         mod;           // The LFO and its four amounts
+    seq_mod_t         mod;           // The LFO and its five amounts
 } seq_inputs_t;
 
 /**
@@ -118,7 +119,10 @@ typedef struct
     bool    b_rest;         // true if the step is valid and plays nothing
     uint8_t semitone;       // Pitch of the step if it is valid and not a rest:
                             // semitones above the lowest pitch, 0 to 45
-    bool    b_gate;         // Level of the gate after this tick: true while a
+    uint8_t amplitude;      // How loud the step is, 0 to 255, as the LFO
+                            // leaves it: 255 with no modulation. Given for
+                            // every step that begins, note or not
+    bool    b_gate;        // Level of the gate after this tick: true while a
                             // note is held. Given on every tick
     bool    b_clock_out;    // Level of the clock output after this tick: true
                             // for the first half of every step. Given on
@@ -264,7 +268,7 @@ void seq_init(seq_state_t *p_state);
  *         begins a whole step all the same. Once an edge has come, none
  *         falls.
  *
- *         The LFO in p_in->mod moves four things, each by its own
+ *         The LFO in p_in->mod moves five things, each by its own
  *         amount, and each as the LFO reads on the tick the step begins
  *         (see mod.h for how a reading and an amount make a depth). With an
  *         amount of 0, or the LFO at its centre or not valid, nothing is
@@ -285,6 +289,11 @@ void seq_init(seq_state_t *p_state);
  *         Klee register, the sixteen cells of the Cartesian grid (see each
  *         engine's header). The pattern itself is not moved, so with the
  *         LFO back at its centre the step is the one it would have been.
+ *         The fifth is the amplitude given with the step, which is 255
+ *         unless the LFO is below its centre: then it is lower by the
+ *         depth, down to 0 at the fullest. Above the centre it stays 255.
+ *         The sequencer does nothing with it; it is for whatever makes a
+ *         note loud or quiet (an envelope's peak, a MIDI velocity).
  *
  *         The tempo is SEQ_BPM_MIN plus the tempo reading divided by
  *         SEQ_TEMPO_RAW_PER_BPM (30 to 285 BPM over the valid range). If the

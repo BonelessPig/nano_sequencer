@@ -37,6 +37,9 @@
 #define MOD_GATE_RANGE  (SEQ_PULSES_PER_STEP / 2U)
 #define MOD_GATE_MIN    (1U)
 
+// How loud a step is with nothing taken off it, and the most the LFO takes
+#define AMPLITUDE_MAX   (255U)
+
 
 
 /**
@@ -306,6 +309,29 @@ static uint8_t modulated_gate_length(const seq_inputs_t *p_in)
 
 
 /**
+ * @brief  Gives how loud a step is as the LFO leaves it: quieter by the
+ *         depth while the LFO is below its centre, and as loud as can be
+ *         otherwise.
+ * @param  p_in  Inputs for this tick.
+ * @return The amplitude, 0 to 255.
+ */
+static uint8_t modulated_amplitude(const seq_inputs_t *p_in)
+{
+    mod_depth_t depth     = { 0U, false };
+    uint8_t     amplitude = (uint8_t)AMPLITUDE_MAX;
+
+    mod_for(p_in, p_in->mod.amplitude, &depth);
+    if (depth.b_negative)
+    {
+        amplitude = (uint8_t)(AMPLITUDE_MAX - depth.depth);
+    }
+
+    return amplitude;
+}
+
+
+
+/**
  * @brief  Begins the step that is due, if the engine has one to play, and
  *         works out its pitch and, for a note, the pitch CV value.
  * @param  p_state  Sequencer state; the engine moves on.
@@ -328,6 +354,7 @@ static bool begin_step(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outpu
         p_state->leds         = step_leds(p_state, played.step);
         p_out->b_step_started = true;
         p_out->step           = played.step;
+        p_out->amplitude      = modulated_amplitude(p_in);
         p_out->b_note_valid   = p_in->b_steps_valid;
         if (p_in->b_steps_valid)
         {
@@ -516,6 +543,7 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
         p_out->b_note_valid   = false;
         p_out->b_rest         = false;
         p_out->semitone       = 0U;
+        p_out->amplitude      = 0U;
         p_out->b_gate         = false;
         p_out->b_clock_out    = false;
         p_out->leds           = 0U;

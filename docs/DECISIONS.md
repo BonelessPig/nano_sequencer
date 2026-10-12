@@ -248,3 +248,19 @@ All eight were the owner's choice, from options put to them.
 | 152 | The stage engine | **Stages in the stage range**, up to half of it each way, taken when a stage begins, like its length: a hold or a repeat stays on one stage. |
 | 153 | The Klee engine | **The register is turned for that step's sum**, by up to 8 stages either way. The register kept and its count are untouched, and the lights show it as turned. Chosen over ignoring the offset. |
 | 154 | The Cartesian engine | **The cell's number (row × 4 + column) is moved round sixteen**, by up to 8 either way, the counters untouched. With the engine's switches off it is the plain engine, modulated or not. Chosen over moving along the row only, and over ignoring it. |
+
+**Modulation, stage 3: the DAC's channel B.** Settled on 2026-10-11, ahead of any code.
+155 to 160 and 164 were the owner's choice, from options put to them; 161 to 163 were left to recommendation.
+
+| # | Decision | Outcome |
+|---|---|---|
+| 155 | Position 5, amplitude | **An LFO amount, like 1 to 4.** With the amount at 0 the peak is full scale (4.095 V) and the MIDI velocity 100, so power-on is as it was and 138 holds. Chosen over the pot setting the peak itself, which cannot be set by hand here. |
+| 156 | Which way | **Down only.** Below its centre the LFO lowers the peak and the velocity together, to 0 V and velocity 1 at the fullest; above it both stay where they are. Chosen over raising the velocity above 100, and over either side lowering. |
+| 157 | The shape | **One shot per note: attack, then decay at once**, whatever the gate length. Nothing sustains. Chosen over an envelope that follows the gate, and over a level with no envelope. |
+| 158 | Position 6, attack/release | **One time for both slopes**, 0 at power-on, which is instant. Position 7 stays free for vibrato. Chosen over release alone, and over a pot split between the two. |
+| 159 | The time | **Milliseconds, up to about a second a slope, on a curve**: the amount brought to 0 to 255, squared and divided by 64, so the bottom of the pot is fine and the top coarse (a quarter of the way up is 62 ms, half way 252 ms, the top 1016 ms). Counted in ticks, an exception to lengths being counted in clock pulses, because a slope should be the same at any tempo and smooth on the external clock. The curve was the owner's asking. |
+| 160 | What starts it | **Each rise of the gate**, from wherever the level is, so nothing clicks. A step tied to the one before is the same gate and does not start it again, as for MIDI out. |
+| 161 | When the LFO is looked at | **As the note begins**, like everything else it moves (143): the peak is that note's for the whole of its envelope, and is its velocity. |
+| 162 | The slopes | **Straight lines**, to the peak and back to 0 V, worked out every tick and written to channel B every tick after channel A. |
+| 163 | Stopped, and in calibration mode | **A stop does not cut an envelope short**: it runs out as it would have. In calibration mode channel B stays at 0 V. |
+| 164 | A time of 0 | **Channel B follows the gate**: at the peak while the gate is open and at 0 V while it is closed, so a VCA on it works from power-on. It is the time in milliseconds that counts, which is 0 for the lowest thirty-odd counts of the pot. The owner's choice, over holding the peak and over staying at 0 V. |

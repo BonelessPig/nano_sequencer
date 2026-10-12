@@ -364,7 +364,8 @@ of an LED, whose cathode goes to ground</title>
 </div>
 
 <h2>MCP4822 DAC</h2>
-<p>Channel A only, at a gain of 2 from the internal 2.048 V reference, so one step is 1 mV.
+<p>Channel A is the pitch CV and channel B the envelope CV, both at a gain of 2 from the
+internal 2.048 V reference, so one step is 1 mV.
 With LDAC tied to ground the output changes as chip select rises.</p>
 <div class="fig" id="mcp4822"></div>
 
@@ -390,7 +391,7 @@ the board yet, and the modulation input's stage is not designed.</p>
 </div>
 
 <ul>
-    <li><b>Selector.</b> Position 0 is the tempo. Positions 1 to 4 are how much of the
+    <li><b>Selector.</b> Position 0 is the tempo. Positions 1 to 5 are how much of the
         LFO moves the note, the gate length, the chance of a step dropping out and which
         step is played.
         Positions 5 to 7 hold an amount and do nothing with it yet. With chip 9 not wired

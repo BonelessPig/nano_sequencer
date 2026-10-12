@@ -177,9 +177,10 @@ for (const config of CONFIGS) {
         assert.ok(rises[3] - stoppedMs <= WATCHDOG_MS + 5, `reset after ${rises[3] - stoppedMs} ms`);
         // Step 0's gate is a little late on the debug image, which has the
         // crash to report as it starts, so that its first pass, with the
-        // first input scan in it, runs into the second tick: 0.23 ms
-        // measured, and it grows with whatever the scan reads
-        assert.ok(Math.abs((rises[4] - rises[3]) - STEP_MS) < 0.3,
+        // first input scan in it, runs into the second tick: 0.36 ms
+        // measured, and it grows with whatever the scan reads and the
+        // tick writes (it was 0.23 ms before the envelope's DAC frame)
+        assert.ok(Math.abs((rises[4] - rises[3]) - STEP_MS) < 0.5,
             `step 0 was ${rises[4] - rises[3]} ms`);
     });
 }

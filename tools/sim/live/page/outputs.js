@@ -51,6 +51,10 @@ function showGate(isHigh) {
     gearGate(isHigh);
 }
 
+function showEnv(millivolts) {
+    el('env').textContent = `${(millivolts / 1000).toFixed(3)} V`;
+}
+
 function showCv(millivolts) {
     el('cv').textContent = `${(millivolts / 1000).toFixed(3)} V`;
     gearPitch(millivolts);
@@ -144,6 +148,9 @@ function applyEvent(event) {
         case 'cv':
             trace.cv.push([event.t, event.v]);
             showCv(event.v);
+            break;
+        case 'env':
+            showEnv(event.v);
             break;
         case 'led':
             state.leds = event.v;

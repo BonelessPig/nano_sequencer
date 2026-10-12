@@ -19,4 +19,5 @@ Loaded with the files below, on top of `core/CLAUDE.md`, whose rules apply to al
 - "No note" is 255, which is not a note number.
 - A start places the downbeat by clock: at once on the internal clock, on the first pulse on the external one, because `seq` leaves an external start one pulse short of due.
   Clocks owed from before a start are given up at it, and that is the only thing dropped.
-- The channel, the velocities and the note of the lowest pitch are constants at the top of `midi_out.c`; the header gives them in words and the tests define their own.
+- The channel, the range of the velocity and the note of the lowest pitch are constants at the top of `midi_out.c`; the header gives them in words and the tests define their own.
+- A Note On's velocity comes from the amplitude given with the note, and is kept with a note that waits (`velocity_wait`), so that it goes with the amplitude it began with.

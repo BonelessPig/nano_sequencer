@@ -19,6 +19,7 @@
 #define MAX_TRANSFERS    (4U)      // More than any one write makes
 #define NEVER            (0xFFFFU) // No transfer fails
 #define CONFIG_CHANNEL_A_GAIN_2_ON (0x1000U) // What the frame carries above the value
+#define CONFIG_CHANNEL_B_GAIN_2_ON (0x9000U)
 
 static uint8_t  g_tx[MAX_TRANSFERS];         // Bytes the adapter sent, in order
 static bool     g_b_selected[MAX_TRANSFERS]; // Whether chip select was low for each
@@ -189,8 +190,43 @@ static void test_a_voltage_above_the_range_is_rejected_without_touching_the_bus(
 
 
 
+static void test_the_envelope_is_one_frame_for_channel_b_at_gain_2(void)
+{
+    static const uint16_t millivolts[] = { 0U, 1U, 257U, 2056U, 0x0A5AU, 4095U };
+
+    for (size_t i = 0U; i < (sizeof(millivolts) / sizeof(millivolts[0])); i++)
+    {
+        start_dac();
+
+        TEST_ASSERT_EQUAL(STATUS_OK, env_output_write(millivolts[i]));
+        TEST_ASSERT_EQUAL(FRAME_BYTES, g_transfer_count);
+        TEST_ASSERT_EQUAL(CONFIG_CHANNEL_B_GAIN_2_ON | millivolts[i], frame_sent());
+        TEST_ASSERT(g_b_selected[0]);
+        TEST_ASSERT(g_b_selected[1]);
+        TEST_ASSERT(0U != (g_fake_portb & SELECT_MASK));
+    }
+}
+
+
+
+static void test_the_envelope_fails_and_is_refused_as_the_pitch_is(void)
+{
+    start_dac();
+    g_failing_transfer = 1U;
+    TEST_ASSERT_EQUAL(ERR_TIMEOUT, env_output_write(1000U));
+    TEST_ASSERT(0U != (g_fake_portb & SELECT_MASK));
+
+    start_dac();
+    TEST_ASSERT_EQUAL(ERR_INVALID_PARAM, env_output_write(4096U));
+    TEST_ASSERT_EQUAL(0, g_transfer_count);
+}
+
+
+
 int main(void)
 {
+    RUN_TEST(test_the_envelope_is_one_frame_for_channel_b_at_gain_2);
+    RUN_TEST(test_the_envelope_fails_and_is_refused_as_the_pitch_is);
     RUN_TEST(test_a_voltage_is_sent_as_one_frame_for_channel_a_at_gain_2);
     RUN_TEST(test_chip_select_is_low_for_the_frame_and_high_after);
     RUN_TEST(test_nothing_but_chip_select_is_touched);

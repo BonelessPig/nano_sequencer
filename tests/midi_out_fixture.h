@@ -48,6 +48,10 @@
 // sets it puts it back
 static bool g_b_external = false;
 
+// How loud the notes of the ticks below are given as: as loud as can be,
+// which is the velocity above. Each test that sets it puts it back
+static uint8_t g_amplitude = 255U;
+
 
 
 static inline void expect_bytes(int line, const midi_out_bytes_t *p_out, const uint8_t *p_expected,
@@ -83,6 +87,7 @@ static inline midi_out_bytes_t tick(midi_out_state_t *p_state, bool b_running, b
     in.b_external     = g_b_external;
     in.b_note_started = b_note_started;
     in.semitone       = semitone;
+    in.amplitude      = g_amplitude;
     in.b_gate         = b_gate;
     in.pulses         = pulses;
     in.room           = room;

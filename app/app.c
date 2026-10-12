@@ -14,6 +14,7 @@
 #include "bank.h"
 #include "cal.h"
 #include "cal_record.h"
+#include "env.h"
 #include "errlog.h"
 #include "midi_out.h"
 #include "note_map.h"
@@ -25,6 +26,7 @@
 #include "clock_input_port.h"
 #include "clock_output_port.h"
 #include "cv_output_port.h"
+#include "env_output_port.h"
 #include "gate_output_port.h"
 #include "led_output_port.h"
 #include "level_output_port.h"
@@ -56,6 +58,8 @@
 #define SLOT_GATE_LENGTH (2U) // How far it moves the gate length
 #define SLOT_CHANCE      (3U) // How often it makes a step drop out
 #define SLOT_POSITION    (4U) // How far it moves the step that is played
+#define SLOT_AMPLITUDE   (5U) // How far it brings a note's loudness down
+#define SLOT_ENV_TIME    (6U) // The envelope's attack and decay time; no LFO
 
 // The pitch CV is nominally 1 V to the octave from 0 V at the lowest pitch.
 // That is the ideal calibration table, used until a measured one is stored,
@@ -92,6 +96,9 @@ static bank_state_t g_bank;                // The amounts the pot sets, one a sl
 static uint16_t     g_pot_raw     = 0U;    // The pot's position, as last read
 static bool         g_b_pot_valid = false; // false if it could not be read
 static uint8_t      g_level       = 0U;    // The level light, as the last tick left it
+
+static env_state_t g_env_state;      // The envelope's state carried between ticks
+static uint16_t    g_env_level = 0U; // What it computed on the last tick
 
 static port_status_t g_step_read_status  = STATUS_OK; // Status of the last step input read
 static port_status_t g_tempo_read_status = STATUS_OK; // Status of the last pot read
@@ -150,21 +157,29 @@ static void save_calibration(void)
  * @brief  Acts on what the previous tick computed. The pitch CV, the gate
  *         and the clock output are set first, on every tick, so that their
  *         edges are not held up by the log; the pitch goes ahead of the gate
- *         so that it is in place when the note starts. The step lights are
- *         given next; they show at the next input scan. The level light
- *         follows them. The MIDI bytes are
+ *         so that it is in place when the note starts. The envelope CV
+ *         follows the two pins, so that it holds neither edge up. The step
+ *         lights are given next; they show at the next input scan. The
+ *         level light follows them. The MIDI bytes are
  *         queued after them, to be sent as the loop goes round. Then saves the
  *         calibration if a point of it was stored, logs the transport if it
  *         changed, and, when a step began, logs it (or the failed step
  *         read), and with it a failed tempo read and a failed write of the
- *         pitch.
+ *         pitch or, the pitch having gone, of the envelope.
  */
 static void apply_outputs(void)
 {
-    const port_status_t cv_write_status = cv_output_write(g_outputs.cv);
+    port_status_t cv_write_status = cv_output_write(g_outputs.cv);
+    port_status_t env_write_status;
 
     gate_output_write(g_outputs.b_gate);
     clock_output_write(g_outputs.b_clock_out);
+    env_write_status = env_output_write(g_env_level);
+    if (STATUS_OK == cv_write_status)
+    {
+        // One converter makes both voltages, and is reported as one
+        cv_write_status = env_write_status;
+    }
     led_output_write(g_outputs.leds);
     level_output_write(g_level);
     midi_output_write(g_midi_bytes.bytes, g_midi_bytes.count);
@@ -257,6 +272,7 @@ static void run_midi_out(void)
     midi_in.b_note_started = g_outputs.b_step_started && g_outputs.b_note_valid
                              && (!g_outputs.b_rest);
     midi_in.semitone       = g_outputs.semitone;
+    midi_in.amplitude      = g_outputs.amplitude;
     midi_in.b_gate         = g_outputs.b_gate;
     midi_in.pulses         = g_outputs.pulses;
     midi_in.room           = g_midi_room;
@@ -288,7 +304,27 @@ static void run_bank(void)
     g_inputs.mod.gate_length = bank_amount(&g_bank, (uint8_t)SLOT_GATE_LENGTH);
     g_inputs.mod.chance      = bank_amount(&g_bank, (uint8_t)SLOT_CHANCE);
     g_inputs.mod.position    = bank_amount(&g_bank, (uint8_t)SLOT_POSITION);
+    g_inputs.mod.amplitude   = bank_amount(&g_bank, (uint8_t)SLOT_AMPLITUDE);
     g_level                = bank_level(&g_bank);
+}
+
+
+
+/**
+ * @brief  Works out the envelope's level for this tick from the gate the
+ *         sequencer gave, the amplitude of a note that began, and the time
+ *         the pot has set.
+ */
+static void run_envelope(void)
+{
+    env_inputs_t env_in;
+
+    env_in.b_gate        = g_outputs.b_gate;
+    env_in.amplitude     = g_outputs.amplitude;
+    env_in.time          = bank_amount(&g_bank, (uint8_t)SLOT_ENV_TIME);
+    env_in.elapsed_ticks = g_inputs.elapsed_ticks;
+
+    g_env_level = env_tick(&g_env_state, &env_in);
 }
 
 
@@ -324,6 +360,7 @@ static void run_core(void)
         run_bank();
         seq_tick(&g_seq_state, &g_inputs, &g_outputs);
         run_midi_out();
+        run_envelope();
     }
 }
 
@@ -380,6 +417,7 @@ static void reset_tick_state(void)
     g_inputs.mod.gate_length = 0U;
     g_inputs.mod.chance      = 0U;
     g_inputs.mod.position    = 0U;
+    g_inputs.mod.amplitude   = 0U;
     set_fixed_controls();
 
     g_outputs.b_step_started = false;
@@ -387,6 +425,7 @@ static void reset_tick_state(void)
     g_outputs.b_note_valid   = false;
     g_outputs.b_rest         = false;
     g_outputs.semitone       = 0U;
+    g_outputs.amplitude      = 0U;
     g_outputs.b_gate         = false;
     g_outputs.b_clock_out    = false;
     g_outputs.cv             = 0U;
@@ -406,6 +445,9 @@ static void reset_tick_state(void)
     g_pot_raw     = 0U;
     g_b_pot_valid = false;
     g_level       = 0U;
+
+    env_init(&g_env_state);
+    g_env_level = 0U;
 
     midi_out_init(&g_midi_state);
     g_midi_bytes.count = 0U;

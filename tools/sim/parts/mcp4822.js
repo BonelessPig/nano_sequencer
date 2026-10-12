@@ -38,8 +38,9 @@ const MILLIVOLTS_PER_STEP_AT_1X = 0.5; // 2.048 V over 4096 steps
  * @param cpu        The avr8js CPU, for the cycle count.
  * @param port       The avr8js port chip select is on.
  * @param selectPin  Bit number of chip select on that port.
- * @return { writes, ignored, isSelected, shiftByte }. writes has one entry
- *         per frame taken: the cycle chip select rose on, the channel ('A'
+ * @return { writes, ignored, isSelected, shiftByte }. writes has a list for
+ *         each channel, writes.A and writes.B, with one entry per frame
+ *         taken for it: the cycle chip select rose on, the channel ('A'
  *         or 'B'), the gain (1 or 2), whether the output is on, the value
  *         and the output in millivolts. ignored has the bit count and cycle
  *         of each frame that was cut short. shiftByte(byte) gives the part
@@ -47,7 +48,7 @@ const MILLIVOLTS_PER_STEP_AT_1X = 0.5; // 2.048 V over 4096 steps
  */
 function attachMcp4822(cpu, port, selectPin) {
     const selectMask = 1 << selectPin;
-    const dac = { writes: [], ignored: [] };
+    const dac = { writes: { A: [], B: [] }, ignored: [] };
     let selected = false;
     let frame = 0;
     let bitCount = 0;
@@ -60,10 +61,11 @@ function attachMcp4822(cpu, port, selectPin) {
         const gain = (frame & GAIN_1X_BIT) !== 0 ? 1 : 2;
         const active = (frame & ACTIVE_BIT) !== 0;
         const value = frame & VALUE_MASK;
+        const channel = (frame & CHANNEL_BIT) !== 0 ? 'B' : 'A';
 
-        dac.writes.push({
+        dac.writes[channel].push({
             cycle: cpu.cycles,
-            channel: (frame & CHANNEL_BIT) !== 0 ? 'B' : 'A',
+            channel,
             gain,
             active,
             value,

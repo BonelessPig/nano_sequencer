@@ -4,7 +4,7 @@ The ports faked for the PC: tests script what the input ports return and read ba
 
 - `host_ports.c` implements every function in `ports/`.
   A new port function needs its fake here in the same change, or `test_app` will not link.
-- An output written on every tick (the gate, the clock output, the pitch CV, the step lights, the level light) is not put in the event record, which would fill in 64 ticks.
+- An output written on every tick (the gate, the clock output, the pitch CV, the envelope CV, the step lights, the level light) is not put in the event record, which would fill in 64 ticks.
   The fake keeps its level, or the voltage last written successfully, and counts rising edges or writes; `host_event_count_at_gate_rise()` is what shows whether the gate or the log came first, and `host_cv_millivolts_at_gate_rise()` whether the pitch was in place before the gate.
 - The non-volatile storage is a small array that `host_reset()` erases and `app_init()` does not, so a test powers the app off and on by calling `app_init()` again.
   A write lands at once; there is no write time to poll out.

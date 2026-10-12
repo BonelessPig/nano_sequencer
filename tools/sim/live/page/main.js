@@ -27,6 +27,7 @@ function applyState(newState) {
         el('clock-led').classList.toggle('lit', state.clock);
         showGate(state.gate);
         showCv(state.millivolts);
+        showEnv(state.envMillivolts);
     }
     el('cal-banner').hidden = !state.calibrating;
     showPanel();
