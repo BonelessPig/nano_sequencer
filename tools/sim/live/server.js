@@ -3,9 +3,11 @@
  * The emulated board, live (`make live`): runs one firmware image at the pace
  * of a real chip and serves a page that shows what the board does and lets
  * its panel be worked. The chip and the parts are the same ones the scenarios
- * use; only this file and page.html know about a browser.
+ * use; only this file, page.html and page/ know about a browser.
  *
- *   GET  /         The page.
+ *   GET  /         The page: page.html, with each section kept in page/ put
+ *                  in where its `part:` comment stands.
+ *   GET  /name.css, /name.js   The page's style and scripts, from page/.
  *   GET  /events   A stream of server-sent events: `state` (the panel, which
  *                  image is running, its mode, the output levels and the
  *                  step lights) when a page
@@ -75,6 +77,12 @@ const { midiNoteName } = require('../boards/midi_messages');
 const HOST = '127.0.0.1'; // This PC only
 const DEFAULT_PORT = 8165;
 const PAGE_PATH = path.join(__dirname, 'page.html');
+const PARTS_DIR = path.join(__dirname, 'page');
+// A line of page.html that stands for a file of PARTS_DIR
+const PART_MARK = /^[ \t]*<!-- part: ([\w-]+\.html) -->$/gm;
+// The only other files served: a name with no folder in it, from PARTS_DIR
+const ASSET_URL = /^\/([\w-]+\.(css|js))$/;
+const ASSET_TYPES = { css: 'text/css', js: 'text/javascript' };
 const SLICE_MS = 10;         // How often the chip is run on and the page told
 const MAX_SLICE_CHIP_MS = 50; // The most chip time one slice may catch up
 const SPEED_WINDOW_MS = 1000;
@@ -871,7 +879,25 @@ function servePage(res) {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
     });
-    res.end(fs.readFileSync(PAGE_PATH));
+    res.end(fs.readFileSync(PAGE_PATH, 'utf8').replace(PART_MARK,
+        (mark, name) => fs.readFileSync(path.join(PARTS_DIR, name), 'utf8').trimEnd()));
+}
+
+// Read on every request, as the page is, so an edit shows at the next reload
+function serveAsset(res, name, extension) {
+    let text;
+
+    try {
+        text = fs.readFileSync(path.join(PARTS_DIR, name));
+    } catch (error) {
+        reply(res, 404, 'Not found');
+        return;
+    }
+    res.writeHead(200, {
+        'Content-Type': `${ASSET_TYPES[extension]}; charset=utf-8`,
+        'Cache-Control': 'no-store',
+    });
+    res.end(text);
 }
 
 function openStream(req, res) {
@@ -917,8 +943,12 @@ function takeCommand(req, res) {
 }
 
 function handle(req, res) {
+    const asset = ASSET_URL.exec(req.url);
+
     if ((req.method === 'GET') && (req.url === '/')) {
         servePage(res);
+    } else if ((req.method === 'GET') && (asset !== null)) {
+        serveAsset(res, asset[1], asset[2]);
     } else if ((req.method === 'GET') && (req.url === '/events')) {
         openStream(req, res);
     } else if ((req.method === 'POST') && (req.url === '/control')) {

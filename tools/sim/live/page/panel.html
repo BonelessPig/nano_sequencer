@@ -1,0 +1,269 @@
+    <section>
+        <h2>Panel</h2>
+        <div id="steps"></div>
+        <details>
+            <summary>The step lights and the outline</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Light on a step</th>
+                    <td>The board's own step LED, as the chip last latched it
+                        into the two 74HC595s. Lit for the first half of a
+                        step; dark while stopped and in calibration mode.</td></tr>
+                <tr><th>Outline round a step</th>
+                    <td>The step counted by this viewer, which the labels
+                        under the steps are worked out from. Where it and
+                        the light disagree, the light is right.</td></tr>
+            </table></div>
+            <div class="scroll"><table class="key">
+                <caption>How the outlined step is counted</caption>
+                <thead><tr><th>Case</th><th>What is counted</th></tr></thead>
+                <tr><th>Any engine</th>
+                    <td>Pulses of the clock output, one a step. Back to 0
+                        after a start or a reset made here, and after a
+                        change of engine.</td></tr>
+                <tr><th>Debug image</th>
+                    <td>Its log also names each step, and that is believed
+                        over the count.</td></tr>
+                <tr><th>Release and midi images</th>
+                    <td>No log, so the count is all there is. A reset that
+                        lands within a tick or two of a step can leave it
+                        out. MIDI out names notes, not steps.</td></tr>
+                <tr><th>A switch moved</th>
+                    <td>Counted from the panel read at which the chip took
+                        it, so it does not put the count out.</td></tr>
+                <tr><th>Stage</th>
+                    <td>The log names the stage. Which of its steps is
+                        playing is always counted, from the lengths as they
+                        stood when the stage began.</td></tr>
+                <tr><th>Klee</th>
+                    <td>How far the register has moved since its last load;
+                        back to 0 when mode switch 3 is moved.</td></tr>
+                <tr><th>Cartesian</th>
+                    <td>The two counters, as the firmware counts them, from
+                        the mode switches as each step begins.</td></tr>
+                <tr><th>Chance, shuffle on</th>
+                    <td>Nothing to count: only the log or the lights can say
+                        which step was picked.</td></tr>
+                <tr><th>Random numbers</th>
+                    <td>The firmware's are not followed here.</td></tr>
+            </table></div>
+        </details>
+
+        <div class="row spaced">
+            <div>
+                <div id="engine-knob" role="slider" tabindex="0" aria-label="Engine"
+                     aria-valuemin="0" aria-valuemax="7"></div>
+                <div>Engine <span class="num" id="engine"></span></div>
+            </div>
+            <div>
+                <div class="dim">Mode switches 7 to 3</div>
+                <div id="mode-legend"></div>
+                <div id="modes-spare"></div>
+                <div class="dim num" id="place"></div>
+            </div>
+        </div>
+        <details>
+            <summary>The engine switch and the mode switches</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Engine switch</th>
+                    <td>One rotary switch of eight positions that puts out
+                        its position as a three-bit number, on mode inputs 2
+                        to 0 of the ninth 74HC165. The code is shown beside
+                        the engine's name. Positions 6 and 7 have no engine
+                        yet and play the plain one.</td></tr>
+                <tr><th>Mode switches 7 to 3</th>
+                    <td>Five toggles on the same chip, read on every step.
+                        They belong to the engine chosen: the legend over
+                        them names each one, or each group read together as
+                        a number, and says how it stands. Dashed means no
+                        use on this engine.</td></tr>
+                <tr><th>When they count</th>
+                    <td>The engine is taken as each step begins, and a
+                        change of engine starts the new one's pattern from
+                        its beginning.</td></tr>
+            </table></div>
+        </details>
+
+        <details class="engine-help" data-engine="0" hidden>
+            <summary>About the plain engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Steps</th>
+                    <td>Sixteen, played in order, one a step.</td></tr>
+                <tr><th>A step's switches</th>
+                    <td>Its note as a number, 0 to 15: 0 is a rest, and the
+                        figure under the switches is the pitch played, one
+                        below the number.</td></tr>
+                <tr><th>Mode switches</th><td>No use.</td></tr>
+            </table></div>
+        </details>
+        <details class="engine-help" data-engine="1" hidden>
+            <summary>About the stage engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Top row, steps 0 to 7</th>
+                    <td>The notes of eight stages.</td></tr>
+                <tr><th>Bottom row, steps 8 to 15</th>
+                    <td>Their controls, each under its stage.</td></tr>
+                <tr><th>Control switches 2 and 1</th>
+                    <td>The stage's length, 1 to 4 steps.</td></tr>
+                <tr><th>Control switches 8 and 4</th>
+                    <td>Its gate mode. Single: the note on the stage's first
+                        step only. Repeat: on every step. Hold: once, for
+                        the whole stage. Rest: not at all.</td></tr>
+                <tr><th>Outline</th>
+                    <td>The stage counted as playing, with its control,
+                        which counts its steps.</td></tr>
+                <tr><th>Light</th><td>On the stage's note.</td></tr>
+                <tr><th>Mode switches</th><td>No use.</td></tr>
+            </table></div>
+        </details>
+        <details class="engine-help" data-engine="2" hidden>
+            <summary>About the Klee engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Steps</th>
+                    <td>The sixteen stages of a register, which a pattern of
+                        bits goes round, one stage a step.</td></tr>
+                <tr><th>Switch 8</th>
+                    <td>The stage's pattern switch. It counts only at a
+                        load, which copies all sixteen into the register.</td></tr>
+                <tr><th>Switches 4, 2, 1</th>
+                    <td>The stage's value, 0 to 7, read on every step.</td></tr>
+                <tr><th>Note</th>
+                    <td>The sum of the values under the active stages, 15 at
+                        most. A sum of 0 is a rest.</td></tr>
+                <tr><th>Load (3)</th>
+                    <td>On the first step, and on the step after the switch
+                        is moved either way.</td></tr>
+                <tr><th>Invert (4)</th>
+                    <td>Turns the bit over as it comes round again.</td></tr>
+                <tr><th>Merge (5)</th>
+                    <td>Ties every note to the next step.</td></tr>
+                <tr><th>Chance (7, 6)</th>
+                    <td>How often in 8 the bit coming round is flipped at
+                        random, 0 to 3. At 0 the pattern is locked.</td></tr>
+                <tr><th>Lights</th>
+                    <td>The register itself: every active stage is lit, so
+                        the pattern can be seen going round. They come from
+                        the chip.</td></tr>
+                <tr><th>Counted here</th>
+                    <td>Only how far the register has moved since its load,
+                        0 to 15 and round again, shown under the mode
+                        switches. No step is outlined.</td></tr>
+            </table></div>
+        </details>
+        <details class="engine-help" data-engine="3" hidden>
+            <summary>About the chance engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Steps</th>
+                    <td>Played as the plain engine plays them, but some are
+                        skipped and some picked at random.</td></tr>
+                <tr><th>Skip (4, 3)</th>
+                    <td>How often in 4 a step becomes a rest, 0 to 3.</td></tr>
+                <tr><th>Shuffle (5)</th>
+                    <td>Each step is picked at random.</td></tr>
+                <tr><th>Outline, shuffle on</th>
+                    <td>Debug image: from the log, which names the step.
+                        Release and midi images: none, there being no
+                        log.</td></tr>
+                <tr><th>Lights</th>
+                    <td>Show the step on both images.</td></tr>
+            </table></div>
+        </details>
+        <details class="engine-help" data-engine="4" hidden>
+            <summary>About the Cartesian engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Steps</th>
+                    <td>A grid of four rows of four: step n is at column x
+                        = n mod 4 of row y = n ÷ 4. Each half of a panel row
+                        is one row of the grid.</td></tr>
+                <tr><th>Plays</th>
+                    <td>The step at column x of row y. Both start at 0 and
+                        go round from 3 to 0.</td></tr>
+                <tr><th>x (4, 3)</th>
+                    <td>x moves on every 1, 2, 3 or 4 steps.</td></tr>
+                <tr><th>y (6, 5)</th>
+                    <td>y moves on every 4, 3, 2 or 1 steps.</td></tr>
+                <tr><th>All four off</th>
+                    <td>The sixteen steps in order. Other settings trace
+                        other paths, some of which never reach every step.</td></tr>
+            </table></div>
+        </details>
+        <details class="engine-help" data-engine="5" hidden>
+            <summary>About the Euclidean engine</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Steps</th>
+                    <td>Played in order, but a step sounds only on a beat;
+                        any other is a rest.</td></tr>
+                <tr><th>Beats (6 to 3)</th>
+                    <td>1 to 16 in a bar of sixteen, spread as evenly as the
+                        bar allows, the first on step 0.</td></tr>
+                <tr><th>"beat" under a step</th>
+                    <td>A beat at the present setting. It is still a rest if
+                        the step's own switches are all off.</td></tr>
+            </table></div>
+        </details>
+
+        <div class="row spaced">
+            <label for="selector">Selector</label>
+            <select id="selector"></select>
+            <label for="tempo">Pot (A6)</label>
+            <input type="range" id="tempo" min="0" max="1023" step="1">
+            <span class="num" id="tempo-reading"></span>
+            <span><span class="led" id="level-led"></span> Level light (D6)
+                <span class="num dim" id="level-reading"></span></span>
+        </div>
+        <div class="row spaced">
+            <span class="num" id="tempo-means"></span>
+            <span class="num dim" id="bpm"></span>
+        </div>
+        <div class="row spaced">
+            <label for="lfo">LFO input (A7)</label>
+            <input type="range" id="lfo" min="0" max="1023" step="1">
+            <span class="num" id="lfo-reading"></span>
+            <button id="lfo-centre">Centre</button>
+        </div>
+        <details>
+            <summary>The selector, the pot and the LFO</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Selector</th>
+                    <td>An 8-way coded rotary switch that says which of
+                        eight amounts the pot sets. Position 0 is the
+                        tempo. The others each hold how much of the LFO
+                        goes to one thing; 0 is off. Positions 4 to 7 hold
+                        an amount and do nothing with it yet.</td></tr>
+                <tr><th>Pot</th>
+                    <td>After the selector moves, the pot changes nothing
+                        until it has been turned to meet the amount that
+                        position holds. So a position passed through on
+                        the way is left alone, and to give a new position
+                        an amount the pot goes down to 0 and then up.</td></tr>
+                <tr><th>Level light</th>
+                    <td>As bright as the amount the selector is on, so it
+                        shows where the pot has to go to meet it.</td></tr>
+                <tr><th>LFO input</th>
+                    <td>The reading the chip takes from the modulation
+                        input's stage, read as each step begins. At its
+                        centre, 512, which is also what it reads with
+                        nothing plugged in, it moves nothing.</td></tr>
+                <tr><th>1 Note</th>
+                    <td>Moves each note by up to seven places in the scale,
+                        up while the LFO is above its centre and down while
+                        below. Never makes or moves a rest.</td></tr>
+                <tr><th>2 Gate length</th>
+                    <td>Makes each gate up to half a step longer, where it
+                        ties into the next note, or shorter, down to one
+                        clock pulse.</td></tr>
+                <tr><th>3 Step chance</th>
+                    <td>While the LFO is above its centre, makes steps drop
+                        out at random, the more the further it goes.</td></tr>
+            </table></div>
+        </details>
+        <div class="row spaced">
+            <button id="run">Run button (D7)</button>
+            <span id="transport"></span>
+            <span class="dim" id="transport-from"></span>
+        </div>
+        <div class="row spaced">
+            <button id="cal-enter">Enter calibration mode</button>
+            <span class="dim">Sets steps 12 to 15 to 10, 5, 10, 5 and power
+                cycles the board.</span>
+        </div>
+    </section>

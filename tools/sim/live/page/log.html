@@ -1,0 +1,52 @@
+    <section>
+        <details open>
+            <summary class="head">Serial log (115200 baud)</summary>
+            <pre id="log"></pre>
+        </details>
+        <details>
+            <summary>What the lines mean</summary>
+            <div class="scroll"><table class="key">
+                <thead><tr><th>Line</th><th>Sent</th><th>Meaning</th></tr></thead>
+                <tr><th><code>Step n Note = s</code></th>
+                    <td>As a step with a pitch begins</td>
+                    <td>n is the step, 0 to 15 (the stage, 0 to 7, on the
+                        stage engine). s is the pitch in semitones.</td></tr>
+                <tr><th><code>Step n Rest</code></th>
+                    <td>As a rest begins</td>
+                    <td>The step plays nothing.</td></tr>
+                <tr><th><code>Transport = t</code></th>
+                    <td>On a change, ahead of the step's own line</td>
+                    <td>0 stopped, 1 running on the internal clock, 2 on the
+                        external clock.</td></tr>
+                <tr><th><code>Reset = f Cal = c</code></th>
+                    <td>Once, at start-up</td>
+                    <td>f says why the chip started, as a sum: 1 power-on,
+                        2 the reset pin, 4 a brown-out, 8 the watchdog. c is
+                        1 if a stored calibration table was found.</td></tr>
+                <tr><th><code>Crash n Place = p Count = c</code></th>
+                    <td>At start-up, if the crash log holds a record</td>
+                    <td>The newest record, numbered n, of a watchdog reset.
+                        p is where the loop had got to: 1 start-up,
+                        2 applying outputs, 3 gathering inputs, 4 in the
+                        core, 5 between ticks. c is how many times
+                        running, 1 to 255.</td></tr>
+                <tr><th><code>Cal point p = v</code></th>
+                    <td>When calibration mode stores a point</td>
+                    <td>p is the point, 0 to 4, and v the DAC value stored
+                        for it, 0 to 4095.</td></tr>
+                <tr><th><code>… failed, status code = n</code></th>
+                    <td>When something the firmware asked for failed</td>
+                    <td>The text names it: initialization, a step note
+                        read, an ADC read (the tempo pot), a pitch CV write,
+                        a calibration read or write, a crash log read or
+                        write.</td></tr>
+                <tr><th>Release image</th>
+                    <td>Never</td>
+                    <td>It has no log at all.</td></tr>
+                <tr><th>Midi image</th>
+                    <td>Never</td>
+                    <td>It has no log either: its serial pin carries MIDI,
+                        shown under MIDI out.</td></tr>
+            </table></div>
+        </details>
+    </section>

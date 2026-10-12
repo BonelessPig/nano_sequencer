@@ -1,8 +1,24 @@
 # tools/sim/live/ rules
 
-`make live`: `server.js` runs the emulated board at real speed and `page.html` shows it in a browser.
+`make live`: `server.js` runs the emulated board at real speed and `page.html`, with its parts in `page/`, shows it in a browser.
 A viewer, not a check.
 The board itself is in `tools/sim/CLAUDE.md`.
+
+## Where the page is
+
+`page.html` is only the frame: the head, the small sections, and the order of the rest.
+Read the part a change concerns, not all of them.
+
+- Sections, in `page/`, put in by the server where the frame has `<!-- part: name.html -->`: `panel.html`, `inputs.html` (the input jacks), `midi.html`, `watchdog.html`, `log.html`, `cal-help.html`.
+  The Board, Calibration mode and Outputs sections are short and stay in the frame.
+- `page/page.css`: all the style.
+- Scripts, in `page/`, loaded in this order as plain scripts sharing one scope (no modules, no build step): `tables.js` (the tables, the shared state, `el()` and `post()`), `panel.js`, `outputs.js` (watchdog, crash log, outputs, MIDI out, `applyEvent()`), `trace.js` (the trace and the sound), `main.js` (the connection and every control's handler).
+  Only `main.js` runs anything as it loads; the others just define, so a function may call one from a later file.
+- The server serves `/`, and any `name.css` or `name.js` that is in `page/`; nothing else on disk.
+  A new script needs its `<script>` in the frame, a new section its `part:` comment.
+- Start another file by topic before one passes about 20,000 characters.
+
+## Rules
 
 - The server uses `createBoard()` as the scenarios do and adds nothing to the model.
   Something new to show is exposed by the board first, then sent by the server.

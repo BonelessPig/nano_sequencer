@@ -1,0 +1,70 @@
+    <section>
+        <h2>MIDI out (D1, 31250 baud)</h2>
+        <div class="row">
+            <span class="num" id="midi-clock"></span>
+            <span class="num" id="midi-sounding"></span>
+        </div>
+        <pre id="midi-log"></pre>
+        <details>
+            <summary>What MIDI out sends, and what is shown of it</summary>
+            <div class="scroll"><table class="key">
+                <thead><tr><th>Message</th><th>Sent</th><th>Shown</th></tr></thead>
+                <tr><th>Start</th>
+                    <td>As the pattern starts: at power-on, after a watchdog
+                        reset, and when the run button starts it.</td>
+                    <td>A line. The count of clocks begins again.</td></tr>
+                <tr><th>Stop</th>
+                    <td>As the run button stops the pattern.</td>
+                    <td>A line.</td></tr>
+                <tr><th>Clock</th>
+                    <td>24 to a quarter note, which is six to a step. Stopped
+                        it carries on at the pot's tempo until an external
+                        edge comes. There is none from then on, nor while
+                        waiting for an external edge.</td>
+                    <td>No line. The count since the last Start, and the
+                        tempo over the last quarter note of them, given
+                        once there have been seven. With none for a second
+                        the tempo is given up.</td></tr>
+                <tr><th>Note On</th>
+                    <td>As a gate rises: channel 1, velocity 100. The lowest
+                        pitch, 0 V, is note 24 (C1), and a volt is twelve
+                        notes.</td>
+                    <td>A line, with the note's name and number.</td></tr>
+                <tr><th>Note Off</th>
+                    <td>As the gate falls. A note tied to one of another
+                        pitch gets its Note Off after the new Note On; a
+                        note tied to the same pitch sends nothing.</td>
+                    <td>A line.</td></tr>
+                <tr><th>Anything else</th>
+                    <td>Never, as the firmware is written.</td>
+                    <td>A line giving the byte.</td></tr>
+            </table></div>
+            <div class="scroll"><table class="key">
+                <caption>The rest of what is shown</caption>
+                <tr><th>Times</th>
+                    <td>Chip time at which the message's first byte began. A
+                        byte takes 320 µs and each waits for the one ahead,
+                        so a Note On begins about 0.4 ms after its gate
+                        rises, and 0.7 ms behind a Start.</td></tr>
+                <tr><th>Sounding</th>
+                    <td>The notes given a Note On and no Note Off yet, as a
+                        receiver would have them. A watchdog reset sends no
+                        Note Off, so a note it cut short stays here until
+                        that note is next played and ended.</td></tr>
+                <tr><th>Transport</th>
+                    <td>A Start or a Stop says whether the pattern is
+                        running, and is believed over the count of presses
+                        of the run button, as the debug image's Transport
+                        line is. It does not say which clock.</td></tr>
+                <tr><th>Calibration mode</th>
+                    <td>Nothing is sent.</td></tr>
+                <tr><th>Debug and release images</th>
+                    <td>Neither sends MIDI: the debug image's serial pin
+                        carries its log and the release image's is never
+                        switched on.</td></tr>
+                <tr><th>Not emulated</th>
+                    <td>Only the bytes are. The MIDI out circuit, and what a
+                        receiver makes of the bytes, are not.</td></tr>
+            </table></div>
+        </details>
+    </section>

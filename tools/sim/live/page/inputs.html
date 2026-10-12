@@ -1,0 +1,96 @@
+    <section>
+        <h2>Input jacks</h2>
+        <div class="row">
+            <label><input type="checkbox" id="clock-on"> Clock source into the
+                clock input (D8)</label>
+            <label>Pattern <select id="clock-pattern">
+                <option value="steady">Steady</option>
+                <option value="swing54">Swing 54%</option>
+                <option value="swing58">Swing 58%</option>
+                <option value="swing62">Swing 62%</option>
+                <option value="swing67">Swing 67% (triplet)</option>
+                <option value="swing75">Swing 75% (dotted)</option>
+                <option value="white">Random: gated white noise</option>
+                <option value="pink">Random: gated pink noise</option>
+            </select></label>
+            <button id="clock-pulse">One clock pulse</button>
+        </div>
+        <div class="row spaced">
+            <label for="clock-ms">Rate</label>
+            <input type="range" id="clock-ms" min="20" max="1000" step="1">
+            <span class="num" id="clock-rate"></span>
+        </div>
+        <div class="row spaced">
+            <button id="reset-pulse">Reset pulse (D2)</button>
+            <span class="dim">Back to the first step, at the next step.
+                Ignored while stopped.</span>
+        </div>
+        <details>
+            <summary>What the inputs do</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Clock input (D8)</th>
+                    <td>Its first edge takes the pattern over from the
+                        internal clock. A step then begins on its edges,
+                        and with no edges nothing plays, until the pattern
+                        is stopped.</td></tr>
+                <tr><th>Tempo pot, on the external clock</th>
+                    <td>Sets how many edges to a step or steps to an edge,
+                        ÷4 to ×4.</td></tr>
+                <tr><th>Run button (D7)</th>
+                    <td>Each press stops the pattern, or starts it again
+                        from the first step. A stop forgets the external
+                        clock: the start is on the internal one unless an
+                        edge has come in between.</td></tr>
+                <tr><th>Reset input (D2)</th>
+                    <td>Sends the pattern back to its first step, which
+                        plays when the next step is due. Ignored while
+                        stopped.</td></tr>
+                <tr><th>Power cycle</th>
+                    <td>Leaves the clock source as it is. The board comes
+                        up running, on the internal clock. Choosing an image
+                        is a power cycle with that image.</td></tr>
+            </table></div>
+        </details>
+        <details>
+            <summary>The clock patterns, and what the firmware makes of an
+                uneven clock</summary>
+            <div class="scroll"><table class="key">
+                <thead><tr><th>Pattern</th><th>Edges</th></tr></thead>
+                <tr><th>Steady</th><td>One every period.</td></tr>
+                <tr><th>Swing</th>
+                    <td>In pairs, a long gap then a short one, a pair
+                        lasting two periods. The figure is the long gap's
+                        share: 50% would be steady, 67% is triplet swing and
+                        75% dotted.</td></tr>
+                <tr><th>Gated white noise</th>
+                    <td>Each period is a slot with an even chance of an
+                        edge, whatever came before: gaps of 1, 2, 3 or more
+                        slots with no pattern to them.</td></tr>
+                <tr><th>Gated pink noise</th>
+                    <td>A slot has an edge while a slowly wandering noise is
+                        over its middle: runs of edges with lulls between.</td></tr>
+                <tr><th>Both random ones</th>
+                    <td>An edge every 2 slots on average and never more than
+                        16 apart. The train is the same each time the clock
+                        is started.</td></tr>
+            </table></div>
+            <div class="scroll"><table class="key">
+                <thead><tr><th>On an uneven clock</th><th>The firmware</th></tr></thead>
+                <tr><th>Every edge</th>
+                    <td>Is seen once a millisecond, so its step begins a
+                        tick or two after it.</td></tr>
+                <tr><th>Gate and clock output</th>
+                    <td>Are high for half the gap before the edge, not half
+                        the gap after it, which is not known yet.</td></tr>
+                <tr><th>An edge in under half the last gap</th>
+                    <td>Finds the gate and clock output still high. Its step
+                        waits a tick with both low, then begins.</td></tr>
+                <tr><th>The first edge, or one after 4 s of none</th>
+                    <td>Has no gap to go by, so its step is taken to be
+                        20 ms long: a 10 ms gate and clock pulse.</td></tr>
+                <tr><th>× ratios</th>
+                    <td>The steps between two edges are spaced by the gap
+                        before, so they bunch or stretch after a change.</td></tr>
+            </table></div>
+        </details>
+    </section>

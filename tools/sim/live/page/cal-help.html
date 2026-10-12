@@ -1,0 +1,49 @@
+    <section id="cal-help">
+        <details>
+            <summary class="head">How to use calibration mode</summary>
+            <p>The mode sets the table pitch is played from: five points,
+                one per octave, each the DAC value that should give exactly
+                0, 1, 2, 3 and 4 V. On a real board each is trimmed against
+                a voltmeter. Here the DAC is ideal, so the Pitch CV figure
+                stands in for the meter and nothing needs correcting, but a
+                point can be stored off its mark to see it take effect.</p>
+            <div class="scroll"><table class="key">
+                <thead><tr><th>Step</th><th>Do</th><th>Expect</th></tr></thead>
+                <tr><th>1. Enter</th>
+                    <td>Click "Enter calibration mode".</td>
+                    <td>The sequence stops, the gate stays high and the
+                        pitch CV holds still: with the sound on, one steady
+                        tone.</td></tr>
+                <tr><th>2. Pick a point</th>
+                    <td>Set step 0's switches to 0, 1, 2, 3 or 4 (switches
+                        1, 2 and 4; a higher value counts as 4).</td>
+                    <td>Point n should read n volts.</td></tr>
+                <tr><th>3. Trim it</th>
+                    <td>Turn the tempo pot until the Pitch CV reads the
+                        voltage wanted.</td>
+                    <td>The middle of the pot (about 512) is the point's
+                        nominal value. Its travel covers 64 mV below to
+                        63 mV above, a millivolt for every 8 of the reading.
+                        Point 0 cannot go below 0 V.</td></tr>
+                <tr><th>4. Store it</th>
+                    <td>Switch step 15's lowest switch (marked 1) off and on
+                        again.</td>
+                    <td>The gate drops for a quarter of a second, a gap in
+                        the tone, and the debug image logs the point and the
+                        value. It is written to the EEPROM there and then.</td></tr>
+                <tr><th>5. Repeat</th>
+                    <td>Do the same for any other points.</td>
+                    <td>A point that is not stored keeps the value it had.</td></tr>
+                <tr><th>6. Leave</th>
+                    <td>Change any switch on steps 12 to 15, then click
+                        "Power cycle" with "Keep the EEPROM" ticked.</td>
+                    <td>The debug image's first log line says Cal = 1, and
+                        notes are played from the stored table, on the
+                        straight line between the octaves either side.</td></tr>
+                <tr><th>Back to the ideal table</th>
+                    <td>Untick "Keep the EEPROM" and power cycle.</td>
+                    <td>The EEPROM is erased and the first log line says
+                        Cal = 0.</td></tr>
+            </table></div>
+        </details>
+    </section>

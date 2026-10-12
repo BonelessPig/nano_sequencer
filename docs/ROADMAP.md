@@ -115,7 +115,7 @@ Verified against the Claude Code documentation:
 - A subagent starts cold and spends its own tokens.
   The four research agents behind this document used about 554,000 between them; CLAUDE.md now keeps work in the main session.
 
-Done: the split into a short root file and one per folder, with the topics of `core/` and `adapters/target/` in path-scoped rules (decision 9), a quiet `make check` and `make test-quiet`, `make figures` for the sizes and counts, the two large test files split by topic, coverage, the analysis and the emulated board run side by side in `make check`, the "Next" section at the top of this file, and one kind of line ending (LF, enforced by `.gitattributes`).
+Done: the split into a short root file and one per folder, with the topics of `core/` and `adapters/target/` in path-scoped rules (decision 9), a quiet `make check` and `make test-quiet`, `make figures` for the sizes and counts, the two large test files and the page of the live view split by topic, coverage, the analysis and the emulated board run side by side in `make check`, the "Next" section at the top of this file, and one kind of line ending (LF, enforced by `.gitattributes`).
 
 Not done:
 

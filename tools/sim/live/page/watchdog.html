@@ -1,0 +1,64 @@
+    <section>
+        <h2>Watchdog and crash log</h2>
+        <div class="row">
+            <button id="stop-tick">Stop the tick</button>
+            <span class="dim">Switches the chip's interrupts off from
+                outside. The watchdog resets it about 256 ms later. Done
+                this way the crash is always at place 5.</span>
+        </div>
+        <div class="row spaced">
+            <span class="num" id="watchdog"></span>
+        </div>
+        <div class="scroll"><table class="key" id="crash-log" hidden>
+            <caption>The crash log, as the EEPROM holds it</caption>
+            <thead><tr><th>Slot</th><th>Record</th><th>Cause</th>
+                <th>Place</th><th>Count</th><th></th></tr></thead>
+            <tbody id="crash-rows"></tbody>
+        </table></div>
+        <div class="dim" id="crash-log-empty">The crash log is empty.</div>
+        <details>
+            <summary>The watchdog, the crash log and what the button does</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Watchdog</th>
+                    <td>A timer in the chip that resets it unless the
+                        firmware kicks it, which it does once a tick. It
+                        times out after about 256 ms.</td></tr>
+                <tr><th>Stop the tick</th>
+                    <td>The firmware never hangs by itself, so this stops
+                        its tick from outside: the loop goes on round with
+                        nothing to do, which is place 5. No other place can
+                        be reached from here.</td></tr>
+                <tr><th>After the reset</th>
+                    <td>The firmware starts as at power-on: it reads the
+                        panel afresh, comes up running and plays from the
+                        first step. The debug image's start-up line reads
+                        Reset = 8, and the midi image sends Start again.</td></tr>
+                <tr><th>Crash log</th>
+                    <td>Eight records in the EEPROM, used in turn. One is
+                        written after each watchdog reset, about 18 ms into
+                        the start-up. It is read here from the EEPROM, not
+                        from the serial log, so the release and midi images
+                        show it too.</td></tr>
+                <tr><th>Record</th>
+                    <td>Its number: 1 for the first, and round from 255 to
+                        0. The newest is the one not followed by the next
+                        number.</td></tr>
+                <tr><th>Cause</th>
+                    <td>The reset flags, as in the start-up line: 8 is the
+                        watchdog.</td></tr>
+                <tr><th>Place</th>
+                    <td>What the firmware was doing: 1 past start-up with no
+                        tick run yet, 2 applying outputs, 3 gathering
+                        inputs, 4 in the core, 5 between ticks.</td></tr>
+                <tr><th>Count</th>
+                    <td>How many times running the same crash happened, 1 to
+                        255. A crash with the cause and place of the newest
+                        record raises its count; any other takes the next
+                        slot.</td></tr>
+                <tr><th>To clear it</th>
+                    <td>Untick "Keep the EEPROM" and power cycle, which
+                        erases the calibration too. Nothing else clears
+                        it.</td></tr>
+            </table></div>
+        </details>
+    </section>
