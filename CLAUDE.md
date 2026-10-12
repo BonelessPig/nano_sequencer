@@ -46,7 +46,10 @@ The folder's `CLAUDE.md` lists them.
 
 Before calling a change done, every stage it could affect passes.
 `make check` runs them all and prints one line per stage, with the full output only of a stage that fails.
-Run it once, before the commit of a change to what the firmware does, not after every edit; use a stage's own target when you need its output.
+Run it once, before the commit of a change to what the firmware does, not after every edit.
+To run only some stages, name them to the same script: `python tools/check/run.py make coverage sim` prints the same one line each.
+The names are `build debug`, `build release`, `build midi`, `test`, `coverage`, `misra` and `sim`; from Git Bash, wrap it in `cmd //c "..."` like `make`.
+Use a stage's own target only when you need the output of a run that passes.
 Run less where less can have changed: a refactor that `cmp` shows left all three images identical needs only `make test-quiet` (`make test` with one line of output unless a test fails), and a change to docs alone needs nothing.
 Keeping token use and waiting down is a priority: do not re-run a stage nothing has touched since it last passed.
 The Makefile's recipes run under `cmd.exe` on Windows; from Git Bash, call it as `cmd //c "make ..."`.
