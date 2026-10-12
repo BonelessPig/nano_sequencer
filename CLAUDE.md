@@ -40,7 +40,8 @@ Read one yourself only before creating a file in a folder you have not read from
 - `tools/sim/CLAUDE.md`: the emulated board.
 - `tools/sim/live/CLAUDE.md`: the live view.
 
-`core/` and `adapters/target/` are flat, so the lessons about one part of either (an engine, MIDI out, the watchdog, the pins) are in `.claude/rules/core-*.md` and `target-*.md`, each loaded by the files it names.The folder's `CLAUDE.md` lists them.
+`core/` and `adapters/target/` are flat, so the lessons about one part of either (an engine, MIDI out, the watchdog, the pins) are in `.claude/rules/core-*.md` and `target-*.md`, each loaded by the files it names.
+The lessons about one kind of scenario on the emulated board are in `sim-*.md`, in the same way.The folder's `CLAUDE.md` lists them.
 
 ## Done means
 

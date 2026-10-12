@@ -1,7 +1,7 @@
 # nano_sequencer — architecture
 
 What the firmware does today, how it is put together, and what is still open.
-The rules for the codebase are in [CLAUDE.md](../CLAUDE.md), the `CLAUDE.md` in each source folder and, for the parts of the core and of the MCU adapters, `.claude/rules/`; the folder layout, the hardware list and the build commands are in the [README](../README.md); the plan is in [ROADMAP.md](ROADMAP.md) and the decisions taken in [DECISIONS.md](DECISIONS.md).
+The rules for the codebase are in [CLAUDE.md](../CLAUDE.md), the `CLAUDE.md` in each source folder and, for the parts of the core, of the MCU adapters and of the emulated board, `.claude/rules/`; the folder layout, the hardware list and the build commands are in the [README](../README.md); the plan is in [ROADMAP.md](ROADMAP.md) and the decisions taken in [DECISIONS.md](DECISIONS.md).
 Function signatures, units and ranges are in the headers, and what each test program checks is in its source: neither is repeated here.
 
 **How far this has been checked.** Everything here has run on the host (`make test`) and on the emulated board (`make sim`).

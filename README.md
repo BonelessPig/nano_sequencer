@@ -47,7 +47,7 @@ tools/check/        # Runs every check and summarizes (make check)
 docs/               # Architecture, roadmap, schematic, parts list
 ```
 
-The rules are in [CLAUDE.md](CLAUDE.md), with each folder's own rules in a `CLAUDE.md` beside its source and, topic by topic for the core and the MCU adapters, in `.claude/rules/`.
+The rules are in [CLAUDE.md](CLAUDE.md), with each folder's own rules in a `CLAUDE.md` beside its source and, topic by topic for the core, the MCU adapters and the emulated board, in `.claude/rules/`.
 Each source file says what it is for in the comment at its top.
 
 ## Hardware target
