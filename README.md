@@ -149,6 +149,7 @@ The checks always cover all three.
   It is for looking, not checking: nothing is asserted.
   It serves this PC only, and Ctrl+C stops it.
 - **`make check`** runs every stage even if an earlier one failed, and fails if any did.
+  Coverage, the analysis and the emulated board run side by side once the builds and the tests are done.
   `python tools/check/run.py make coverage sim` runs only the stages named, with the same one line each.
 - **`make flash`** uploads at 57600 baud, which is for the old Nano bootloader; newer boards use 115200.
   It picks the serial port per platform: `COM3` on Windows, the first `/dev/cu.usbserial*`, `/dev/cu.wchusbserial*` or `/dev/cu.usbmodem*` device on macOS, and the first `/dev/ttyUSB*` or `/dev/ttyACM*` device on Linux.

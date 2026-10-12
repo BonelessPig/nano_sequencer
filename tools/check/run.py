@@ -10,7 +10,13 @@ prints a single line, with one figure picked out of its output where there is
 a useful one, and a stage that fails prints everything it wrote. All stages
 run even if an earlier one fails, so one run shows everything that is wrong.
 Exits 0 only if every stage passed.
+
+The builds and the host tests run one after another, since the builds share
+their objects. Coverage, the analysis and the emulated board then run side by
+side: each takes about as long as the other two and none writes where another
+reads. Their lines are still printed in the order of the list.
 """
+import concurrent.futures
 import re
 import subprocess
 import sys
@@ -26,6 +32,9 @@ STAGES = [
     ("misra", ["-k", "misra"], None),
     ("sim", ["sim"], r"\bpass \d+"),
 ]
+
+# The stages that run side by side, after the others
+SIDE_BY_SIDE = ("coverage", "misra", "sim")
 
 
 def describe(label, output, pattern):
@@ -46,15 +55,19 @@ def describe(label, output, pattern):
     return lines[-1].strip()
 
 
-def run_stage(make, label, arguments, pattern):
-    """Runs one stage, prints its result, and returns True if it passed."""
+def run_stage(make, arguments):
+    """Runs one stage and returns its result and how many seconds it took."""
     started = time.monotonic()
     result = subprocess.run(
         [make, "--no-print-directory"] + arguments,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         encoding="utf-8", errors="replace", check=False,
     )
-    seconds = time.monotonic() - started
+    return result, time.monotonic() - started
+
+
+def report_stage(label, pattern, result, seconds):
+    """Prints one stage's result and returns True if it passed."""
     passed = result.returncode == 0
 
     if passed:
@@ -79,11 +92,23 @@ def main():
     if unknown:
         print(f"check: no such stage ({', '.join(unknown)})")
         return 1
-    failed = [
-        label for label, arguments, pattern in STAGES
-        if (not wanted or label in wanted)
-        and not run_stage(make, label, arguments, pattern)
-    ]
+    stages = [stage for stage in STAGES if not wanted or stage[0] in wanted]
+    failed = []
+
+    with concurrent.futures.ThreadPoolExecutor(len(SIDE_BY_SIDE)) as pool:
+        for label, arguments, pattern in stages:
+            if label not in SIDE_BY_SIDE:
+                result, seconds = run_stage(make, arguments)
+                if not report_stage(label, pattern, result, seconds):
+                    failed.append(label)
+        running = [
+            (label, pattern, pool.submit(run_stage, make, arguments))
+            for label, arguments, pattern in stages if label in SIDE_BY_SIDE
+        ]
+        for label, pattern, future in running:
+            result, seconds = future.result()
+            if not report_stage(label, pattern, result, seconds):
+                failed.append(label)
 
     if failed:
         print(f"check: FAILED ({', '.join(failed)})")
