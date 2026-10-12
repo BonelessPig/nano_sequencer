@@ -10,6 +10,7 @@ This is JavaScript test tooling, outside the C coding standard; the line length 
   Neither may know anything about the sequencer, so they can be lifted out for another project.
 - `boards/nano_sequencer.js`: which part is on which pin, and everything a scenario does to the board or reads from it, which `.claude/rules/sim-scenarios.md` lists.
   `boards/cal_record.js` works the calibration record out on its own, so a scenario does not check the firmware against itself, and `boards/crash_record.js` does the same for a crash log record, says where the log is, and reads a log back into its records (`readCrashLog()`).
+  `boards/profile_record.js` does the same for a profile, and says where the eight are (`eepromWithProfiles()`).
   `boards/midi_messages.js` reads MIDI bytes into messages, from the MIDI specification and not from the firmware, and names a note.
   `boards/wiring.js` says which signal is on which pin of the Nano, and is the only place the tooling writes that down: the board wires its parts from it, and `docs/SCHEMATIC.html` loads the same file to label its chip drawings.
   A pin that moves is changed there; the hand-drawn figures in the schematic page still carry their own labels and are changed by hand.

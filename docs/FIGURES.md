@@ -7,9 +7,9 @@ Run that again after a change to the firmware or its tests, and commit what it w
 
 | | Flash | Of the flash available | Static RAM |
 |---|---:|---:|---:|
-| debug | 12482 bytes | 40.6% | 868 bytes |
-| release | 11196 bytes | 36.4% | 304 bytes |
-| midi | 11348 bytes | 36.9% | 338 bytes |
+| debug | 13712 bytes | 44.6% | 966 bytes |
+| release | 12264 bytes | 39.9% | 316 bytes |
+| midi | 12416 bytes | 40.4% | 350 bytes |
 
 The flash available is the 30720 bytes below the old Nano bootloader.
 Static RAM is initialised data, zeroed data and the one byte kept through a reset;
@@ -19,9 +19,9 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 
 | | Debug | Release | Midi |
 |---|---:|---:|---:|
-| **All of `adapters/target/`** | **2501** | **1216** | **1368** |
-| **All of `app/`** | **1778** | **1778** | **1778** |
-| **All of `core/`** | **7968** | **7968** | **7968** |
+| **All of `adapters/target/`** | **2665** | **1218** | **1370** |
+| **All of `app/`** | **2440** | **2440** | **2440** |
+| **All of `core/`** | **8372** | **8372** | **8372** |
 | `adapters/target/analog_reader.c` | 88 | 88 | 88 |
 | `adapters/target/breadcrumb.c` | 12 | 12 | 12 |
 | `adapters/target/clock_input.c` | 36 | 36 | 36 |
@@ -32,21 +32,22 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `adapters/target/init.c` | 64 | 64 | 64 |
 | `adapters/target/level_output.c` | 36 | 36 | 36 |
 | `adapters/target/midi_output.c` | 0 | 0 | 162 |
-| `adapters/target/null_logger.c` | 0 | 24 | 24 |
+| `adapters/target/null_logger.c` | 0 | 26 | 26 |
 | `adapters/target/null_midi_output.c` | 10 | 10 | 0 |
 | `adapters/target/register_init.c` | 48 | 48 | 48 |
 | `adapters/target/reset_cause.c` | 12 | 12 | 12 |
 | `adapters/target/reset_input.c` | 28 | 28 | 28 |
 | `adapters/target/run_input.c` | 12 | 12 | 12 |
-| `adapters/target/serial_logger.c` | 1309 | 0 | 0 |
+| `adapters/target/serial_logger.c` | 1473 | 0 | 0 |
 | `adapters/target/shift_reg_reader.c` | 224 | 224 | 224 |
 | `adapters/target/spi.c` | 70 | 70 | 70 |
 | `adapters/target/timebase.c` | 90 | 90 | 90 |
 | `adapters/target/watchdog.c` | 20 | 20 | 20 |
-| `app/app.c` | 1762 | 1762 | 1762 |
+| `app/app.c` | 1790 | 1790 | 1790 |
+| `app/app_profile.c` | 634 | 634 | 634 |
 | `app/main.c` | 16 | 16 | 16 |
 | `core/address.c` | 294 | 294 | 294 |
-| `core/bank.c` | 296 | 296 | 296 |
+| `core/bank.c` | 348 | 348 | 348 |
 | `core/cal.c` | 496 | 496 | 496 |
 | `core/cal_record.c` | 152 | 152 | 152 |
 | `core/clock.c` | 484 | 484 | 484 |
@@ -65,45 +66,48 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `core/midi_out.c` | 538 | 538 | 538 |
 | `core/mod.c` | 382 | 382 | 382 |
 | `core/note_map.c` | 157 | 157 | 157 |
-| `core/panel.c` | 80 | 80 | 80 |
+| `core/panel.c` | 100 | 100 | 100 |
 | `core/pickup.c` | 156 | 156 | 156 |
 | `core/pitch_cal.c` | 152 | 152 | 152 |
 | `core/prng.c` | 76 | 76 | 76 |
+| `core/profile.c` | 180 | 180 | 180 |
+| `core/profile_record.c` | 152 | 152 | 152 |
 | `core/seq.c` | 1480 | 1480 | 1480 |
 | `core/transport.c` | 190 | 190 | 190 |
 | startup object | 128 | 128 | 128 |
 | libgcc | 106 | 106 | 106 |
 | padding | 1 | 0 | 0 |
-| **Total** | **12482** | **11196** | **11348** |
+| **Total** | **13712** | **12264** | **12416** |
 
 ## Static RAM by source file, in bytes
 
 | | Debug | Release | Midi |
 |---|---:|---:|---:|
-| **All of `adapters/target/`** | **588** | **25** | **59** |
-| **All of `app/`** | **211** | **211** | **211** |
+| **All of `adapters/target/`** | **674** | **25** | **59** |
+| **All of `app/`** | **223** | **223** | **223** |
 | **All of `core/`** | **68** | **68** | **68** |
 | `adapters/target/breadcrumb.c` | 1 | 1 | 1 |
 | `adapters/target/eeprom.c` | 20 | 20 | 20 |
 | `adapters/target/midi_output.c` | 0 | 0 | 34 |
-| `adapters/target/serial_logger.c` | 563 | 0 | 0 |
+| `adapters/target/serial_logger.c` | 649 | 0 | 0 |
 | `adapters/target/shift_reg_reader.c` | 2 | 2 | 2 |
 | `adapters/target/timebase.c` | 2 | 2 | 2 |
 | `app/app.c` | 211 | 211 | 211 |
+| `app/app_profile.c` | 12 | 12 | 12 |
 | `core/lfo.c` | 17 | 17 | 17 |
 | `core/note_map.c` | 51 | 51 | 51 |
 | padding | 1 | 0 | 0 |
-| **Total** | **868** | **304** | **338** |
+| **Total** | **966** | **316** | **350** |
 
 ## Host tests
 
 | Area | Programs | Tests |
 |---|---:|---:|
-| Core | 32 | 433 |
-| App loop | 6 | 93 |
-| Target adapters | 21 | 156 |
+| Core | 34 | 459 |
+| App loop | 7 | 108 |
+| Target adapters | 21 | 157 |
 | `main.c` | 1 | 3 |
-| **Total** | **60** | **685** |
+| **Total** | **63** | **727** |
 
 | Program | Tests |
 |---|---:|
@@ -115,7 +119,8 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_app_crash` | 13 |
 | `test_app_env` | 6 |
 | `test_app_midi` | 11 |
-| `test_bank` | 12 |
+| `test_app_profile` | 15 |
+| `test_bank` | 15 |
 | `test_breadcrumb` | 2 |
 | `test_cal` | 16 |
 | `test_cal_record` | 9 |
@@ -147,10 +152,12 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_note_map` | 12 |
 | `test_null_logger` | 3 |
 | `test_null_midi_output` | 4 |
-| `test_panel` | 7 |
+| `test_panel` | 8 |
 | `test_pickup` | 9 |
 | `test_pitch_cal` | 9 |
 | `test_prng` | 4 |
+| `test_profile` | 12 |
+| `test_profile_record` | 10 |
 | `test_register_init` | 7 |
 | `test_reset_cause` | 4 |
 | `test_reset_input` | 7 |
@@ -161,7 +168,7 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_seq_mod` | 12 |
 | `test_seq_pulses` | 8 |
 | `test_seq_transport` | 19 |
-| `test_serial_logger` | 22 |
+| `test_serial_logger` | 23 |
 | `test_shift_reg_reader` | 10 |
 | `test_spi` | 9 |
 | `test_timebase` | 9 |
@@ -170,7 +177,7 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 
 ## Coverage
 
-Firmware total: lines 1908/1908 (100.0%), branches 833/833 (100.0%), in `core/`, `app/` and `adapters/target/`.
+Firmware total: lines 2070/2070 (100.0%), branches 910/910 (100.0%), in `core/`, `app/` and `adapters/target/`.
 
 ## Emulated board scenarios
 
@@ -182,7 +189,8 @@ Firmware total: lines 1908/1908 (100.0%), branches 833/833 (100.0%), in `core/`,
 | `midi.test.js` | 10 |
 | `midi_clock.test.js` | 7 |
 | `modulation.test.js` | 30 |
+| `profiles.test.js` | 21 |
 | `release.test.js` | 15 |
 | `transport.test.js` | 48 |
 | `watchdog.test.js` | 21 |
-| **Total** | **212** |
+| **Total** | **233** |

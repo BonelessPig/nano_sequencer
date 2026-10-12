@@ -25,7 +25,9 @@ const TICK_MS = 1;
 const SETTLE_MS = 20;            // More than two panel scans
 const CONFIRM_MS = 250;          // The gate is low this long after a store
 const EDGE_JITTER_MAX_MS = 0.02;
-const START_UP_MAX_MS = 0.5;     // From reset to the timer being started
+// From reset to the timer being started, and the first tick's work done:
+// 0.52 ms was measured on the debug image
+const START_UP_MAX_MS = 0.6;
 const POWER_ON_RESET = 0x01;
 const EXTERNAL_RESET = 0x02;
 

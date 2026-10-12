@@ -280,6 +280,7 @@ function showPanel() {
     }
     el('rate-reading').textContent = rateMeaning();
     el('run').classList.toggle('down', state.runDown);
+    el('profile').classList.toggle('down', state.profileDown);
     el('clock-on').checked = state.clockOn;
     el('clock-pulse').disabled = state.clockOn; // The jack is already taken
     el('clock-pattern').value = state.clockPattern;
@@ -287,6 +288,18 @@ function showPanel() {
         el('clock-ms').value = String(state.clockMs);
         showClockRate(state.clockMs);
     }
+}
+
+// What letting the profile button go would ask for just now, from how
+// long the chip has seen it down; nothing while it is up
+function profileMeaning(heldMs) {
+    if (heldMs === null) {
+        return '';
+    }
+    const meaning = PROFILE_HOLDS.find(([fromMs]) => heldMs >= fromMs)[1];
+
+    return `${(heldMs / 1000).toFixed(1)} s: letting go ${meaning} profile `
+        + `${state.selector}`;
 }
 
 // What the rate pot makes of the board's own LFO, as the firmware works

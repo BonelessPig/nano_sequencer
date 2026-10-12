@@ -256,6 +256,59 @@ static void test_the_level_is_a_quarter_of_the_selected_amount(void)
 
 
 
+static void test_an_amount_can_be_set_without_the_pot(void)
+{
+    bank_init(&g_state, NO_HOME);
+    bank_set(&g_state, 3U, 700U);
+    TEST_ASSERT_EQUAL(700, bank_amount(&g_state, 3U));
+    expect_zero_but(3U);
+
+    // A slot beyond the last wraps round, and an amount stops at the top
+    bank_set(&g_state, (uint8_t)(BANK_SLOT_COUNT + 5U), 2000U);
+    TEST_ASSERT_EQUAL(1023, bank_amount(&g_state, 5U));
+    bank_set(&g_state, 5U, 1023U);
+    TEST_ASSERT_EQUAL(1023, bank_amount(&g_state, 5U));
+    TEST_ASSERT_EQUAL(700, bank_amount(&g_state, 3U));
+}
+
+
+
+static void test_setting_the_selected_slot_detaches_the_pot(void)
+{
+    // The pot has slot 3: it met its 0 and took it to 100
+    bank_init(&g_state, NO_HOME);
+    tick(3U, 0U);
+    tick(3U, 100U);
+    TEST_ASSERT_EQUAL(100, bank_amount(&g_state, 3U));
+
+    // An amount from elsewhere: the pot, where it is, no longer sets it
+    bank_set(&g_state, 3U, 700U);
+    tick(3U, 100U);
+    tick(3U, 120U);
+    TEST_ASSERT_EQUAL(700, bank_amount(&g_state, 3U));
+
+    // Until it has been turned to meet it
+    tick(3U, 698U);
+    tick(3U, 500U);
+    TEST_ASSERT_EQUAL(500, bank_amount(&g_state, 3U));
+}
+
+
+
+static void test_setting_another_slot_leaves_the_pot_attached(void)
+{
+    bank_init(&g_state, NO_HOME);
+    tick(3U, 0U);
+    tick(3U, 100U);
+
+    bank_set(&g_state, 5U, 900U);
+    tick(3U, 300U);
+    TEST_ASSERT_EQUAL(300, bank_amount(&g_state, 3U));
+    TEST_ASSERT_EQUAL(900, bank_amount(&g_state, 5U));
+}
+
+
+
 static void test_null_pointers_are_ignored(void)
 {
     bank_state_t  untouched;
@@ -271,6 +324,7 @@ static void test_null_pointers_are_ignored(void)
     bank_tick(NULL, &in);
     bank_tick(&g_state, NULL);
     TEST_ASSERT_EQUAL(0, memcmp(&untouched, &g_state, sizeof(g_state)));
+    bank_set(NULL, 3U, 700U);
     TEST_ASSERT_EQUAL(0, bank_amount(NULL, 0U));
 }
 
@@ -289,6 +343,9 @@ int main(void)
     RUN_TEST(test_the_same_inputs_again_change_nothing);
     RUN_TEST(test_out_of_range_controls_wrap_or_stop_at_the_top);
     RUN_TEST(test_the_level_is_a_quarter_of_the_selected_amount);
+    RUN_TEST(test_an_amount_can_be_set_without_the_pot);
+    RUN_TEST(test_setting_the_selected_slot_detaches_the_pot);
+    RUN_TEST(test_setting_another_slot_leaves_the_pot_attached);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();
 }

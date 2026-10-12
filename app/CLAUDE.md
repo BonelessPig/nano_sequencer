@@ -44,6 +44,13 @@ The only code that knows about both the core and the ports.
 - The MIDI output's room is read in the gather step on every tick.
   The room read on one tick is still good when that tick's bytes are written on the next, because the queue only drains in between.
   Keep the write ahead of the read within a tick, or that stops being true.
+- The profiles are in `app_profile.c`, split from `app.c` by topic, with its own statics; `app.c` calls it in three places and hands it the bank.
+  `app_profile_run()` is called after the bank and ahead of the LFO, and not in calibration mode; `app_profile_apply()` in the apply step of the next tick, after a calibration save and ahead of the log, on every tick.
+  Nothing of it comes before the MIDI bytes are queued, so no output moves for a recall or a save.
+  A recall or a clear that meets `ERR_BUSY` is kept and tried again on the next tick; a save is not.
+  The load at power-on is the core's doing: `profile_tick()` asks for a recall on the first tick the panel is valid.
+  Do not read the panel in start-up for it: that was tried, and it moved the first tick on the emulated board.
+- A new file in `app/` is linked into the `test_app` programs and the `misra-host` run by itself (`APP_SRCS` in `tests/tests.mk`), `main.c` excepted.
 - A stored calibration point is saved in the apply step of the next tick, after the three outputs: the whole record is encoded and handed to `nv_write()`, which only starts it.
 - Start-up reads the reset cause and the calibration record once, after `platform_init()` has succeeded, and logs both in one line.
   A record that is not valid is not an error.

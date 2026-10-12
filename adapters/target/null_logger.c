@@ -95,6 +95,19 @@ void log_cal_point(uint8_t point, uint16_t cv)
 
 
 /**
+ * @brief Discards a profile message (see log_port.h).
+ * @param profile ignored
+ * @param action ignored
+ */
+void log_profile(uint8_t profile, uint8_t action)
+{
+    (void)profile;
+    (void)action;
+}
+
+
+
+/**
  * @brief Discards a transport message (see log_port.h).
  * @param mode ignored
  */

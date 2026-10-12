@@ -290,7 +290,9 @@ to the engine chosen, each engine giving them its own meaning.</p>
 <p>Chip 9 is wired as chip 8 is, with its serial output to chip 8's serial input and its own
 serial input to ground. Its inputs A, B and C take the three lines of the selector, a coded
 rotary switch of eight positions, A being the least significant bit, and a line must read
-high for a 1. Inputs D to H have nothing on them and go to ground. One read of the chain is
+high for a 1. Input D takes the profile button, a momentary push button to 5 V with a
+pull-down, so that it reads high while it is down. Inputs E to H have nothing on them and
+go to ground. One read of the chain is
 80 bits, ten bytes, and the selector's is the last byte to arrive.</p>
 <div class="fig" id="hc165-mode"></div>
 

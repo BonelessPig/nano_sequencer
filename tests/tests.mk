@@ -40,6 +40,8 @@ ALL_TESTS := $(sort $(patsubst tests/%.c,%,$(wildcard tests/test_*.c)))
 
 # Tests for the application loop, split by topic.
 APP_TESTS     := $(filter test_app test_app_%,$(ALL_TESTS))
+# The app as those programs link it: every file of it but main.c
+APP_SRCS      := $(filter-out app/main.c,$(wildcard app/*.c))
 APP_TEST_SRCS := $(patsubst %,tests/%.c,$(APP_TESTS))
 TEST_APP      := $(patsubst %,$(HOST_DIR)/%$(EXE),$(APP_TESTS))
 
@@ -92,9 +94,9 @@ $(TEST_CORE): $(HOST_DIR)/%$(EXE): tests/%.c $(CORE_SRCS) $(HOST_HDRS)
 # Tests for the application loop: the real app.c and core, linked against the
 # fake ports in adapters/host instead of the MCU ones. main.c is left out; the
 # test program supplies main.
-$(TEST_APP): $(HOST_DIR)/%$(EXE): tests/%.c app/app.c $(CORE_SRCS) $(HOST_SRCS) $(HOST_HDRS)
+$(TEST_APP): $(HOST_DIR)/%$(EXE): tests/%.c $(APP_SRCS) $(CORE_SRCS) $(HOST_SRCS) $(HOST_HDRS)
 	@$(call mkdir_p,$(HOST_DIR))
-	$(HOST_CC) $(HOST_CFLAGS) -o $@ $< app/app.c $(CORE_SRCS) $(HOST_SRCS)
+	$(HOST_CC) $(HOST_CFLAGS) -o $@ $< $(APP_SRCS) $(CORE_SRCS) $(HOST_SRCS)
 
 # Coverage: rebuild the tests instrumented, run them, and report which lines
 # and branches of the source they exercised. Starts from an empty folder each

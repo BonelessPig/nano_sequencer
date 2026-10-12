@@ -105,6 +105,26 @@ static void test_the_selector_is_the_low_three_bits_of_the_tenth_byte(void)
 
 
 
+static void test_the_profile_button_is_bit_three_of_the_tenth_byte(void)
+{
+    uint8_t raw[PANEL_RAW_BYTE_COUNT];
+
+    // Nothing else is it: not the steps, the mode switches, the selector
+    // or its byte's four spare bits
+    (void)memset(raw, 0xFF, sizeof(raw));
+    raw[9] = 0xF7U;
+    TEST_ASSERT(!panel_profile_button(raw));
+
+    (void)memset(raw, 0, sizeof(raw));
+    raw[9] = 0x08U;
+    TEST_ASSERT(panel_profile_button(raw));
+    TEST_ASSERT_EQUAL(0, panel_selector_value(raw));
+
+    TEST_ASSERT(!panel_profile_button(NULL));
+}
+
+
+
 static void test_mode_switches_are_the_ninth_byte(void)
 {
     uint8_t raw[PANEL_RAW_BYTE_COUNT];
@@ -141,6 +161,7 @@ int main(void)
     RUN_TEST(test_step_beyond_the_last_wraps_round);
     RUN_TEST(test_mode_switches_are_the_ninth_byte);
     RUN_TEST(test_the_selector_is_the_low_three_bits_of_the_tenth_byte);
+    RUN_TEST(test_the_profile_button_is_bit_three_of_the_tenth_byte);
     RUN_TEST(test_null_raw_bytes_give_zero);
     return TEST_RESULT();
 }

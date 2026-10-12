@@ -17,7 +17,8 @@
  * Every amount is 0 after bank_init(), but one: the home slot takes the
  * pot's first valid reading, wherever the selector stands, so that what it
  * sets (a tempo, say) starts where the pot is and not at the bottom of its
- * range. Nothing is kept through a power cycle.
+ * range. Nothing is kept through a power cycle here; a caller that stores
+ * amounts puts them back with bank_set().
  *
  * The bank gives the amounts no meaning. The caller says what each slot is.
  *
@@ -75,6 +76,17 @@ void bank_init(bank_state_t *p_state, uint8_t home_slot);
  * @note   Does nothing if either pointer is null.
  */
 void bank_tick(bank_state_t *p_state, const bank_inputs_t *p_in);
+
+/**
+ * @brief  Gives one slot an amount from somewhere other than the pot (a
+ *         stored one, say). If it is the selected slot, the pot is detached
+ *         and has to meet the new amount before it sets the slot again.
+ * @param  p_state  State from bank_init() or bank_tick(); updated.
+ * @param  slot     The slot. A value of BANK_SLOT_COUNT or more wraps round.
+ * @param  amount   The amount, 0 to 1023. A larger value is taken as 1023.
+ * @note   Does nothing if p_state is null.
+ */
+void bank_set(bank_state_t *p_state, uint8_t slot, uint16_t amount);
 
 /**
  * @brief  Gives one slot's amount.

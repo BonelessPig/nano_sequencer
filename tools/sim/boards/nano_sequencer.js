@@ -4,7 +4,9 @@
  * ten 74HC165s on the SPI bus (clock on SCK, data on MISO) and their load
  * line on PB1: eight for the 16 steps, one for the eight mode switches and,
  * farthest from the MCU, one whose low three inputs are the selector, a
- * coded rotary switch that says what the pot sets. An MCP4822 DAC on the same bus (clock on SCK, data on MOSI)
+ * coded rotary switch that says what the pot sets, and whose fourth is
+ * the profile button, high while it is down. An MCP4822 DAC on the same
+ * bus (clock on SCK, data on MOSI)
  * with its chip select on PB2, two 74HC595s on the bus as well (clock on
  * SCK, data on MOSI) driving the sixteen step lights, their latch clock on
  * PB1 with the 74HC165 load line, the tempo pot on ADC channel 6, the gate
@@ -13,8 +15,9 @@
  * and nowhere in the release image. Scenarios set the panel and
  * the pot, run the firmware, and read back what it did. Nothing is wired to
  * Timer/Counter2; the firmware uses it for its 1 kHz tick. The chip's own
- * EEPROM holds the pitch calibration record, from address 0, and the crash
- * log, from address 16. The chip's watchdog is running; stopTick() is how a
+ * EEPROM holds the pitch calibration record, from address 0, the crash
+ * log, from address 16, and the eight profiles of the amounts, from
+ * address 64. The chip's watchdog is running; stopTick() is how a
  * scenario makes it bite.
  *
  * Three inputs, each with the chip's pull-up holding its pin high. The clock
@@ -43,6 +46,7 @@ const NOTE_BITS = 4;
 const MODE_BITS = 8;
 const BITS_PER_CHIP = 8;
 const SELECTOR_POSITIONS = 8; // The low three inputs of the tenth chip
+const PROFILE_BUTTON_BIT = 0x08; // Its fourth input
 const LED_CHIPS = 2;
 const TEMPO_ADC_CHANNEL = WIRING.analog.pot.channel;
 // The modulation input: an LFO, through its input stage
@@ -95,6 +99,7 @@ function createBoard(config, options = {}) {
     const notes = new Array(STEP_COUNT).fill(0);
     let modeSwitches = 0;
     let selector = 0;
+    let profileButton = false;
     // lines holds the step lines, which most scenarios count and time;
     // notices holds every other line (start-up, calibration, errors)
     // bytes counts everything the USART sent, whatever it was
@@ -120,7 +125,8 @@ function createBoard(config, options = {}) {
 
     // Step 0's most significant bit is the first bit out of the chain, the
     // mode switches follow the last step, highest switch first, and then
-    // the selector's chip, whose five spare inputs are low
+    // the selector's chip, with the profile button above the selector and
+    // its four spare inputs low
     function panelBits() {
         const bits = [];
         for (const note of notes) {
@@ -131,8 +137,10 @@ function createBoard(config, options = {}) {
         for (let bit = MODE_BITS - 1; bit >= 0; bit--) {
             bits.push((modeSwitches >> bit) & 1);
         }
+        const tenth = selector | (profileButton ? PROFILE_BUTTON_BIT : 0);
+
         for (let bit = BITS_PER_CHIP - 1; bit >= 0; bit--) {
-            bits.push((selector >> bit) & 1);
+            bits.push((tenth >> bit) & 1);
         }
         return bits;
     }
@@ -416,6 +424,15 @@ function createBoard(config, options = {}) {
          */
         setSelector(position) {
             selector = position % SELECTOR_POSITIONS;
+        },
+
+        /**
+         * Presses the profile button or lets it go. A hold under a second
+         * recalls the selected profile; of a second, saves; of five,
+         * clears it; of ten, clears them all.
+         */
+        setProfileButton(isDown) {
+            profileButton = Boolean(isDown);
         },
 
         /** The selector's position, 0 to 7. */

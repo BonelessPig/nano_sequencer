@@ -1,8 +1,7 @@
 # tools/sim/live/ rules
 
 `make live`: `server.js` runs the emulated board at real speed and `page.html`, with its parts in `page/`, shows it in a browser.
-A viewer, not a check.
-The board itself is in `tools/sim/CLAUDE.md`.
+A viewer, not a check; the board is in `tools/sim/CLAUDE.md`.
 
 ## Where the page is
 
@@ -10,13 +9,13 @@ The board itself is in `tools/sim/CLAUDE.md`.
 Read the part a change concerns, not all of them.
 
 - Sections, in `page/`, put in by the server where the frame has `<!-- part: name.html -->`: `panel.html`, `inputs.html` (the input jacks), `gear.html` (the patched gear), `midi.html`, `watchdog.html`, `log.html`, `cal-help.html`.
-  The Board, Calibration mode and Signals sections are short and stay in the frame.
+  Board, Calibration mode and Signals stay in the frame.
 - `page/page.css`: all the style.
 - Scripts, in `page/`, loaded in this order as plain scripts sharing one scope (no modules, no build step): `tables.js` (the tables, the shared state, `el()` and `post()`), `panel.js`, `outputs.js` (watchdog, crash log, outputs, MIDI out, `applyEvent()`), `trace.js` (the one chart of every signal, `drawTrace()`, with the board's bands of it, and `openCanvas()` for any canvas), `gear.js` (the patched gear and its bands of that chart, `drawGearBands()`), `wavetable.js` (the picture of its wavetable), `pots.js` (the rotary switches, and every `<input type="range">` drawn as a pot, the input kept inside it and still holding the value), `main.js` (the connection and every control's handler).
   Only `main.js` runs anything as it loads; the others just define, so a function may call one from a later file.
 - The server serves `/`, and any `name.css` or `name.js` that is in `page/`; nothing else on disk.
   A new script needs its `<script>` in the frame, a new section its `part:` comment.
-- Start another file by topic before one passes about 20,000 characters.
+- Split a file by topic before about 20,000 characters.
 
 ## Rules
 
@@ -42,8 +41,9 @@ Read the part a change concerns, not all of them.
   The patched gear's own envelope is still made in the page from the gate; it does not listen to this one.
 - The level light goes out as `level` in every `run` message, the part of the slice it was on for, from `takeLevel()`; it is not an event and is not in `drain()`'s list.
   The selector, the LFO reading and the rate pot are panel controls, kept in `panel` and set again in `powerUp()`.
+- The profile button is held: the page posts `profile: true` then `false`, and `run` has `profileHeldMs` (null while up).
 - "Stop the tick" is asked of the board again every slice until the reset comes: a slice can end inside the tick interrupt, where `stopTick()` does nothing.
-  It can only make a crash at place 5, and the page says so.
+  It can only crash at place 5, and the page says so.
 - The crash log shown is `crashLog()`, looked at after every slice and sent when it has changed.
   It is not a record that grows, so it is not in `drain()`'s list; `resets` is.
 - The images offered are the board's `CONFIGS`, and what an image has is asked of the board (`hasLog`, `sendsMidi`), not told from its name.

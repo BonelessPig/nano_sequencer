@@ -206,6 +206,8 @@
                 <div id="selector-knob" class="knob" role="slider" tabindex="0"
                      aria-label="Selector" aria-valuemin="0" aria-valuemax="7"></div>
                 <div>Selector <span class="num" id="selector"></span></div>
+                <div><button id="profile">Profile</button>
+                    <span class="num dim" id="profile-means"></span></div>
             </div>
             <div class="pots">
                 <div><label for="tempo">Pot (A6)</label>
@@ -236,6 +238,18 @@
                         LFO goes to one thing; 0 is off. Position 6 is the
                         envelope's time. Position 7 is how much of the
                         LFO goes to the vibrato.</td></tr>
+                <tr><th>Profile</th>
+                    <td>A button that keeps eight sets of the seven
+                        amounts at positions 1 to 7 (not the tempo) in
+                        the chip's EEPROM, one set for each selector
+                        position. What it does is decided as it is let
+                        go: a click recalls the selected set, a hold of
+                        1 s saves to it, of 5 s clears it and of 10 s
+                        clears all eight. The selected set is loaded at
+                        power-on if it holds anything. After a recall
+                        the pot has to meet the amount again. Keep the
+                        EEPROM over a power cycle to see them come
+                        back.</td></tr>
                 <tr><th>LFO rate</th>
                     <td>A second pot, for an LFO of the board's own: a
                         sine, off with the pot right down, then from a

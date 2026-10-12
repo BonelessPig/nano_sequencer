@@ -14,6 +14,9 @@
 // The selector's bits in its byte, which follows the mode switches' one
 #define SELECTOR_MASK (0x07U)
 
+// The profile button's bit in the same byte
+#define PROFILE_BUTTON_MASK (0x08U)
+
 
 
 uint8_t panel_step_value(const uint8_t *p_raw_steps, uint8_t step)
@@ -61,4 +64,18 @@ uint8_t panel_selector_value(const uint8_t *p_raw_steps)
     }
 
     return value;
+}
+
+
+
+bool panel_profile_button(const uint8_t *p_raw_steps)
+{
+    bool b_down = false;
+
+    if (NULL != p_raw_steps)
+    {
+        b_down = (0U != (p_raw_steps[PANEL_STEP_BYTE_COUNT + 1U] & PROFILE_BUTTON_MASK));
+    }
+
+    return b_down;
 }

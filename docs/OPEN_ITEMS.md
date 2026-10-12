@@ -30,12 +30,12 @@ The tick that starts the pattern no longer counts towards its second step.
 
 ## 5. `make check` under-reports static RAM
 
-`avr-size` counts constant data under flash only, although it is also copied to RAM: it prints 370 bytes for the debug build where 868 are used, 236 for release where 304 are, and 270 for midi where 338 are.
+`avr-size` counts constant data under flash only, although it is also copied to RAM: it prints 382 bytes for the debug build where 966 are used, 248 for release where 316 are, and 282 for midi where 350 are.
 
 ## 6. The pattern controls have no hardware
 
 Direction, first and last step, one-shot, scale, root and gate length are tested in the core, but nothing on the board sets them, so only the forward, looping, chromatic path is ever taken there.
-One place exists for them: the five spare inputs of the selector's 74HC165, for switches. Every selector position is now in use.
+One place exists for them: the four spare inputs of the selector's 74HC165, for switches. Every selector position is now in use.
 
 ## 7. A change of direction or range mid-cycle jumps
 
@@ -166,6 +166,10 @@ A failed read of the LFO is taken as no modulation and is not logged.
 
 The tenth 74HC165 is not wired; until it is the selector reads 0 and the pot is the tempo.
 Only the board can show whether a coded switch reads a third position between detents (harmless to the amounts), whether the pot is steady enough for the pickup's window of 8 counts, and whether the level light is even in brightness across its range.
+
+The profile button is on that chip too, on its fourth input, and has not run either.
+On the board, look at: that a click, and holds of 1, 5 and 10 s, do what they should with nothing to show which was reached (the status light is still to come, and until then only the debug log says); that a save in the middle of a pattern is not heard (on the emulated board no step moves through the 55 ms it takes); and that a profile comes back after the power has been off.
+A save rewrites up to 16 bytes of an EEPROM rated for 100,000 writes a byte, from memory; a byte that already holds its value is not written.
 
 ## 21. The first step after a crash is 0.2 ms late in the debug build
 

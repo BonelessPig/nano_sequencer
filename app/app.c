@@ -8,6 +8,7 @@
  *
  */
 #include "app.h"
+#include "app_profile.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include "address.h"
@@ -171,7 +172,8 @@ static void save_calibration(void)
  *         lights are given next; they show at the next input scan. The
  *         level light follows them. The MIDI bytes are
  *         queued after them, to be sent as the loop goes round. Then saves the
- *         calibration if a point of it was stored, logs the transport if it
+ *         calibration if a point of it was stored, sees to the profiles,
+ *         logs the transport if it
  *         changed, and, when a step began, logs it (or the failed step
  *         read), and with it a failed tempo read and a failed write of the
  *         pitch or, the pitch having gone, of the envelope.
@@ -197,6 +199,8 @@ static void apply_outputs(void)
     {
         save_calibration();
     }
+
+    app_profile_apply(&g_bank);
 
     if (g_outputs.b_transport_changed)
     {
@@ -370,8 +374,9 @@ static void run_envelope(void)
  * @brief  Runs the core for this tick. Calibration goes first: if the panel
  *         asked for calibration mode at start-up, it gives the pitch CV and
  *         the gate, with the pot as it reads, and nothing is sequenced, and
- *         no MIDI is sent; otherwise the bank takes the pot, the LFO moves
- *         on, the sequencer runs, and MIDI out after it.
+ *         no MIDI is sent; otherwise the bank takes the pot, the profile
+ *         button is followed, the LFO moves on, the sequencer runs, and
+ *         MIDI out after it.
  */
 static void run_core(void)
 {
@@ -395,6 +400,8 @@ static void run_core(void)
     else
     {
         run_bank();
+        app_profile_run(g_inputs.raw_steps, g_inputs.b_steps_valid,
+                        g_inputs.elapsed_ticks);
         run_lfo();
         seq_tick(&g_seq_state, &g_inputs, &g_outputs);
         run_midi_out();
@@ -484,6 +491,8 @@ static void reset_tick_state(void)
     g_pot_raw     = 0U;
     g_b_pot_valid = false;
     g_level       = 0U;
+
+    app_profile_init();
 
     lfo_init(&g_lfo_state);
     g_lfo_raw      = 0U;

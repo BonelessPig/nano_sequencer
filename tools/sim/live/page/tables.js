@@ -337,6 +337,13 @@ const LFO_DEAD_ZONE = 16; // How far from it still moves nothing
 const RATE_PER_LEVEL = 4;
 const RATE_DIVISOR = 48;
 const RATE_CYCLE = 65536;
+// What letting the profile button go asks for, by how long it has been
+// down in milliseconds, longest first
+const PROFILE_HOLDS = [
+    [10000, 'clears all eight'], [5000, 'clears this one'], [1000, 'saves'],
+    [0, 'recalls'],
+];
+
 // What each selector position's amount is for
 const SELECTOR_NAMES = [
     '0 Tempo', '1 Note', '2 Gate length', '3 Step chance',
