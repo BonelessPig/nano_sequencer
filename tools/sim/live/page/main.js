@@ -44,6 +44,7 @@ function applyRun(run) {
     run.events.forEach(applyEvent);
     el('level-led').style.opacity = String(run.level);
     el('level-reading').textContent = `${Math.round(run.level * 100)}%`;
+    el('profile-means').textContent = profileMeaning(run.profileHeldMs);
     el('status').textContent = `Running ${state.config}: ${(run.ms / 1000).toFixed(1)} s `
         + `of chip time, at ${run.speed}% of real speed`;
 }
@@ -64,6 +65,21 @@ el('tempo').addEventListener('input', () => post({ tempo: Number(el('tempo').val
 el('lfo').addEventListener('input', () => post({ lfo: Number(el('lfo').value) }));
 el('lfo-centre').addEventListener('click', () => post({ lfo: LFO_CENTRE }));
 el('rate').addEventListener('input', () => post({ rate: Number(el('rate').value) }));
+// The profile button is held, not clicked: down with the pointer or the
+// space bar, and let go with it, or when the pointer or the focus leaves
+el('profile').addEventListener('pointerdown', () => post({ profile: true }));
+el('profile').addEventListener('keydown', (event) => {
+    if ((event.key === ' ') && !event.repeat) {
+        post({ profile: true });
+    }
+});
+for (const name of ['pointerup', 'pointerleave', 'keyup', 'blur']) {
+    el('profile').addEventListener(name, () => {
+        if (state.profileDown) {
+            post({ profile: false });
+        }
+    });
+}
 function powerCycle() {
     post({ power: el('config').value, keepEeprom: el('keep-eeprom').checked });
 }

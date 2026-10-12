@@ -69,6 +69,22 @@ void bank_tick(bank_state_t *p_state, const bank_inputs_t *p_in)
 
 
 
+void bank_set(bank_state_t *p_state, uint8_t slot, uint16_t amount)
+{
+    if (NULL != p_state)
+    {
+        const uint8_t wrapped = (uint8_t)(slot % BANK_SLOT_COUNT);
+
+        p_state->amount[wrapped] = (amount > AMOUNT_MAX) ? (uint16_t)AMOUNT_MAX : amount;
+        if (wrapped == p_state->selected)
+        {
+            pickup_release(&p_state->pickup);
+        }
+    }
+}
+
+
+
 uint16_t bank_amount(const bank_state_t *p_state, uint8_t slot)
 {
     uint16_t amount = 0U;

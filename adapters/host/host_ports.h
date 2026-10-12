@@ -18,7 +18,7 @@
 #define HOST_MOD_CENTRE     (512U) // The modulation input with nothing on it
 #define HOST_RAW_STEP_BYTES (10U) // Size of the scripted step-input buffer
 #define HOST_MAX_EVENTS     (64U) // Output-port calls recorded before further ones are dropped
-#define HOST_NV_BYTES       (64U) // Size of the faked non-volatile storage
+#define HOST_NV_BYTES       (192U)// Size of the faked non-volatile storage
 #define HOST_NV_ERASED      (0xFFU) // What a byte of it holds until it is written
 #define HOST_BREADCRUMB_HISTORY (8U) // breadcrumb_write() calls kept, newest last
 
@@ -32,7 +32,8 @@ typedef enum
     HOST_EVENT_ERROR,         // log_error(what, status):       a = what, b = status
     HOST_EVENT_FLUSH,         // log_flush():                   a = 0,    b = 0
     HOST_EVENT_CAL_POINT,     // log_cal_point(point, cv):      a = point, b = cv
-    HOST_EVENT_TRANSPORT      // log_transport(mode):           a = mode, b = 0
+    HOST_EVENT_TRANSPORT,     // log_transport(mode):           a = mode, b = 0
+    HOST_EVENT_PROFILE        // log_profile(profile, action):  a = profile, b = action
 } host_event_kind_t;
 
 /**

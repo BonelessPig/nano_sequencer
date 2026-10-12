@@ -182,6 +182,18 @@ static void test_error_text_matches_the_printf_format(void)
         (void)snprintf(expected, sizeof(expected),
                        "Crash log write failed, status code = %d\r\n", (int)statuses[i]);
         expect_uart(expected);
+
+        fake_uart_clear();
+        log_error(LOG_ERROR_PROFILE_READ, statuses[i]);
+        (void)snprintf(expected, sizeof(expected),
+                       "Profile read failed, status code = %d\r\n", (int)statuses[i]);
+        expect_uart(expected);
+
+        fake_uart_clear();
+        log_error(LOG_ERROR_PROFILE_WRITE, statuses[i]);
+        (void)snprintf(expected, sizeof(expected),
+                       "Profile write failed, status code = %d\r\n", (int)statuses[i]);
+        expect_uart(expected);
     }
 }
 
@@ -252,6 +264,26 @@ static void test_cal_point_text_matches_the_printf_format(void)
 
 
 
+static void test_profile_text_matches_the_printf_format(void)
+{
+    char expected[EXPECTED_CAPACITY];
+
+    (void)logger_init(LOGLVL_DEBUG);
+    for (unsigned int profile = 0U; profile <= 255U; profile += (profile < 8U) ? 1U : 247U)
+    {
+        for (unsigned int action = 0U; action <= 255U; action += (action < 5U) ? 1U : 250U)
+        {
+            fake_uart_clear();
+            log_profile((uint8_t)profile, (uint8_t)action);
+            (void)snprintf(expected, sizeof(expected), "Profile %d = %d\r\n",
+                           (int)profile, (int)action);
+            expect_uart(expected);
+        }
+    }
+}
+
+
+
 static void test_transport_text_matches_the_printf_format(void)
 {
     char expected[EXPECTED_CAPACITY];
@@ -296,6 +328,7 @@ static void test_level_filters_messages(void)
     log_startup(1U, true);
     log_cal_point(2U, 2013U);
     log_transport(2U);
+    log_profile(3U, 2U);
     log_crash(3U, 5U, 2U);
     expect_uart("");
     log_error(LOG_ERROR_INIT, ERR_GENERAL);
@@ -315,9 +348,10 @@ static void test_level_filters_messages(void)
     log_startup(1U, true);
     log_cal_point(2U, 2013U);
     log_transport(2U);
+    log_profile(3U, 2U);
     log_crash(3U, 5U, 2U);
     expect_uart("Reset = 1 Cal = 1\r\nCal point 2 = 2013\r\nTransport = 2\r\n"
-                "Crash 3 Place = 5 Count = 2\r\n");
+                "Profile 3 = 2\r\nCrash 3 Place = 5 Count = 2\r\n");
 
     // FATAL is less verbose than ERROR, so errors are dropped too
     (void)logger_init(LOGLVL_FATAL);
@@ -533,6 +567,7 @@ int main(void)
     RUN_TEST(test_startup_text_matches_the_printf_format);
     RUN_TEST(test_crash_text_matches_the_printf_format);
     RUN_TEST(test_cal_point_text_matches_the_printf_format);
+    RUN_TEST(test_profile_text_matches_the_printf_format);
     RUN_TEST(test_transport_text_matches_the_printf_format);
     RUN_TEST(test_unknown_error_id_sends_nothing);
     RUN_TEST(test_level_filters_messages);

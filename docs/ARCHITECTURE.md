@@ -14,18 +14,18 @@ Timing figures marked as measured come from the emulated board; the rest are cal
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano, old bootloader), 16 MHz |
-| Flash | 12482 bytes debug, 11196 release, 11348 midi, of 30720 below the bootloader |
-| Static RAM | 868 bytes debug, 304 release, 338 midi (`avr-size` reports less: open item 5) |
-| EEPROM | 52 of 1024 bytes: the calibration record (12, from address 0) and the crash log (40, from address 16) |
+| Flash | 13712 bytes debug, 12264 release, 12416 midi, of 30720 below the bootloader |
+| Static RAM | 966 bytes debug, 316 release, 350 midi (`avr-size` reports less: open item 5) |
+| EEPROM | 180 of 1024 bytes: the calibration record (12, from address 0), the crash log (40, from address 16) and the eight profiles (128, from address 64) |
 | Interrupts | One: Timer/Counter2 compare match, 1000 times a second, which adds one to a counter. The clock and reset inputs use interrupt flags, polled, with their interrupts off |
 | Main loop | Never blocks. One sequencer tick a millisecond; every output is applied at the next tick boundary |
 | Watchdog | About 250 ms, kicked once a tick. After a watchdog reset the firmware records in the EEPROM which part of the loop it had reached |
-| Inputs | 16 steps × 4 bits, 8 mode switches and an 8-way selector on ten 74HC165s (SPI), a pot (ADC 6) and the LFO rate pot (ADC 0), all read every 8 ms. Clock input (PB0), reset input (PD2) and run button (PD7), read every tick, and a modulation input (ADC 7), read on every tick but those |
+| Inputs | 16 steps × 4 bits, 8 mode switches, an 8-way selector and the profile button on ten 74HC165s (SPI), a pot (ADC 6) and the LFO rate pot (ADC 0), all read every 8 ms. Clock input (PB0), reset input (PD2) and run button (PD7), read every tick, and a modulation input (ADC 7), read on every tick but those |
 | Outputs | Pitch CV from an MCP4822 DAC (SPI), 1 V to the octave; gate (PD4); clock (PD5); 16 step lights on two 74HC595s (SPI); a level light (PD6, PWM). A serial log in the debug build, MIDI out in the midi build |
 | Tempo | 30 to 285 BPM, a step being a sixteenth note (500 ms down to 52.6 ms) |
-| Tests | 685 host tests in 60 programs: 433 for the core, 93 for the app loop, 156 for the target adapters, 3 for `main.c` |
+| Tests | 727 host tests in 63 programs: 459 for the core, 108 for the app loop, 157 for the target adapters, 3 for `main.c` |
 | Coverage | 100% of lines (1669) and branches (758) in `core/`, `app/` and `adapters/target/` |
-| Emulated board | 212 scenarios across the three images |
+| Emulated board | 233 scenarios across the three images |
 | MISRA | Zero findings from cppcheck's addon over four runs; one inline suppression (see "Static analysis") |
 
 The sizes and counts are copied from [FIGURES.md](FIGURES.md), which `make figures` writes.
@@ -97,7 +97,7 @@ Each pass of `app_run_once()` asks the timebase how many 1 ms ticks have gone by
 With none, it polls the log, the MIDI output and the EEPROM and returns, a few microseconds a pass.
 With one or more it runs one tick first, handing the count to the core so that a late pass loses no time.
 
-1. **Apply outputs** from the previous tick: the pitch CV, then the gate, then the clock output, on every tick and ahead of everything else; then the envelope CV, the step lights, the level light and any MIDI bytes; then the log lines (a transport change, the step that began, errors).
+1. **Apply outputs** from the previous tick: the pitch CV, then the gate, then the clock output, on every tick and ahead of everything else; then the envelope CV, the step lights, the level light and any MIDI bytes; then what the profile button asked for; then the log lines (a transport change, the step that began, errors).
 2. **Gather inputs.** Every tick: the clock and reset edges, the run button and the room in the MIDI output.
    Every eighth tick: the ten panel bytes, the pot and the rate pot.
    Every other tick: the modulation input.
@@ -105,6 +105,7 @@ With one or more it runs one tick first, handing the count to the core so that a
    Between scans the core is given the last snapshot again.
    A read's status is kept beside the snapshot so that a failure can be logged with its code, once per step.
 3. **Run the core.** `bank_tick()` lets the pot set the amount the selector is on; the app copies the tempo and the six modulation amounts into the sequencer's inputs.
+   `profile_tick()` follows the profile button and says what it asked for, which the next tick's apply step does.
    `lfo_tick()` moves the sequencer's own LFO on and adds it to the modulation input, and the sum is the sequencer's LFO.
    `seq_tick()` works out whether a step begins and the level of every output after this tick.
    `midi_out_tick()` turns that into at most as many MIDI bytes as there was room for.
@@ -160,9 +161,10 @@ An external edge is noticed at the next tick and acted on at the one after, so s
 | `midi_out` | Which MIDI bytes does this tick send? |
 | `env` | What is the envelope's level this tick? |
 | `lfo` | What is the modulating signal this tick: the sequencer's own LFO added to the one from outside? |
+| `profile`, `profile_record` | What is the profile button asking for? Are these stored bytes a profile? |
 
 `seq` owns the clock, transport, engines, gate, note mapping, modulation and pitch calibration.
-`bank`, `cal`, `cal_record`, `errlog`, `midi_out`, `env` and `lfo` stand beside it: the app calls them itself and they include nothing of the sequencer's.
+`bank`, `cal`, `cal_record`, `errlog`, `midi_out`, `env`, `lfo`, `profile` and `profile_record` stand beside it: the app calls them itself and they include nothing of the sequencer's.
 
 ### The clock
 
@@ -337,8 +339,34 @@ Position 0 is the tempo because 0 is what a board with no selector reads.
 
 After the selector moves the pot is detached (`pickup`): the amount stays until the pot has been turned to meet it, which is a reading within 8 of it or two readings with it between them.
 Every amount starts at 0 but the tempo, which takes the pot's first valid reading.
-Nothing is stored.
+The bank itself stores nothing; the profiles do.
 The level light shows the selected amount, and so where the pot has to go.
+
+### Profiles
+
+A profile is a stored set of the seven amounts at positions 1 to 7; the tempo is not in it and stays where the pot is.
+There are eight, numbered as the selector's positions are, so the selector says both which amount the pot sets and which profile the button works.
+
+| The button | What it asks for, of the profile the selector is at when it is let go |
+|---|---|
+| Held under 1 s | Recall: the stored amounts replace the seven in use. A profile that holds nothing changes nothing |
+| Held 1 s or more | Save: the seven in use are stored |
+| Held 5 s or more | Clear: the profile holds nothing afterwards. The amounts in use are not touched |
+| Held 10 s or more | Clear all eight |
+
+- `profile` debounces the button (20 ms) and counts the hold in ticks; nothing happens until the button is let go.
+  It also asks for one recall by itself, on the first tick the panel has been read: that is the load at power-on, of whichever profile the selector stands at.
+  The amounts are in use from the second tick. The first step has begun by then, but no LFO has been read by then either, so nothing is moved differently for it.
+- After a recall the pot is detached, as after a move of the selector (`bank_set()`), and has to meet the recalled amount before it sets it again.
+- `profile_record` is the stored form, laid out as the calibration record is: a version byte, the seven amounts as two bytes each with the low byte first, and a CRC-8 of those fifteen bytes.
+  Sixteen bytes, which is the most one write to the storage takes, so a save is one write and takes about 55 ms to reach the EEPROM, a byte each pass of the loop.
+  The eight records follow one another from address 64.
+- A clear writes 0xFF over the record's first byte, which fails the version check; clearing all eight is eight such writes, one a tick as the storage takes them.
+- A recall or a clear that finds the storage busy with an earlier write waits and is tried again on the next tick; that is what lets the profile load at power-on behind a crash log record being written.
+  A save that finds it busy is logged as failed and not tried again.
+- In calibration mode the button does nothing, and nothing here touches the calibration record or the crash log.
+- `app/app_profile.c` holds the app's side of this, split from `app.c` by topic.
+- There is no light for it yet (decision 146, the stage to come); the debug log's `Profile 3 = 2` line is the only sign, its second number 1 for recalled, 2 for saved, 3 for cleared and 4 for all cleared.
 
 ### Modulation
 
@@ -419,7 +447,7 @@ A stop does not cut an envelope short, and in calibration mode the output stays 
 
 ### The panel and note mapping
 
-The ten raw bytes are the sixteen steps, 4 bits each and MSB first (step 0 is the high nibble of byte 0), then the eight mode switches in byte 8, then the selector in the low three bits of byte 9.
+The ten raw bytes are the sixteen steps, 4 bits each and MSB first (step 0 is the high nibble of byte 0), then the eight mode switches in byte 8, then the selector in the low three bits of byte 9, with the profile button in bit 3 above it, 1 while it is down.
 
 A note value of 1 to 15 is the first fifteen notes of a scale from the root, carrying on into the next octaves.
 The scales are chromatic, major, natural minor, major pentatonic and minor pentatonic, and the root adds 0 to 11 semitones.
@@ -485,7 +513,7 @@ Each output's level is set before it is made an output, so no line glitches on t
 - **Reset cause and breadcrumb.** `reset_cause_read()` reads the four reset flags (power-on 1, reset pin 2, brown-out 4, watchdog 8) and clears them.
   The breadcrumb is one byte in `.noinit`.
 - **Serial logger (debug).** 115200 baud in double-speed mode (really 117647, 2.1% fast, the usual setting at 16 MHz).
-  The port functions own the wording (`Step 3 Note = 11`, `Step 5 Rest`, `Reset = 2 Cal = 1`, `Crash 3 Place = 5 Count = 2`, `Cal point 2 = 2013`, `Transport = 2`) and write into a 128-byte ring queue; `log_poll()` sends one byte a pass.
+  The port functions own the wording (`Step 3 Note = 11`, `Step 5 Rest`, `Reset = 2 Cal = 1`, `Crash 3 Place = 5 Count = 2`, `Cal point 2 = 2013`, `Transport = 2`, `Profile 3 = 2`) and write into a 128-byte ring queue; `log_poll()` sends one byte a pass.
   A message that does not fit is dropped whole.
   `null_logger.c` is the same functions, empty.
 - **MIDI output (midi).** 31250 baud, exact at 16 MHz, with a 32-byte ring queue sent one byte a pass.
@@ -496,11 +524,11 @@ Each output's level is set before it is made an output, so no line glitches on t
 
 ## Host tests — `adapters/host/` and `tests/`
 
-`make test` builds 57 programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
+`make test` builds 63 programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
 There are two kinds:
 
-- **35 link the code they test.** One per core module, with the sequencer's split by topic into six (`test_seq` and `test_seq_*`, sharing `tests/seq_fixture.h`) and MIDI out's into two (`test_midi_out` and `test_midi_out_notes`, sharing `tests/midi_out_fixture.h`), and five for the app loop (`test_app` and `test_app_*`, sharing `tests/app_fixture.h`), which link the real `app.c` and all of `core/` against `adapters/host/host_ports.c`.
-  The fake ports script what the inputs return, record log calls in order, keep the level of each output, hold 64 bytes of storage that survive a re-init, and keep every MIDI byte written.
+- **41 link the code they test.** One per core module, with the sequencer's split by topic into six (`test_seq` and `test_seq_*`, sharing `tests/seq_fixture.h`) and MIDI out's into two (`test_midi_out` and `test_midi_out_notes`, sharing `tests/midi_out_fixture.h`), and seven for the app loop (`test_app` and `test_app_*`, sharing `tests/app_fixture.h`), which link the real `app.c` and `app_profile.c` and all of `core/` against `adapters/host/host_ports.c`.
+  The fake ports script what the inputs return, record log calls in order, keep the level of each output, hold 192 bytes of storage that survive a re-init, and keep every MIDI byte written.
   Time is scripted, so the tests check on which tick each thing happens.
 - **22 `#include` the one source file they test**, against `tests/fake_atmega328p_regs.h`, which stands in for every register header.
   This is how each target adapter and `main.c` are tested: the set-up values, the order of writes, the timed sequences, and the timeouts.
@@ -525,6 +553,7 @@ The details are in [tools/sim/CLAUDE.md](../tools/sim/CLAUDE.md).
 | `calibration.test.js` | 30 | The mode, the stored record, a power cycle |
 | `transport.test.js` | 48 | The clock and reset inputs, the run button, the pot and selector, the level light |
 | `modulation.test.js` | 30 | The LFO moving the note, the gate length, the step chance, the step played, the amplitude and the pitch of a sounding note; the envelope CV; the sequencer's own LFO |
+| `profiles.test.js` | 21 | The profile button: save, recall, clear and clear all; the records in the EEPROM; the load at power-on |
 | `engines.test.js` | 41 | The six engines and the step lights |
 | `watchdog.test.js` | 21 | The watchdog, the breadcrumb and the crash log |
 | `midi.test.js` | 10 | MIDI out on the midi image: the bytes, the notes and ties |
@@ -559,8 +588,8 @@ The chip has one USART, so an image has the log or MIDI out, not both.
 | Logger | `serial_logger.c` | `null_logger.c` | `null_logger.c` |
 | MIDI output | `null_midi_output.c` | `null_midi_output.c` | `midi_output.c` |
 | USART0 | The log, 115200 baud | Never switched on | MIDI out, 31250 baud |
-| Flash | 12482 bytes | 11196 bytes | 11348 bytes |
-| Static RAM | 868 bytes | 304 bytes | 338 bytes |
+| Flash | 13712 bytes | 12264 bytes | 12416 bytes |
+| Static RAM | 966 bytes | 316 bytes | 350 bytes |
 
 ### Where the flash goes
 

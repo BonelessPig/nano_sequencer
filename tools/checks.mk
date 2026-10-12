@@ -22,7 +22,7 @@
 #                    without null_logger.c and midi_output.c
 #   misra-release  the same without serial_logger.c and midi_output.c
 #   misra-midi     the same without serial_logger.c and null_midi_output.c
-#   misra-host     core, ports, app/app.c, adapters/host, tests/test_app*.c
+#   misra-host     core, ports, app/ but main.c, adapters/host, tests/test_app*.c
 # The host run mirrors the test_app programs. It leaves out app/main.c because
 # the tests supply their own main, and it includes the test files only so
 # cppcheck can see that the host fakes' control functions are called from
@@ -60,7 +60,7 @@ misra-debug misra-release misra-midi:
 
 misra-host:
 	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_HOST_SCOPE) \
-	    core ports app/app.c adapters/host $(APP_TEST_SRCS)
+	    core ports $(APP_SRCS) adapters/host $(APP_TEST_SRCS)
 
 # ---- Emulation --------------------------------------------------------------
 #

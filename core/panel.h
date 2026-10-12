@@ -12,6 +12,7 @@
  * @copyright Copyright (c) 2026
  *
  */
+#include <stdbool.h>
 #include <stdint.h>
 
 #define PANEL_STEP_COUNT     (16U) // Number of steps on the panel
@@ -52,10 +53,19 @@ uint8_t panel_mode_value(const uint8_t *p_raw_steps);
 /**
  * @brief  Gives the position of the selector, a coded rotary switch: the
  *         low three bits of the byte that follows the mode switches', as a
- *         number. The byte's other five bits have nothing on them.
+ *         number. The next bit up is the profile button, and the byte's
+ *         other four bits have nothing on them.
  * @param  p_raw_steps  The panel's raw bytes, PANEL_RAW_BYTE_COUNT of them.
  * @return The position, 0 to 7. 0 if p_raw_steps is null.
  */
 uint8_t panel_selector_value(const uint8_t *p_raw_steps);
+
+/**
+ * @brief  Gives the profile button as it is read, bounce and all: bit 3 of
+ *         the selector's byte, 1 being down.
+ * @param  p_raw_steps  The panel's raw bytes, PANEL_RAW_BYTE_COUNT of them.
+ * @return true if the button reads as down. false if p_raw_steps is null.
+ */
+bool panel_profile_button(const uint8_t *p_raw_steps);
 
 #endif /* PANEL_H */

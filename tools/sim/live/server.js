@@ -27,6 +27,8 @@
  *                                               512 its centre.
  *                  { rate: 0 to 1023 }              The rate pot of the
  *                                               board's own LFO.
+ *                  { profile: true | false }    The profile button, down
+ *                                               or let go.
  *                  { run: 'press' }             One press of the run button.
  *                  { pulse: 'clock' | 'reset' } One pulse on that input jack.
  *                  { clockOn: true | false }    The clock source plugged
@@ -159,6 +161,7 @@ const panel = {
     selector: 0,
     lfo: LFO_CENTRE_READING,
     rate: 0,
+    profileDown: false,
     clockOn: false,
     clockMs: START_CLOCK_MS,
     clockPattern: CLOCK_PATTERNS[0], // Steady
@@ -182,6 +185,7 @@ const place = { order: 0, x: 0, y: 0, xSteps: 0, ySteps: 0, isLoadOn: false };
 // so a switch moved just before a step is not in that step. See record()
 const seen = { mode: 0, notes: START_NOTES };
 let runUpDueMs = null;     // Chip time at which the run button is let go
+let profileDownMs = null;  // Chip time at which the profile button went down
 let runFreeMs = 0;         // Chip time from which it may be pressed again
 let isTickStopped = false; // The tick was stopped here and no reset has come
 let watchdogResets = 0;    // How many there have been since power-up
@@ -213,6 +217,8 @@ function powerUp(config, eeprom) {
     board.setSelector(panel.selector);
     board.setLfoReading(panel.lfo);
     board.setRateReading(panel.rate);
+    board.setProfileButton(panel.profileDown);
+    profileDownMs = panel.profileDown ? 0 : null;
     // Whatever is plugged into the clock input carries on; the run button
     // is up, and the firmware starts on its own clock
     hasExternalEdge = false;
@@ -745,6 +751,7 @@ function runSlice() {
     // out is how much of the slice it was on for
     broadcast('run', {
         ms: chipMs(), speed: measureSpeed(nowMs), level: board.takeLevel(), events,
+        profileHeldMs: (profileDownMs === null) ? null : chipMs() - profileDownMs,
     });
     if (events.some((event) => event.k === 'watchdog')) {
         // The mode, the transport and the count of resets have changed
@@ -865,6 +872,12 @@ function applyCommand(command) {
     } else if (isWholeNumberUpTo(command.rate, MAX_RATE_READING)) {
         panel.rate = command.rate;
         board.setRateReading(panel.rate);
+    } else if (typeof command.profile === 'boolean') {
+        if (command.profile !== panel.profileDown) {
+            panel.profileDown = command.profile;
+            board.setProfileButton(panel.profileDown);
+            profileDownMs = panel.profileDown ? chipMs() : null;
+        }
     } else if (command.run === 'press') {
         pressRun();
     } else if ((command.pulse === 'clock') || (command.pulse === 'reset')) {

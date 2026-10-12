@@ -27,7 +27,9 @@ typedef enum
     LOG_ERROR_NV_READ,    // nv_read() of the stored calibration failed
     LOG_ERROR_NV_WRITE,   // nv_write() of the calibration failed
     LOG_ERROR_CRASH_READ, // nv_read() of the crash log failed
-    LOG_ERROR_CRASH_WRITE // nv_write() of a crash log record failed
+    LOG_ERROR_CRASH_WRITE,   // nv_write() of a crash log record failed
+    LOG_ERROR_PROFILE_READ,  // nv_read() of a profile failed
+    LOG_ERROR_PROFILE_WRITE  // nv_write() of a profile, or of its clearing, failed
 } log_error_id_t;
 
 /**
@@ -61,6 +63,18 @@ void log_crash(uint8_t number, uint8_t place, uint8_t count);
  *         log_step_note().
  */
 void log_cal_point(uint8_t point, uint16_t cv);
+
+/**
+ * @brief  Reports something done with a profile of the amounts (info-level
+ *         output).
+ * @param  profile  Which profile, 0 to 7. With every profile cleared it is
+ *                  the one that was selected.
+ * @param  action   1 for recalled, 2 for saved, 3 for cleared, 4 for every
+ *                  profile cleared.
+ * @note   Not ISR-safe. Does not block; queued or dropped like
+ *         log_step_note().
+ */
+void log_profile(uint8_t profile, uint8_t action);
 
 /**
  * @brief  Reports that the pattern has stopped, started or changed clock

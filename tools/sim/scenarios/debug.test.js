@@ -23,8 +23,12 @@ const STEP_MS_30_BPM = 500;
 const LOG_START_JITTER_MAX_MS = 0.5;
 // The first step's line is later than that: the start-up line is ahead of
 // it in the queue and, since start-up began reading the crash log, is still
-// being sent when the step is logged. The line waits up to this much longer
-const FIRST_LINE_HELD_MAX_MS = 1;
+// being sent when the step is logged, and the profile the selector is at is
+// read ahead of the line. The line waits up to this much longer, a byte
+// of the start-up line (0.09 ms) at a time: 1.15 ms was measured
+const FIRST_LINE_HELD_MAX_MS = 1.3;
+// And begins within this long of reset
+const FIRST_LINE_MAX_MS = 4.4;
 // The gate and the clock output are set first in a tick, ahead of the log
 const OUTPUT_JITTER_MAX_MS = 0.02;
 const RUN_LIMIT_MS = 10000;
@@ -193,11 +197,11 @@ test('the gate keeps time while the log is being sent', () => {
 
 // The step begins on the second tick, about 2.4 ms in, and its line waits
 // for the start-up line ahead of it: up to the two allowances above
-test('the first step is logged within 4 ms of reset', () => {
+test('the first step is logged within 4.4 ms of reset', () => {
     const board = debugBoard(READING_150_BPM);
 
     board.runUntilLines(1, RUN_LIMIT_MS);
 
     const startMs = board.machine.cyclesToMs(board.serial.lines[0].startCycle);
-    assert.ok(startMs < 4, `first line started at ${startMs} ms`);
+    assert.ok(startMs < FIRST_LINE_MAX_MS, `first line started at ${startMs} ms`);
 });

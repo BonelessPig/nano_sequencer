@@ -55,6 +55,9 @@ static void test_messages_are_discarded(void)
     log_error(LOG_ERROR_NV_WRITE, ERR_BUSY);
     log_error(LOG_ERROR_CRASH_READ, ERR_BUSY);
     log_error(LOG_ERROR_CRASH_WRITE, ERR_BUSY);
+    log_error(LOG_ERROR_PROFILE_READ, ERR_BUSY);
+    log_error(LOG_ERROR_PROFILE_WRITE, ERR_BUSY);
+    log_profile(3U, 2U);
     log_crash(3U, 5U, 2U);
     log_startup(1U, true);
     log_cal_point(2U, 2013U);

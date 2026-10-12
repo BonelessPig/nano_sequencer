@@ -42,6 +42,7 @@ Read the part a change concerns, not all of them.
   The patched gear's own envelope is still made in the page from the gate; it does not listen to this one.
 - The level light goes out as `level` in every `run` message, the part of the slice it was on for, from `takeLevel()`; it is not an event and is not in `drain()`'s list.
   The selector, the LFO reading and the rate pot are panel controls, kept in `panel` and set again in `powerUp()`.
+- The profile button is held, not clicked: the page posts `profile: true` then `false`, and each `run` message has `profileHeldMs`, how long the chip has seen it down (null while up).
 - "Stop the tick" is asked of the board again every slice until the reset comes: a slice can end inside the tick interrupt, where `stopTick()` does nothing.
   It can only make a crash at place 5, and the page says so.
 - The crash log shown is `crashLog()`, looked at after every slice and sent when it has changed.

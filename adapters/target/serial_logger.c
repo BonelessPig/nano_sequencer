@@ -291,6 +291,27 @@ void log_cal_point(uint8_t point, uint16_t cv)
 
 
 /**
+ * @brief Logs something done with a profile at INFO level (see log_port.h).
+ * @param profile which profile
+ * @param action 1 recalled, 2 saved, 3 cleared, 4 every profile cleared
+ */
+void log_profile(uint8_t profile, uint8_t action)
+{
+    if (is_level_enabled(LOGLVL_INFO))
+    {
+        begin_message();
+        write_text("Profile ");
+        write_decimal(profile);
+        write_text(" = ");
+        write_decimal(action);
+        write_text("\r\n");
+        end_message();
+    }
+}
+
+
+
+/**
  * @brief Logs a change of transport at INFO level (see log_port.h).
  * @param mode 0 stopped, 1 internal clock, 2 external clock
  */
@@ -349,6 +370,14 @@ void log_error(log_error_id_t what, port_status_t status)
 
         case LOG_ERROR_CRASH_WRITE:
             p_text = "Crash log write failed, status code = ";
+            break;
+
+        case LOG_ERROR_PROFILE_READ:
+            p_text = "Profile read failed, status code = ";
+            break;
+
+        case LOG_ERROR_PROFILE_WRITE:
+            p_text = "Profile write failed, status code = ";
             break;
 
         default:

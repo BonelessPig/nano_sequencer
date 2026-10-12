@@ -13,7 +13,7 @@ The ports faked for the PC: tests script what the input ports return and read ba
   `log_crash()` is treated the same way.
 - The breadcrumb is a byte that `host_reset()` clears and `app_init()` does not, like the storage, so a test resets the app by setting a reset cause and calling `app_init()` again; `host_set_breadcrumb()` puts a place there beforehand.
   The fake keeps the last eight places written, newest first, and what the byte held at the last pitch CV write and the last run button read, which is how a test sees that a part of the tick was marked before it began.
-- The storage is 64 bytes: the calibration record from 0 and the crash log from 16.
+- The storage is 192 bytes: the calibration record from 0, the crash log from 16 and the eight profiles from 64.
 - The clock and reset inputs are each a pending edge: `host_pulse_clock_input()` sets it, and the next read takes it and forgets it, as the hardware's flag does.
   The run button is a level (`host_set_run_button()`); nothing bounces, but the core's debounce still makes a change wait 20 ticks.
 - The modulation input reads 512, its centre, after `host_reset()`, so a test that does not set it (`host_set_mod()`) has no modulation.
@@ -25,7 +25,8 @@ The ports faked for the PC: tests script what the input ports return and read ba
 - A static here is named for its fake (`g_host_midi_*`): a name shared with a static in another file of the host run is a rule 5.9 finding.
 - `log_transport()` is in the event record.
   A run that never stops or changes clock logs none, so existing counts of events hold.
-- The scripted panel is ten bytes, the ninth being the mode switches and the tenth the selector.
+  `log_profile()` is too, and a run with nothing stored and the profile button left alone logs none.
+- The scripted panel is ten bytes, the ninth being the mode switches and the tenth the selector, with the profile button in its bit 3.
   A test's array of eight leaves them all off, which is the plain engine with the pot setting the tempo.
 - Time is scripted too: `timebase_elapsed_ticks()` returns whatever the test last set, on every call, so a test moves time on by calling `app_run_once()` once per tick.
 - No hardware access, no register headers.

@@ -19,7 +19,7 @@ Loaded with the files below, on top of `adapters/target/CLAUDE.md`, whose rules 
   Keep the two writes adjacent, with interrupts masked around just them and the status register restored as found, and check with `avr-objdump -d` that they compile to an `out` followed directly by an `sbi`.
   `EECR` needs `REG_IO_LOW` for that.
 - A read while a write is in hand is refused, not waited for: it would move the address register.
-- The calibration record is at address 0 and the crash log at 16 (the app's choices, not this file's).
+- The calibration record is at address 0, the crash log at 16 and the eight profiles from 64 to 191 (the app's choices, not this file's).
   Another user of the EEPROM takes other addresses.
 - `reset_cause.c` passes on the low four bits of `MCUSR` as they are, because the port gives the causes in that order, and clears the register.
   Read it once, at start-up.

@@ -1033,6 +1033,13 @@ void log_cal_point(uint8_t point, uint16_t cv)
 
 
 
+void log_profile(uint8_t profile, uint8_t action)
+{
+    record_event(HOST_EVENT_PROFILE, profile, action);
+}
+
+
+
 void log_transport(uint8_t mode)
 {
     record_event(HOST_EVENT_TRANSPORT, mode, 0U);
