@@ -52,8 +52,10 @@ const NOTE_AFTER_GATE_MIN_MS = 0.3;
 const NOTE_AFTER_GATE_MAX_MS = 1.0;
 // A Start, a Stop or a step's first clock is at the head of the queue: it
 // begins as soon as the rest of the tick's work is done. 0.08 ms measured,
-// and 0.40 ms when a Note Off from the tick before is still going
-const HEAD_AFTER_PIN_MAX_MS = 0.5;
+// and 0.40 ms when a Note Off from the tick before is still going, before
+// the LFO was read on every tick; that read is about 0.1 ms more of the
+// tick's work, and the first step's clock, behind a Start, is at 0.58 ms
+const HEAD_AFTER_PIN_MAX_MS = 0.7;
 // Sixteen notes, no rests, and all but the last different
 const PANEL = [3, 6, 9, 12, 15, 2, 5, 8, 11, 14, 1, 4, 7, 10, 13, 2];
 // The release scenarios' panel: step 5 is a rest

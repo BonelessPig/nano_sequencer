@@ -61,6 +61,7 @@ typedef struct
     prng_state_t         prng;           // The random numbers the engines draw from
     gate_state_t         gate;           // How much of the current note's gate is left
     uint16_t             cv;             // Pitch CV value of the last note played
+    uint8_t              semitone;       // Its pitch, in semitones above the lowest
     uint16_t             leds;           // Step lights of the step last due: what
                                          // is lit while the clock output is high
     transport_state_t    transport;      // Whether the pattern runs, and from which clock
@@ -69,7 +70,7 @@ typedef struct
 /**
  * @brief The modulation: a slow signal from outside (an LFO), and how much
  *        of it is let through to each thing it can move. Read when a step
- *        begins.
+ *        begins, but for the vibrato, which reads it on every tick.
  */
 typedef struct
 {
@@ -82,6 +83,7 @@ typedef struct
     uint16_t chance;      // Amount for the chance of a step dropping out
     uint16_t position;    // Amount for the step played, the same
     uint16_t amplitude;   // Amount for how loud a note is, the same
+    uint16_t vibrato;     // Amount for the pitch of a note as it sounds
 } seq_mod_t;
 
 /**
@@ -103,7 +105,7 @@ typedef struct
     bool              b_clock_edge;  // true if an edge arrived on the external clock
                                      // since the previous tick
     bool              b_run_button;  // true while the run button is held down, as read
-    seq_mod_t         mod;           // The LFO and its five amounts
+    seq_mod_t         mod;           // The LFO and its six amounts
 } seq_inputs_t;
 
 /**
@@ -129,7 +131,8 @@ typedef struct
                             // every tick
     uint16_t cv;            // Pitch CV value after this tick, 0 to
                             // PITCH_CAL_CV_MAX: that of the last note played,
-                            // held through rests. Given on every tick
+                            // held through rests, as the vibrato leaves it.
+                            // Given on every tick
     uint16_t leds;          // Step lights after this tick, bit n for step
                             // n: those of the step that last began, lit
                             // while the clock output is high. Given on
@@ -149,8 +152,8 @@ typedef struct
 /**
  * @brief  Puts the state into its power-on condition: running, so that the
  *         first tick starts the pattern, with no tempo reading yet, so the
- *         tempo is SEQ_BPM_MIN until one arrives. The pitch CV value is 0
- *         until the first note. The random numbers start from the same
+ *         tempo is SEQ_BPM_MIN until one arrives. The pitch CV value is that
+ *         of the lowest pitch until the first note. The random numbers start from the same
  *         seed every time, and nothing but this starts them again.
  * @param  p_state  State to initialize. Ignored if null.
  */
@@ -178,7 +181,7 @@ void seq_init(seq_state_t *p_state);
  *
  *         While the pattern is stopped nothing is due and nothing begins.
  *         The gate is closed at once and the clock output is low; the pitch
- *         CV value holds. Reset is ignored, and an edge of the external
+ *         CV value holds, but for the vibrato. Reset is ignored, and an edge of the external
  *         clock moves nothing: it only makes that the clock the next start
  *         is on. Only the count of clock pulses goes on, as said below.
  *
@@ -237,8 +240,9 @@ void seq_init(seq_state_t *p_state);
  *
  *         A step that plays a pitch also sets the pitch CV value, through
  *         the calibration table in p_in->pitch_cal (see pitch_cal.h), on
- *         the tick its gate opens. Nothing else changes it: it holds
+ *         the tick its gate opens. Nothing else changes the note: it holds
  *         through rests, unreadable steps, a finished pattern and a reset.
+ *         The value given is that note's as the vibrato leaves it, below.
  *
  *         The clock output follows the clock and not the pattern: it rises
  *         each time a step falls due, whether or not one begins, and falls
@@ -268,8 +272,8 @@ void seq_init(seq_state_t *p_state);
  *         begins a whole step all the same. Once an edge has come, none
  *         falls.
  *
- *         The LFO in p_in->mod moves five things, each by its own
- *         amount, and each as the LFO reads on the tick the step begins
+ *         The LFO in p_in->mod moves six things, each by its own amount,
+ *         and the first five as the LFO reads on the tick the step begins
  *         (see mod.h for how a reading and an amount make a depth). With an
  *         amount of 0, or the LFO at its centre or not valid, nothing is
  *         moved. The note value is shifted by up to 7 places in the scale,
@@ -294,6 +298,15 @@ void seq_init(seq_state_t *p_state);
  *         depth, down to 0 at the fullest. Above the centre it stays 255.
  *         The sequencer does nothing with it; it is for whatever makes a
  *         note loud or quiet (an envelope's peak, a MIDI velocity).
+ *         The sixth is the vibrato, the one move made on every tick, with
+ *         the LFO as it reads on that tick: the pitch CV value is that of
+ *         the last note played, moved by up to 2 semitones, up while the
+ *         LFO is above its centre and down while it is below. It goes that
+ *         part of the way to the value the calibration table gives the
+ *         pitch 2 semitones off, and no lower than the lowest pitch. It
+ *         goes on through rests and while the pattern is stopped, and
+ *         before the first note it is about the lowest pitch. The semitone
+ *         given with a step is the note's own, never moved by it.
  *
  *         The tempo is SEQ_BPM_MIN plus the tempo reading divided by
  *         SEQ_TEMPO_RAW_PER_BPM (30 to 285 BPM over the valid range). If the

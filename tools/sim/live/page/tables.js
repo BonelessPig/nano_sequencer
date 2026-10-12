@@ -261,11 +261,11 @@ const SCOPE_GAP_PX = 4;
 const BPM_MIN = 30;
 const LFO_CENTRE = 512;   // Where the modulation input moves nothing
 const LFO_DEAD_ZONE = 16; // How far from it still moves nothing
-// What each selector position's amount is for; 7 does nothing yet
+// What each selector position's amount is for
 const SELECTOR_NAMES = [
     '0 Tempo', '1 Note', '2 Gate length', '3 Step chance',
     '4 Step position', '5 Amplitude',
-    '6 Envelope time', '7 Vibrato (not built)',
+    '6 Envelope time', '7 Vibrato',
 ];
 // What the selector's rotary switch has at each position that does
 // something; the rest get their number, as the engine's do

@@ -13,7 +13,7 @@ Loaded with the files below, on top of `core/CLAUDE.md`, whose rules apply to al
 - `seq_tick()` runs the transport first, on every tick.
   A start (the first tick, and each time the run button starts the pattern) puts the clock, the engine and the gate back to their beginning and passes on no elapsed time for that tick, so the first step is a whole one.
   Do not let a start count its own tick.
-- Stopped means nothing is due: the gate is closed on every stopped tick, the clock output is low, the pitch CV holds, and reset is not looked at.
+- Stopped means nothing is due: the gate is closed on every stopped tick, the clock output is low, the pitch CV holds but for the vibrato, and reset is not looked at.
   An external edge moves nothing there; it only sets which clock the next start is on.
 - `pulses` is given on every tick and is the one thing that moves while stopped.
   Until an external edge comes, the stopped branch (`idle()` in `seq.c`) advances the internal clock for its pulses alone; it must never touch `step_pulses`, the engines or anything else a start does not put back.

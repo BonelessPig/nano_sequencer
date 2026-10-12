@@ -30,12 +30,12 @@ The tick that starts the pattern no longer counts towards its second step.
 
 ## 5. `make check` under-reports static RAM
 
-`avr-size` counts constant data under flash only, although it is also copied to RAM: it prints 357 bytes for the debug build where 837 are used, 223 for release where 275 are, and 257 for midi where 309 are.
+`avr-size` counts constant data under flash only, although it is also copied to RAM: it prints 360 bytes for the debug build where 840 are used, 226 for release where 278 are, and 260 for midi where 312 are.
 
 ## 6. The pattern controls have no hardware
 
 Direction, first and last step, one-shot, scale, root and gate length are tested in the core, but nothing on the board sets them, so only the forward, looping, chromatic path is ever taken there.
-Two places exist for them: the five spare inputs of the selector's 74HC165, for switches, and selector position 7, for anything the pot could set.
+One place exists for them: the five spare inputs of the selector's 74HC165, for switches. Every selector position is now in use.
 
 ## 7. A change of direction or range mid-cycle jumps
 

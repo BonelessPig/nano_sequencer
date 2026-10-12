@@ -10,7 +10,7 @@ Loaded with the files below, on top of `core/CLAUDE.md`, whose rules apply to al
 
 - `mod` knows a signal, an amount and the depth the two make, and nothing of what the depth is for: `seq.c` says, with `mod_shift()` and `mod_chance()`, and the ranges are constants at its top.
   `mod` includes only `prng`, so another board can take it as it is.
-- The LFO and its amounts are a control like any other: in `seq_mod_t` inside `seq_inputs_t`, read when a step begins.
+- The LFO and its amounts are a control like any other: in `seq_mod_t` inside `seq_inputs_t`, read when a step begins, but for the vibrato.
   An LFO that is not valid is taken to be at its centre.
 - The centre is 512 and a reading within 16 of it is the centre too.
   That is what makes an input with nothing plugged in move nothing, whatever the amounts are; keep it.
@@ -24,3 +24,7 @@ Loaded with the files below, on top of `core/CLAUDE.md`, whose rules apply to al
   The envelope's time, at selector position 6, is an amount with no LFO in it and never goes near `seq`: the app hands it from the bank to `env_tick()`.
 - The step position is the one move an engine makes and not `seq.c`: `engine_step()` works out the depth and hands it on as `offset` in `engine_inputs_t`, two plain values.
   `engine.h` does not include `mod.h`, and an engine never sees the LFO or the amount.
+- The vibrato is the one move made on every tick, in `vibrato_cv()` as the outputs are filled in: the value given is the last note's moved towards the table's value for the pitch `MOD_VIBRATO_RANGE` semitones off, by `mod_scale()`.
+  It never writes the state: `cv` and `semitone` there are the note's own.
+  `mod_scale()` takes the span as its whole 255s and the rest, because a span times a depth passes 16 bits.
+- The ranges at the top of `seq.c` (`MOD_*_RANGE`, `MOD_*_MIN`) are a board's choices and are on their way to a configuration header of their own; a new one goes beside them, under the same kind of name, and is never written as a number further down.

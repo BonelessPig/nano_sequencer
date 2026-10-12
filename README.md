@@ -14,7 +14,7 @@ The firmware plays a 16-step pattern at 30 to 285 BPM, and its main loop never b
 - **Outputs.** A pitch CV at 1 V to the octave from an MCP4822 DAC, a gate, a clock pulse per step, sixteen step lights, and a level light.
 - **Clock and transport.** A run button stops and restarts the pattern, and a reset input sends it back to its first step.
   The first edge at the clock input takes the pattern over from the internal clock, and the pot then sets a ratio to that clock.
-- **One pot, eight amounts.** A selector says which amount the pot sets: the tempo, or how much an LFO at the modulation input moves the note, the gate length, the chance of a step dropping out, which step is played and how loud a note is, or the time of the envelope on the DAC's second output.
+- **One pot, eight amounts.** A selector says which amount the pot sets: the tempo, or how much an LFO at the modulation input moves the note, the gate length, the chance of a step dropping out, which step is played and how loud a note is, the time of the envelope on the DAC's second output, or how far the LFO bends the pitch of the note that is sounding (vibrato, up to two semitones either way).
 - **Calibration.** A mode entered at power-on trims the pitch CV against a meter, octave by octave, and stores the result in the EEPROM.
 - **Watchdog and crash log.** A watchdog restarts a stuck firmware, and the next start-up records in the EEPROM where the loop had got to.
 - **Three builds.** Debug logs each step over serial, midi sends MIDI out in place of the log, and release has neither.
@@ -131,9 +131,9 @@ The chip has one USART, so an image has the log or MIDI out, not both.
 
 | | Logging | MIDI out | Flash | Static RAM |
 |---|---|---|---:|---:|
-| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | None | 11740 bytes | 837 bytes |
-| `make CONFIG=release` | None | None | 10456 bytes | 275 bytes |
-| `make CONFIG=midi` | None | Over USART0 at 31250 baud | 10608 bytes | 309 bytes |
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | None | 11996 bytes | 840 bytes |
+| `make CONFIG=release` | None | None | 10712 bytes | 278 bytes |
+| `make CONFIG=midi` | None | Over USART0 at 31250 baud | 10864 bytes | 312 bytes |
 
 `CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`), and each image goes to `build/<config>/output.hex`.
 The checks always cover all three.

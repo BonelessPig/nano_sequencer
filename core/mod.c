@@ -114,3 +114,24 @@ bool mod_chance(const mod_depth_t *p_depth, prng_state_t *p_prng)
 
     return b_came_up;
 }
+
+
+
+uint16_t mod_scale(uint16_t span, const mod_depth_t *p_depth)
+{
+    uint16_t part = 0U;
+
+    if (NULL != p_depth)
+    {
+        // The span times the depth does not fit in 16 bits, so it is taken
+        // as its whole 255s and what is left over. The first product is at
+        // most 257 * 255 and the second 254 * 255 + 127; their sum is at
+        // most the span
+        const uint16_t whole = (uint16_t)((uint16_t)(span / DEPTH_MAX) * p_depth->depth);
+        const uint16_t rest  = (uint16_t)((uint16_t)(span % DEPTH_MAX) * p_depth->depth);
+
+        part = (uint16_t)(whole + (uint16_t)((uint16_t)(rest + ROUNDING) / DEPTH_MAX));
+    }
+
+    return part;
+}
