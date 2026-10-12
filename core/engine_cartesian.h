@@ -21,6 +21,10 @@
  * grid, some of which never reach every step. A setting is read on every
  * step. The addressing controls are not used.
  *
+ * The offset (see engine.h) moves the step round the sixteen, by up to 8
+ * either way, its number being the row times four plus the column. x and y
+ * are not moved.
+ *
  * @copyright Copyright (c) 2026
  *
  */

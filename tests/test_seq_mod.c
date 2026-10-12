@@ -199,8 +199,89 @@ static void test_no_chance_leaves_the_random_numbers_alone(void)
 
 
 
+static void test_the_lfo_moves_the_step_played_and_not_the_pattern(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_counting_inputs();
+    seq_outputs_t out;
+
+    // Step n holds the note value n, so plays the pitch n - 1. Half way up
+    // the LFO is four of the sixteen places on: step 0 plays as step 4
+    in.tempo_raw       = TEMPO_RAW_150_BPM;
+    in.mod.b_lfo_valid = true;
+    in.mod.position    = AMOUNT_TOP;
+    in.mod.lfo         = LFO_HALF_UP;
+    seq_init(&state);
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(4, out.step);
+    TEST_ASSERT_EQUAL(3, out.semitone);
+    TEST_ASSERT_EQUAL(0x0010, out.leds);
+
+    // At its bottom, eight back: step 1 plays as step 9
+    in.mod.lfo = 0U;
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(9, out.step);
+    TEST_ASSERT_EQUAL(8, out.semitone);
+
+    // At its centre, with no amount, and when it cannot be read: the step
+    // the pattern has got to, which the offsets before did not move
+    in.mod.lfo = LFO_CENTRE;
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(2, out.step);
+
+    in.mod.lfo      = LFO_TOP;
+    in.mod.position = 0U;
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(3, out.step);
+
+    in.mod.position    = AMOUNT_TOP;
+    in.mod.b_lfo_valid = false;
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(4, out.step);
+
+    // A depth of 160 below the centre is five back: step 5 plays as step
+    // 0, which is a rest
+    in.mod.b_lfo_valid = true;
+    in.mod.lfo         = 192U;
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(0, out.step);
+    TEST_ASSERT(out.b_rest);
+    TEST_ASSERT(!out.b_gate);
+}
+
+
+
+static void test_the_lfo_turns_the_klee_register_and_its_lights(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_valid_inputs();
+    seq_outputs_t out;
+
+    // The Klee engine, one bit loaded at stage 0, and stage 4 holding the
+    // value 3. Four stages on, the bit sums as stage 4 and lights it
+    in.raw_steps[PANEL_STEP_BYTE_COUNT] = 0x02U;
+    in.raw_steps[0]    = 0x80U;
+    in.raw_steps[2]    = 0x30U;
+    in.tempo_raw       = TEMPO_RAW_150_BPM;
+    in.mod.b_lfo_valid = true;
+    in.mod.position    = AMOUNT_TOP;
+    in.mod.lfo         = LFO_HALF_UP;
+    seq_init(&state);
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(0, out.step);
+    TEST_ASSERT_EQUAL(2, out.semitone);
+    TEST_ASSERT_EQUAL(0x0010, out.leds);
+    TEST_ASSERT_EQUAL(0x0001, state.klee.stages);
+}
+
+
+
 int main(void)
 {
+    RUN_TEST(test_the_lfo_moves_the_step_played_and_not_the_pattern);
+    RUN_TEST(test_the_lfo_turns_the_klee_register_and_its_lights);
     RUN_TEST(test_the_lfo_moves_the_note_in_the_scale);
     RUN_TEST(test_the_lfo_stops_at_the_top_note_and_leaves_a_rest_a_rest);
     RUN_TEST(test_the_lfo_moves_the_gate_length);

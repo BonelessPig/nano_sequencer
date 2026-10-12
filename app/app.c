@@ -55,6 +55,7 @@
 #define SLOT_TRANSPOSE   (1U) // How far the LFO moves a note in the scale
 #define SLOT_GATE_LENGTH (2U) // How far it moves the gate length
 #define SLOT_CHANCE      (3U) // How often it makes a step drop out
+#define SLOT_POSITION    (4U) // How far it moves the step that is played
 
 // The pitch CV is nominally 1 V to the octave from 0 V at the lowest pitch.
 // That is the ideal calibration table, used until a measured one is stored,
@@ -286,7 +287,8 @@ static void run_bank(void)
     g_inputs.mod.transpose   = bank_amount(&g_bank, (uint8_t)SLOT_TRANSPOSE);
     g_inputs.mod.gate_length = bank_amount(&g_bank, (uint8_t)SLOT_GATE_LENGTH);
     g_inputs.mod.chance      = bank_amount(&g_bank, (uint8_t)SLOT_CHANCE);
-    g_level                  = bank_level(&g_bank);
+    g_inputs.mod.position    = bank_amount(&g_bank, (uint8_t)SLOT_POSITION);
+    g_level                = bank_level(&g_bank);
 }
 
 
@@ -377,6 +379,7 @@ static void reset_tick_state(void)
     g_inputs.mod.transpose   = 0U;
     g_inputs.mod.gate_length = 0U;
     g_inputs.mod.chance      = 0U;
+    g_inputs.mod.position    = 0U;
     set_fixed_controls();
 
     g_outputs.b_step_started = false;

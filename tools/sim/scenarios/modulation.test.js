@@ -1,5 +1,5 @@
 'use strict';
-// The modulation input (an LFO) and the three things it moves, each by the
+// The modulation input (an LFO) and the four things it moves, each by the
 // amount the pot gave it with the selector on its position, on the emulated
 // board, for all three firmware images. Steps are told apart by the voltage
 // the DAC holds as each gate rises, and timed from the pins.
@@ -19,6 +19,11 @@ const LFO_HALF_UP = 768;
 const POSITION_NOTE = 1;         // Selector positions
 const POSITION_GATE = 2;
 const POSITION_CHANCE = 3;
+const POSITION_STEP = 4;
+const STEP_COUNT = 16;
+// Step n holds the note n + 1, so a pitch says which step played it; the
+// last two share the top note
+const COUNTING_PANEL = PANEL.map((note, step) => Math.min(step + 1, 15));
 const SCAN_MS = 20;              // More than two input scans
 const MILLIVOLTS_PER_OCTAVE = 1000;
 const SEMITONES_PER_OCTAVE = 12;
@@ -173,5 +178,32 @@ for (const config of CONFIGS) {
 
         assert.equal(back.gateRises, 6);
         assertAllEqual(back.pitches, noteMillivolts(NOTE), 'pitches');
+    });
+
+    test(`${config}: the LFO moves the step played by the amount at position 4`, () => {
+        const board = createBoard(config);
+
+        board.setNotes(COUNTING_PANEL);
+        board.setTempoReading(READING_150_BPM);
+        board.runForMs(SCAN_MS);
+        setAmount(board, POSITION_STEP, TOP);
+
+        // The step the pattern has got to is counted from the clock output,
+        // which rises once a step, after the gate. Half way up the LFO
+        // plays the step four places on, and at its bottom eight back; at
+        // its centre again, the step the pattern is on, which never moved
+        for (const [reading, places] of [[LFO_CENTRE, 0], [LFO_HALF_UP, 4], [0, 8],
+            [LFO_CENTRE, 0]]) {
+            const played = playWithLfo(board, reading, 3);
+            const clockRises = board.clockOut.rises();
+            const expected = board.gate.rises()
+                .filter((cycle) => cycle > played.from)
+                .map((cycle) => clockRises.filter((rise) => rise < cycle).length)
+                .map((step) => COUNTING_PANEL[(step + places) % STEP_COUNT])
+                .map(noteMillivolts);
+
+            assert.equal(played.gateRises, 3, `gates with the LFO at ${reading}`);
+            assert.deepEqual(played.pitches, expected, `pitches with the LFO at ${reading}`);
+        }
     });
 }

@@ -48,7 +48,10 @@
  * `Transport = N` line does, and are believed over the presses; they do not
  * name a step. The step is sent as -1 when it cannot be worked out: the
  * chance engine shuffling, on an image with no log. Nothing here follows
- * the firmware's random numbers.
+ * the firmware's random numbers, nor the amounts the pot has set: on an
+ * image with no log the step given is the one the pattern has got to, which
+ * is not the one played while the LFO moves the step position (selector
+ * position 4). The step lights, which are the chip's own, show that one.
  *
  * MIDI out is not worked out: the messages are the board's, read from the
  * bytes the chip sent. Three things are kept of them for a page to show

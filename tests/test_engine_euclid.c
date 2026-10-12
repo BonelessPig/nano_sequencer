@@ -45,6 +45,8 @@ static engine_inputs_t make_inputs(uint8_t first_step, uint8_t last_step, uint8_
     in.p_raw_steps = g_raw;
     in.p_address   = &g_address;
     in.p_prng      = NULL;
+    in.offset.depth      = 0U;
+    in.offset.b_negative = false;
     return in;
 }
 
@@ -147,6 +149,35 @@ static void test_the_bar_is_counted_apart_from_the_pattern(void)
 
 
 
+static void test_offset_moves_which_step_sounds_and_not_whether(void)
+{
+    uint8_t               raw[PANEL_RAW_BYTE_COUNT];
+    engine_inputs_t       in = make_inputs(0U, 15U, BEATS(4U));
+    engine_euclid_state_t state;
+
+    // Step 4 holds note value 3, to tell it from the rest. A depth of 128
+    // moves each step on by four of the sixteen places
+    (void)memcpy(raw, g_raw, sizeof(raw));
+    raw[2]          = 0x39U;
+    in.p_raw_steps  = raw;
+    in.offset.depth = 128U;
+    engine_euclid_init(&state);
+    for (unsigned int count = 0U; count < (2U * BAR_STEPS); count++)
+    {
+        const unsigned int place  = count % BAR_STEPS;
+        const unsigned int step   = (place + 4U) % BAR_STEPS;
+        const unsigned int note   = (4U == step) ? 3U : 9U;
+        const bool         b_beat = (0U == (place % 4U)); // As with no offset
+        engine_step_t      played;
+
+        TEST_ASSERT(engine_euclid_step(&state, &in, &played));
+        TEST_ASSERT_EQUAL(step, played.step);
+        TEST_ASSERT_EQUAL(b_beat ? note : 0U, played.note);
+    }
+}
+
+
+
 static void test_finished_one_shot_gives_no_step(void)
 {
     const engine_inputs_t in = make_inputs(4U, 5U, BEATS(16U));
@@ -209,6 +240,7 @@ int main(void)
     RUN_TEST(test_beats_are_spread_evenly_over_the_bar);
     RUN_TEST(test_every_setting_gives_that_many_beats);
     RUN_TEST(test_the_bar_is_counted_apart_from_the_pattern);
+    RUN_TEST(test_offset_moves_which_step_sounds_and_not_whether);
     RUN_TEST(test_finished_one_shot_gives_no_step);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();

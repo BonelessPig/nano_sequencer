@@ -50,6 +50,8 @@ bool engine_euclid_step(engine_euclid_state_t *p_state, const engine_inputs_t *p
             // 15 x 16, so the product fits in a byte
             const uint8_t phase = (uint8_t)((uint8_t)(p_state->beat * beats) % BAR_STEPS);
 
+            // Which step sounds is moved; whether one does is not
+            step          = address_offset_step(p_in->p_address, step, &p_in->offset);
             p_step->step  = step;
             p_step->note  = 0U;
             p_step->b_tie = false;

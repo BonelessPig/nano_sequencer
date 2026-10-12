@@ -7,9 +7,9 @@ Run that again after a change to the firmware or its tests, and commit what it w
 
 | | Flash | Of the flash available | Static RAM |
 |---|---:|---:|---:|
-| debug | 10786 bytes | 35.1% | 816 bytes |
-| release | 9502 bytes | 30.9% | 254 bytes |
-| midi | 9654 bytes | 31.4% | 288 bytes |
+| debug | 11066 bytes | 36.0% | 820 bytes |
+| release | 9782 bytes | 31.8% | 258 bytes |
+| midi | 9934 bytes | 32.3% | 292 bytes |
 
 The flash available is the 30720 bytes below the old Nano bootloader.
 Static RAM is initialised data, zeroed data and the one byte kept through a reset;
@@ -20,8 +20,8 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | | Debug | Release | Midi |
 |---|---:|---:|---:|
 | **All of `adapters/target/`** | **2477** | **1192** | **1344** |
-| **All of `app/`** | **1480** | **1480** | **1480** |
-| **All of `core/`** | **6595** | **6595** | **6595** |
+| **All of `app/`** | **1506** | **1506** | **1506** |
+| **All of `core/`** | **6849** | **6849** | **6849** |
 | `adapters/target/analog_reader.c` | 92 | 92 | 92 |
 | `adapters/target/breadcrumb.c` | 12 | 12 | 12 |
 | `adapters/target/clock_input.c` | 36 | 36 | 36 |
@@ -43,21 +43,21 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `adapters/target/spi.c` | 70 | 70 | 70 |
 | `adapters/target/timebase.c` | 90 | 90 | 90 |
 | `adapters/target/watchdog.c` | 20 | 20 | 20 |
-| `app/app.c` | 1464 | 1464 | 1464 |
+| `app/app.c` | 1490 | 1490 | 1490 |
 | `app/main.c` | 16 | 16 | 16 |
-| `core/address.c` | 178 | 178 | 178 |
+| `core/address.c` | 294 | 294 | 294 |
 | `core/bank.c` | 296 | 296 | 296 |
 | `core/cal.c` | 496 | 496 | 496 |
 | `core/cal_record.c` | 152 | 152 | 152 |
 | `core/clock.c` | 484 | 484 | 484 |
 | `core/crc8.c` | 44 | 44 | 44 |
 | `core/debounce.c` | 70 | 70 | 70 |
-| `core/engine_cartesian.c` | 194 | 194 | 194 |
-| `core/engine_chance.c` | 260 | 260 | 260 |
-| `core/engine_euclid.c` | 206 | 206 | 206 |
-| `core/engine_klee.c` | 358 | 358 | 358 |
-| `core/engine_plain.c` | 126 | 126 | 126 |
-| `core/engine_stage.c` | 364 | 364 | 364 |
+| `core/engine_cartesian.c` | 210 | 210 | 210 |
+| `core/engine_chance.c` | 292 | 292 | 292 |
+| `core/engine_euclid.c` | 240 | 240 | 240 |
+| `core/engine_klee.c` | 406 | 406 | 406 |
+| `core/engine_plain.c` | 146 | 146 | 146 |
+| `core/engine_stage.c` | 378 | 378 | 378 |
 | `core/errlog.c` | 364 | 364 | 364 |
 | `core/gate.c` | 68 | 68 | 68 |
 | `core/midi_out.c` | 508 | 508 | 508 |
@@ -67,19 +67,19 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `core/pickup.c` | 156 | 156 | 156 |
 | `core/pitch_cal.c` | 152 | 152 | 152 |
 | `core/prng.c` | 76 | 76 | 76 |
-| `core/seq.c` | 1314 | 1314 | 1314 |
+| `core/seq.c` | 1288 | 1288 | 1288 |
 | `core/transport.c` | 190 | 190 | 190 |
 | startup object | 128 | 128 | 128 |
 | libgcc | 106 | 106 | 106 |
 | padding | 0 | 1 | 1 |
-| **Total** | **10786** | **9502** | **9654** |
+| **Total** | **11066** | **9782** | **9934** |
 
 ## Static RAM by source file, in bytes
 
 | | Debug | Release | Midi |
 |---|---:|---:|---:|
 | **All of `adapters/target/`** | **588** | **25** | **59** |
-| **All of `app/`** | **177** | **177** | **177** |
+| **All of `app/`** | **181** | **181** | **181** |
 | **All of `core/`** | **51** | **51** | **51** |
 | `adapters/target/breadcrumb.c` | 1 | 1 | 1 |
 | `adapters/target/eeprom.c` | 20 | 20 | 20 |
@@ -87,28 +87,28 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `adapters/target/serial_logger.c` | 563 | 0 | 0 |
 | `adapters/target/shift_reg_reader.c` | 2 | 2 | 2 |
 | `adapters/target/timebase.c` | 2 | 2 | 2 |
-| `app/app.c` | 177 | 177 | 177 |
+| `app/app.c` | 181 | 181 | 181 |
 | `core/note_map.c` | 51 | 51 | 51 |
 | padding | 0 | 1 | 1 |
-| **Total** | **816** | **254** | **288** |
+| **Total** | **820** | **258** | **292** |
 
 ## Host tests
 
 | Area | Programs | Tests |
 |---|---:|---:|
-| Core | 30 | 370 |
-| App loop | 5 | 83 |
+| Core | 30 | 395 |
+| App loop | 5 | 84 |
 | Target adapters | 21 | 153 |
 | `main.c` | 1 | 3 |
-| **Total** | **57** | **609** |
+| **Total** | **57** | **635** |
 
 | Program | Tests |
 |---|---:|
-| `test_address` | 23 |
+| `test_address` | 36 |
 | `test_analog_reader` | 10 |
 | `test_app` | 34 |
 | `test_app_cal` | 15 |
-| `test_app_controls` | 10 |
+| `test_app_controls` | 11 |
 | `test_app_crash` | 13 |
 | `test_app_midi` | 11 |
 | `test_bank` | 12 |
@@ -122,12 +122,12 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_cv_output` | 7 |
 | `test_debounce` | 8 |
 | `test_eeprom` | 15 |
-| `test_engine_cartesian` | 6 |
-| `test_engine_chance` | 7 |
-| `test_engine_euclid` | 6 |
-| `test_engine_klee` | 13 |
-| `test_engine_plain` | 6 |
-| `test_engine_stage` | 11 |
+| `test_engine_cartesian` | 7 |
+| `test_engine_chance` | 9 |
+| `test_engine_euclid` | 7 |
+| `test_engine_klee` | 15 |
+| `test_engine_plain` | 8 |
+| `test_engine_stage` | 13 |
 | `test_errlog` | 16 |
 | `test_gate` | 10 |
 | `test_gate_output` | 3 |
@@ -152,7 +152,7 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_seq` | 27 |
 | `test_seq_engines` | 11 |
 | `test_seq_gate` | 15 |
-| `test_seq_mod` | 5 |
+| `test_seq_mod` | 7 |
 | `test_seq_pulses` | 8 |
 | `test_seq_transport` | 19 |
 | `test_serial_logger` | 22 |
@@ -164,7 +164,7 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 
 ## Coverage
 
-Firmware total: lines 1669/1669 (100.0%), branches 758/758 (100.0%), in `core/`, `app/` and `adapters/target/`.
+Firmware total: lines 1711/1711 (100.0%), branches 770/770 (100.0%), in `core/`, `app/` and `adapters/target/`.
 
 ## Emulated board scenarios
 
@@ -175,8 +175,8 @@ Firmware total: lines 1669/1669 (100.0%), branches 758/758 (100.0%), in `core/`,
 | `engines.test.js` | 41 |
 | `midi.test.js` | 10 |
 | `midi_clock.test.js` | 7 |
-| `modulation.test.js` | 12 |
+| `modulation.test.js` | 15 |
 | `release.test.js` | 14 |
 | `transport.test.js` | 48 |
 | `watchdog.test.js` | 21 |
-| **Total** | **193** |
+| **Total** | **196** |

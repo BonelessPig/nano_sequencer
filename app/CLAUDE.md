@@ -29,7 +29,7 @@ The only code that knows about both the core and the ports.
 - The pot is read into the app's own snapshot, not the sequencer's inputs.
   Calibration mode takes it as read.
   Otherwise `bank_tick()` runs ahead of `seq_tick()`, with the selector as `panel_selector_value()` gives it, and the sequencer's tempo reading is the bank's tempo slot, always valid.
-  The slots are named by `SLOT_*` at the top of `app.c`: the tempo is position 0, which is what a board with no selector wired reads, and positions 1 to 3 are how much of the LFO goes to the note, the gate length and the chance of a step dropping out.
+  The slots are named by `SLOT_*` at the top of `app.c`: the tempo is position 0, which is what a board with no selector wired reads, and positions 1 to 4 are how much of the LFO goes to the note, the gate length, the chance of a step dropping out and the step played.
   Their amounts are copied into the sequencer's inputs on every tick.
 - The LFO is read in the scan with the panel and the pot, straight into the sequencer's inputs with its valid flag.
   A read that fails is not logged: the core takes it as an LFO at its centre.

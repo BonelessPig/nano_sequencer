@@ -51,6 +51,8 @@ static engine_inputs_t make_inputs(uint8_t first_step, uint8_t last_step, uint8_
     in.p_raw_steps = g_raw;
     in.p_address   = &g_address;
     in.p_prng      = &g_prng;
+    in.offset.depth      = 0U;
+    in.offset.b_negative = false;
     return in;
 }
 
@@ -161,6 +163,42 @@ static void test_shuffle_picks_each_step_from_the_range(void)
 
 
 
+static void test_offset_moves_the_step_and_draws_nothing_more(void)
+{
+    // The same draws as with no offset skip the same turns; steps 0 to 14
+    // are fifteen places, so the fullest offset moves each on by seven
+    static const bool one_in_four[] = { false, false, true, true, true,
+                                        true, true, true, true, false };
+    engine_inputs_t       in = make_inputs(0U, 14U, SKIP_1_IN_4);
+    engine_chance_state_t state;
+
+    in.offset.depth = 255U;
+    engine_chance_init(&state);
+    for (uint8_t i = 0U; i < 10U; i++)
+    {
+        expect_step(&state, &in, (uint8_t)((i + 7U) % 15U), one_in_four[i]);
+    }
+}
+
+
+
+static void test_offset_moves_a_shuffled_step_too(void)
+{
+    // The picks are steps 7, 6, 0 and 14, as with no offset; a depth of 128
+    // moves each on by four of the sixteen places
+    engine_inputs_t       in = make_inputs(0U, 15U, SHUFFLE);
+    engine_chance_state_t state;
+
+    in.offset.depth = 128U;
+    engine_chance_init(&state);
+    expect_step(&state, &in, 11U, true);
+    expect_step(&state, &in, 10U, true);
+    expect_step(&state, &in, 4U, true);
+    expect_step(&state, &in, 2U, true);
+}
+
+
+
 static void test_with_no_random_numbers_nothing_is_left_to_chance(void)
 {
     engine_inputs_t       in = make_inputs(3U, 8U, SKIP_3_IN_4 | SHUFFLE);
@@ -237,6 +275,8 @@ int main(void)
     RUN_TEST(test_switches_off_is_the_plain_engine);
     RUN_TEST(test_skip_turns_that_share_of_steps_into_rests);
     RUN_TEST(test_shuffle_picks_each_step_from_the_range);
+    RUN_TEST(test_offset_moves_the_step_and_draws_nothing_more);
+    RUN_TEST(test_offset_moves_a_shuffled_step_too);
     RUN_TEST(test_with_no_random_numbers_nothing_is_left_to_chance);
     RUN_TEST(test_a_one_shot_still_ends_after_a_cycle);
     RUN_TEST(test_null_pointers_are_ignored);

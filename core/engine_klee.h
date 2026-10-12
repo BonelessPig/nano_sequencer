@@ -39,6 +39,11 @@
  * The step given is how many times the register has moved since the last
  * load, 0 to 15 and round again. The addressing controls are not used.
  *
+ * The offset (see engine.h) turns the register for the step's sum: by up to
+ * 8 stages, on towards stage 15 or back, the bits coming round as they are.
+ * The register that is kept is not the turned one, and neither it nor the
+ * step given is moved.
+ *
  * @copyright Copyright (c) 2026
  *
  */
@@ -52,6 +57,8 @@
 typedef struct
 {
     uint16_t stages;        // The register: bit n is set while stage n is active
+    uint16_t shown;         // The register as the last step's offset turned
+                            // it: what that step summed, and its lights
     uint8_t  position;      // Times it has moved since the last load, 0 to 15
     bool     b_loaded;      // false until the first load after init
     bool     b_load_switch; // The load switch as it was on the last step

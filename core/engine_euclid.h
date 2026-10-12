@@ -24,6 +24,10 @@
  * 4, 2 or 1 steps long moves against it and a step sounds on some cycles
  * and not on others.
  *
+ * The offset (see engine.h) moves the step to another of the range, as for
+ * the plain engine: which step's note a beat sounds, never which steps of
+ * the bar are beats.
+ *
  * @copyright Copyright (c) 2026
  *
  */

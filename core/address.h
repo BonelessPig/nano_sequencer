@@ -57,6 +57,16 @@ typedef struct
 } address_state_t;
 
 /**
+ * @brief How far to move a place round the places it is one of, and which
+ *        way.
+ */
+typedef struct
+{
+    uint8_t depth;      // 0 for nothing, up to 255 for half of the places
+    bool    b_negative; // true to move back, towards the first place
+} address_offset_t;
+
+/**
  * @brief  Goes back to the start of the cycle, ready to play again. This is
  *         both the power-on condition and what a reset does.
  * @param  p_state  State to initialize. Ignored if null.
@@ -84,5 +94,36 @@ void address_init(address_state_t *p_state);
  */
 bool address_next(address_state_t *p_state, const address_config_t *p_config,
                   uint8_t *p_step);
+
+/**
+ * @brief  Moves a place round a ring of places: by half of them, rounded
+ *         down, at a depth of 255 and in proportion below that, rounded to
+ *         the nearest whole number. Going past either end comes round to
+ *         the other. Reads *p_offset and has no other effect.
+ * @param  place     The place to move, 0 to count - 1; larger values wrap.
+ * @param  count     Places in the ring, 1 to 255.
+ * @param  p_offset  How far to move it, and which way.
+ * @return The place moved to, 0 to count - 1. The place as it was given if
+ *         count is 0 or p_offset is null.
+ */
+uint8_t address_turn(uint8_t place, uint8_t count, const address_offset_t *p_offset);
+
+/**
+ * @brief  Moves a step to another of the range, with the places of the
+ *         range as the ring of address_turn(): they are counted from the
+ *         first step towards the last, whatever the direction, so nothing
+ *         outside the range is given and a range of one step moves nothing.
+ *         Reads *p_config and *p_offset and has no other effect.
+ * @param  p_config  The controls as they are now, for the first and the
+ *                   last step.
+ * @param  step      The step to move, 0 to PANEL_STEP_COUNT - 1; larger
+ *                   values wrap. One outside the range is taken round into
+ *                   it.
+ * @param  p_offset  How far to move it, and which way.
+ * @return The step moved to, 0 to PANEL_STEP_COUNT - 1. The step as it was
+ *         given if either pointer is null.
+ */
+uint8_t address_offset_step(const address_config_t *p_config, uint8_t step,
+                            const address_offset_t *p_offset);
 
 #endif /* ADDRESS_H */

@@ -191,11 +191,13 @@ test('the gate keeps time while the log is being sent', () => {
     }
 });
 
-test('the first step is logged within 3.5 ms of reset', () => {
+// The step begins on the second tick, about 2.4 ms in, and its line waits
+// for the start-up line ahead of it: up to the two allowances above
+test('the first step is logged within 4 ms of reset', () => {
     const board = debugBoard(READING_150_BPM);
 
     board.runUntilLines(1, RUN_LIMIT_MS);
 
     const startMs = board.machine.cyclesToMs(board.serial.lines[0].startCycle);
-    assert.ok(startMs < 3.5, `first line started at ${startMs} ms`);
+    assert.ok(startMs < 4, `first line started at ${startMs} ms`);
 });

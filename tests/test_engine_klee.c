@@ -51,6 +51,8 @@ static engine_inputs_t make_inputs(void)
     in.p_raw_steps = g_raw;
     in.p_address   = NULL;
     in.p_prng      = NULL;
+    in.offset.depth      = 0U;
+    in.offset.b_negative = false;
     return in;
 }
 
@@ -79,6 +81,7 @@ static void test_init_leaves_a_load_due(void)
     (void)memset(&state, POISON_BYTE, sizeof(state));
     engine_klee_init(&state);
     TEST_ASSERT_EQUAL(0, state.stages);
+    TEST_ASSERT_EQUAL(0, state.shown);
     TEST_ASSERT_EQUAL(0, state.position);
     TEST_ASSERT(!state.b_loaded);
     TEST_ASSERT(!state.b_load_switch);
@@ -349,6 +352,63 @@ static void test_merge_ties_every_step(void)
 
 
 
+static void test_offset_turns_the_register_for_the_sum_and_not_the_one_kept(void)
+{
+    // Stage n holds the value n modulo 8, and one bit is loaded at stage 0
+    engine_inputs_t     in = make_inputs();
+    engine_klee_state_t state;
+
+    for (uint8_t stage = 0U; stage < STAGE_COUNT; stage++)
+    {
+        set_step(stage, (uint8_t)(stage % 8U));
+    }
+    set_step(0U, PATTERN);
+    engine_klee_init(&state);
+
+    // A depth of 128 is four of the sixteen stages: the bit at stage 0
+    // sums as stage 4, and the step given is still the count
+    in.offset.depth = 128U;
+    expect_step(&state, &in, 0U, 4U);
+    TEST_ASSERT_EQUAL(0x0001, state.stages);
+    TEST_ASSERT_EQUAL(0x0010, state.shown);
+    expect_step(&state, &in, 1U, 5U);
+    TEST_ASSERT_EQUAL(0x0002, state.stages);
+    TEST_ASSERT_EQUAL(0x0020, state.shown);
+
+    // Back by eight: stage 2 sums as stage 10
+    in.offset.depth      = 255U;
+    in.offset.b_negative = true;
+    expect_step(&state, &in, 2U, 2U);
+    TEST_ASSERT_EQUAL(0x0004, state.stages);
+    TEST_ASSERT_EQUAL(0x0400, state.shown);
+
+    // With no offset the register is where it would have been
+    in.offset.depth = 0U;
+    expect_step(&state, &in, 3U, 3U);
+    TEST_ASSERT_EQUAL(0x0008, state.stages);
+    TEST_ASSERT_EQUAL(0x0008, state.shown);
+}
+
+
+
+static void test_offset_brings_a_bit_round_as_it_is_whatever_invert_says(void)
+{
+    engine_inputs_t     in = make_inputs();
+    engine_klee_state_t state;
+
+    // One bit at stage 14, on by four with invert on: stage 2 and no other
+    set_step(14U, PATTERN);
+    set_step(2U, 5U);
+    g_raw[MODE_BYTE] = INVERT;
+    in.offset.depth  = 128U;
+    engine_klee_init(&state);
+    expect_step(&state, &in, 0U, 5U);
+    TEST_ASSERT_EQUAL(0x4000, state.stages);
+    TEST_ASSERT_EQUAL(0x0004, state.shown);
+}
+
+
+
 static void test_other_mode_switches_change_nothing(void)
 {
     const engine_inputs_t in = make_inputs();
@@ -406,6 +466,8 @@ int main(void)
     RUN_TEST(test_invert_turns_the_pattern_over_as_it_comes_round);
     RUN_TEST(test_chance_turns_the_bit_coming_round_that_often);
     RUN_TEST(test_merge_ties_every_step);
+    RUN_TEST(test_offset_turns_the_register_for_the_sum_and_not_the_one_kept);
+    RUN_TEST(test_offset_brings_a_bit_round_as_it_is_whatever_invert_says);
     RUN_TEST(test_other_mode_switches_change_nothing);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();

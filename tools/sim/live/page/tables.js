@@ -95,10 +95,10 @@ const SOUND_EDGE_S = 0.005;
 const BPM_MIN = 30;
 const LFO_CENTRE = 512;   // Where the modulation input moves nothing
 const LFO_DEAD_ZONE = 16; // How far from it still moves nothing
-// What each selector position's amount is for; 4 to 7 do nothing yet
+// What each selector position's amount is for; 5 to 7 do nothing yet
 const SELECTOR_NAMES = [
     '0 Tempo', '1 Note', '2 Gate length', '3 Step chance',
-    '4 Step position (not built)', '5 Amplitude (not built)',
+    '4 Step position', '5 Amplitude (not built)',
     '6 Attack/release (not built)', '7 Vibrato (not built)',
 ];
 const READING_PER_BPM = 4;

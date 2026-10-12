@@ -72,6 +72,7 @@ bool engine_chance_step(engine_chance_state_t *p_state, const engine_inputs_t *p
             {
                 step = shuffled_step(p_in);
             }
+            step = address_offset_step(p_in->p_address, step, &p_in->offset);
 
             // A draw of 0 to 3 skips the step if it is among the top few,
             // as many as the setting says; with a setting of 0, never

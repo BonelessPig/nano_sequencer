@@ -14,8 +14,8 @@ Timing figures marked as measured come from the emulated board; the rest are cal
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano, old bootloader), 16 MHz |
-| Flash | 10786 bytes debug, 9502 release, 9654 midi, of 30720 below the bootloader |
-| Static RAM | 816 bytes debug, 254 release, 288 midi (`avr-size` reports less: open item 5) |
+| Flash | 11066 bytes debug, 9782 release, 9934 midi, of 30720 below the bootloader |
+| Static RAM | 820 bytes debug, 258 release, 292 midi (`avr-size` reports less: open item 5) |
 | EEPROM | 52 of 1024 bytes: the calibration record (12, from address 0) and the crash log (40, from address 16) |
 | Interrupts | One: Timer/Counter2 compare match, 1000 times a second, which adds one to a counter. The clock and reset inputs use interrupt flags, polled, with their interrupts off |
 | Main loop | Never blocks. One sequencer tick a millisecond; every output is applied at the next tick boundary |
@@ -23,9 +23,9 @@ Timing figures marked as measured come from the emulated board; the rest are cal
 | Inputs | 16 steps × 4 bits, 8 mode switches and an 8-way selector on ten 74HC165s (SPI), a pot (ADC 6) and a modulation input (ADC 7), all read every 8 ms. Clock input (PB0), reset input (PD2) and run button (PD7), read every tick |
 | Outputs | Pitch CV from an MCP4822 DAC (SPI), 1 V to the octave; gate (PD4); clock (PD5); 16 step lights on two 74HC595s (SPI); a level light (PD6, PWM). A serial log in the debug build, MIDI out in the midi build |
 | Tempo | 30 to 285 BPM, a step being a sixteenth note (500 ms down to 52.6 ms) |
-| Tests | 609 host tests in 57 programs: 370 for the core, 83 for the app loop, 153 for the target adapters, 3 for `main.c` |
+| Tests | 635 host tests in 57 programs: 395 for the core, 84 for the app loop, 153 for the target adapters, 3 for `main.c` |
 | Coverage | 100% of lines (1669) and branches (758) in `core/`, `app/` and `adapters/target/` |
-| Emulated board | 193 scenarios across the three images |
+| Emulated board | 196 scenarios across the three images |
 | MISRA | Zero findings from cppcheck's addon over four runs; one inline suppression (see "Static analysis") |
 
 The sizes and counts are copied from [FIGURES.md](FIGURES.md), which `make figures` writes.
@@ -102,7 +102,7 @@ With one or more it runs one tick first, handing the count to the core so that a
    Every eighth tick: the ten panel bytes, the pot and the modulation input.
    Between scans the core is given the last snapshot again.
    A read's status is kept beside the snapshot so that a failure can be logged with its code, once per step.
-3. **Run the core.** `bank_tick()` lets the pot set the amount the selector is on; the app copies the tempo and the three modulation amounts into the sequencer's inputs.
+3. **Run the core.** `bank_tick()` lets the pot set the amount the selector is on; the app copies the tempo and the four modulation amounts into the sequencer's inputs.
    `seq_tick()` works out whether a step begins and the level of every output after this tick.
    `midi_out_tick()` turns that into at most as many MIDI bytes as there was room for.
    The results wait for the next tick.
@@ -145,7 +145,7 @@ An external edge is noticed at the next tick and acted on at the one after, so s
 | `debounce` | What level has this button settled at? |
 | `engine_plain`, `engine_stage`, `engine_klee`, `engine_chance`, `engine_cartesian`, `engine_euclid` | Which step plays now, what is its note value, and is it tied to the next? |
 | `prng` | What is the next random byte? |
-| `address` | Which step comes next in this direction and range? |
+| `address` | Which step comes next in this direction and range, and which is it moved to by an offset? |
 | `note_map` | What pitch is this note value in this scale? |
 | `panel` | What do the switches of this step, the mode switches and the selector read? |
 | `gate` | Is the note still held? |
@@ -327,7 +327,7 @@ Not built: MIDI in, any control for the channel, velocity or lowest note, Contin
 ### The amount bank
 
 One pot, eight amounts of 0 to 1023, and a selector that says which the pot is setting.
-`app.c` names the slots: 0 the tempo, 1 to 3 how much of the LFO goes to the note, the gate length and the step chance, and 4 to 7 held, shown and not used yet.
+`app.c` names the slots: 0 the tempo, 1 to 4 how much of the LFO goes to the note, the gate length, the step chance and the step position, and 5 to 7 held, shown and not used yet.
 Position 0 is the tempo because 0 is what a board with no selector reads.
 
 After the selector moves the pot is detached (`pickup`): the amount stays until the pot has been turned to meet it, which is a reading within 8 of it or two readings with it between them.
@@ -345,6 +345,20 @@ Read as each step begins:
 | The note value | 7 places in the scale | 1 to 15; a rest is never moved | Moves it down |
 | The gate length | 12 pulses | 1 to 24 pulses | Makes it shorter |
 | The chance of a step dropping out | 255 in 256 | | No chance |
+| The step played | Half the engine's cycle, rounded down | Its cycle: it comes round past the ends | Moves it back |
+
+The step position is the one the engine applies, not `seq`: it is handed the depth and its direction (`offset` in `engine_inputs_t`) and moves the step before it reads the note, so the other three act on the step moved to, and that is the step logged and lit.
+Where the engine has got to is never moved, so the pattern does not slip, a one-shot ends when it would have, and no random number more is drawn.
+`address_turn()` and `address_offset_step()` do the arithmetic for all of them:
+
+| Engine | A place is | The most, either way |
+|---|---|---|
+| Plain, chance, Euclidean | A step of the range, counted from the first step towards the last whatever the direction | Half the range: 8 of 16, 2 of 4 or 5, none of 1 |
+| Stage | A stage of the stage range, taken when the stage begins | Half that range |
+| Klee | A stage of the register, which is turned for that step's sum and lights and kept as it was | 8 |
+| Cartesian | A step of the sixteen, row by row; x and y stay | 8 |
+
+In the Euclidean engine it changes which note a beat sounds, never which steps are beats; in the chance engine it moves a shuffled step too.
 
 An LFO that could not be read is taken to be at its centre.
 Nothing follows the LFO between steps.
@@ -454,7 +468,7 @@ The details are in [tools/sim/CLAUDE.md](../tools/sim/CLAUDE.md).
 | `release.test.js` | 14 | No USART, pin timing, the SPI and timer settings, the DAC frames |
 | `calibration.test.js` | 30 | The mode, the stored record, a power cycle |
 | `transport.test.js` | 48 | The clock and reset inputs, the run button, the pot and selector, the level light |
-| `modulation.test.js` | 12 | The LFO moving the note, the gate length and the step chance |
+| `modulation.test.js` | 15 | The LFO moving the note, the gate length, the step chance and the step played |
 | `engines.test.js` | 41 | The six engines and the step lights |
 | `watchdog.test.js` | 21 | The watchdog, the breadcrumb and the crash log |
 | `midi.test.js` | 10 | MIDI out on the midi image: the bytes, the notes and ties |
@@ -489,8 +503,8 @@ The chip has one USART, so an image has the log or MIDI out, not both.
 | Logger | `serial_logger.c` | `null_logger.c` | `null_logger.c` |
 | MIDI output | `null_midi_output.c` | `null_midi_output.c` | `midi_output.c` |
 | USART0 | The log, 115200 baud | Never switched on | MIDI out, 31250 baud |
-| Flash | 10786 bytes | 9502 bytes | 9654 bytes |
-| Static RAM | 816 bytes | 254 bytes | 288 bytes |
+| Flash | 11066 bytes | 9782 bytes | 9934 bytes |
+| Static RAM | 820 bytes | 258 bytes | 292 bytes |
 
 ### Where the flash goes
 

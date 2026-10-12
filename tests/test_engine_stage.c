@@ -63,6 +63,9 @@ static engine_inputs_t make_inputs(uint8_t first_step, uint8_t last_step)
 
     in.p_raw_steps = g_raw;
     in.p_address   = &g_address;
+    in.p_prng      = NULL;
+    in.offset.depth      = 0U;
+    in.offset.b_negative = false;
     return in;
 }
 
@@ -269,6 +272,50 @@ static void test_addressing_controls_are_followed_as_stages(void)
 
 
 
+static void test_offset_moves_the_stage_when_it_begins_and_holds_it(void)
+{
+    engine_inputs_t      in = make_inputs(0U, 7U);
+    engine_stage_state_t state;
+
+    // Eight stages, so the fullest offset is four: stage 0 plays as stage
+    // 4, with stage 4's length and mode
+    set_step(12U, CONTROL(HOLD, 2U));
+    in.offset.depth = 255U;
+    engine_stage_init(&state);
+    expect_step(&state, &in, 4U, 11U, true);
+
+    // The offset going away does not move a stage that has begun
+    in.offset.depth = 0U;
+    expect_step(&state, &in, 4U, 11U, false);
+
+    // And the pattern is where it would have been: stage 1 is next
+    expect_step(&state, &in, 1U, 14U, false);
+
+    // Stage 2, back by four, is stage 6
+    in.offset.depth      = 255U;
+    in.offset.b_negative = true;
+    expect_step(&state, &in, 6U, 9U, false);
+}
+
+
+
+static void test_offset_stays_within_a_range_round_through_stage_seven(void)
+{
+    // Stages 6, 7, 0 and 1: four places, and a depth of 128 is one of them
+    static const uint8_t expected[] = { 7U, 0U, 1U, 6U, 7U };
+    engine_inputs_t      in = make_inputs(6U, 1U);
+    engine_stage_state_t state;
+
+    in.offset.depth = 128U;
+    engine_stage_init(&state);
+    for (size_t i = 0U; i < (sizeof(expected) / sizeof(expected[0])); i++)
+    {
+        expect_step(&state, &in, expected[i], (uint8_t)(15U - expected[i]), false);
+    }
+}
+
+
+
 static void test_finished_one_shot_gives_no_step(void)
 {
     const engine_inputs_t in = make_inputs(4U, 5U);
@@ -336,6 +383,8 @@ int main(void)
     RUN_TEST(test_a_note_value_of_zero_is_a_rest_in_any_mode);
     RUN_TEST(test_length_is_read_once_and_the_rest_on_every_step);
     RUN_TEST(test_addressing_controls_are_followed_as_stages);
+    RUN_TEST(test_offset_moves_the_stage_when_it_begins_and_holds_it);
+    RUN_TEST(test_offset_stays_within_a_range_round_through_stage_seven);
     RUN_TEST(test_finished_one_shot_gives_no_step);
     RUN_TEST(test_null_pointers_are_ignored);
     return TEST_RESULT();

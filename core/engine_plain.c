@@ -36,6 +36,7 @@ bool engine_plain_step(engine_plain_state_t *p_state, const engine_inputs_t *p_i
 
         if (address_next(&p_state->address, p_in->p_address, &step))
         {
+            step          = address_offset_step(p_in->p_address, step, &p_in->offset);
             p_step->step  = step;
             p_step->note  = panel_step_value(p_in->p_raw_steps, step);
             p_step->b_tie = false;
