@@ -1,17 +1,22 @@
 # nano_sequencer parts list
 
-What it takes to build the whole board the firmware is written for. The wiring is in [SCHEMATIC.html](SCHEMATIC.html), and what each part does in [ARCHITECTURE.md](ARCHITECTURE.md).
+What it takes to build the whole board the firmware is written for.
+The wiring is in [SCHEMATIC.html](SCHEMATIC.html), and what each part does in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Where the documents do not fix a value, this says so. Those are typical choices, not something the firmware depends on.
+Where the documents do not fix a value, this says so.
+Those are typical choices, not something the firmware depends on.
 
 ## Why two kinds of shift register
 
 They do opposite jobs, so one part cannot stand in for the other:
 
-- **74HC165** is parallel-in, serial-out. It reads the 72 panel switches and the selector and shifts them to the MCU on one wire.
-- **74HC595** is serial-in, parallel-out. It takes two bytes from the MCU and holds 16 outputs steady to drive the step lights.
+- **74HC165** is parallel-in, serial-out.
+  It reads the 72 panel switches and the selector and shifts them to the MCU on one wire.
+- **74HC595** is serial-in, parallel-out.
+  It takes two bytes from the MCU and holds 16 outputs steady to drive the step lights.
 
-Neither chip works in the other direction. They share the SPI clock, and one pin (D9) serves as both the 165s' load line and the 595s' latch, so the pair costs no extra MCU pins.
+Neither chip works in the other direction.
+They share the SPI clock, and one pin (D9) serves as both the 165s' load line and the 595s' latch, so the pair costs no extra MCU pins.
 
 ## Parts
 
@@ -90,15 +95,22 @@ Four parts of this list are placeholders, because the circuits behind them have 
 
 - **The two input stages.** The firmware assumes they invert, and nothing more is decided.
 - **The gate and clock output buffer.** The pins are bare 0 V and 5 V logic today, with no protection.
-- **The modulation input stage.** The firmware takes half of 5 V at the pin as an LFO at its centre or no LFO at all, to within about 78 mV. What scales and shifts a ±5 V LFO to that, and protects the pin, is not worked out. If it uses an op-amp, the second half of the CV buffer's is free.
+- **The modulation input stage.** The firmware takes half of 5 V at the pin as an LFO at its centre or no LFO at all, to within about 78 mV.
+  What scales and shifts a ±5 V LFO to that, and protects the pin, is not worked out.
+  If it uses an op-amp, the second half of the CV buffer's is free.
 - **The CV buffer and its supply.** The DAC gives 0 to 3.75 V. An op-amp running from the same 5 V rail must be rail-to-rail to reach 0 V. See "Power" below.
 
 ## Power
 
-The board runs from USB for now. A Eurorack supply is a possible later step, so these stages are to be designed to work from either (DECISIONS.md, decision 116). What that means for the parts:
+The board runs from USB for now.
+A Eurorack supply is a possible later step, so these stages are to be designed to work from either (DECISIONS.md, decision 116).
+What that means for the parts:
 
-- **The CV buffer** gets a rail-to-rail op-amp that runs from a single 5 V rail (an MCP6002, say), which reaches 0 V there and would also do on a Eurorack board. A TL072 only works from ±12 V, so it is not the part to buy now.
-- **The gate and clock outputs** are 5 V from USB. That usually triggers other modules, though many expect more; a higher level is only possible from the Eurorack rails, so leave room for it in the output stage.
-- **A Eurorack build adds** a 10-pin or 16-pin power header, a 5 V regulator from +12 V, and protection diodes on the rails. The regulator and the Nano's USB socket must not both feed the 5 V rail at once without a diode or a jumper to keep them apart.
+- **The CV buffer** gets a rail-to-rail op-amp that runs from a single 5 V rail (an MCP6002, say), which reaches 0 V there and would also do on a Eurorack board.
+  A TL072 only works from ±12 V, so it is not the part to buy now.
+- **The gate and clock outputs** are 5 V from USB.
+  That usually triggers other modules, though many expect more; a higher level is only possible from the Eurorack rails, so leave room for it in the output stage.
+- **A Eurorack build adds** a 10-pin or 16-pin power header, a 5 V regulator from +12 V, and protection diodes on the rails.
+  The regulator and the Nano's USB socket must not both feed the 5 V rail at once without a diode or a jumper to keep them apart.
 
 None of this is designed in detail, and the op-amp named is a typical choice, not a checked one.

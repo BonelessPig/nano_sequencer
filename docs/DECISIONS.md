@@ -1,8 +1,10 @@
 # nano_sequencer decisions
 
-The decisions taken while planning and building the firmware, moved here from [ROADMAP.md](ROADMAP.md) on 2026-10-11. The roadmap carries the plan, and its "Next" section says which decisions the next piece of work depends on; a "section N" or "phase N" below is the roadmap's, and an "open item" is ARCHITECTURE.md's.
+The decisions taken while planning and building the firmware, moved here from [ROADMAP.md](ROADMAP.md) on 2026-10-11.
+The roadmap carries the plan, and its "Next" section says which decisions the next piece of work depends on; a "section N" or "phase N" below is the roadmap's, and an "open item" is ARCHITECTURE.md's.
 
-Decision numbers are referred to from the code's docs; never renumber them. Unless a group says otherwise, its decisions were left to recommendation, are **provisional**, and have not been heard or run on hardware.
+Decision numbers are referred to from the code's docs; never renumber them.
+Unless a group says otherwise, its decisions were left to recommendation, are **provisional**, and have not been heard or run on hardware.
 
 **The owner's, 2026-10-10.**
 
@@ -80,7 +82,8 @@ Decision numbers are referred to from the code's docs; never renumber them. Unle
 | 45 | A failed write | **Logged once per step, after the note.** The note plays at the old pitch; the next tick writes again. |
 | 46 | The chain during a DAC write | **Left to shift.** The 74HC165s have no chip select; they are loaded afresh before each read. |
 
-**Phase 5.** 47 was the owner's choice. 48 to 52 are met at the panel: go through them with the board and a meter.
+**Phase 5.** 47 was the owner's choice.
+48 to 52 are met at the panel: go through them with the board and a meter.
 
 | # | Decision | Outcome |
 |---|---|---|
@@ -98,7 +101,9 @@ Decision numbers are referred to from the code's docs; never renumber them. Unle
 | 58 | The start-up log line | **`Reset = 2 Cal = 1`, kept to 19 characters** so that it has gone before the first step's line is queued. |
 | 59 | Where the mode sits | **A core module of its own, `cal`, beside `seq`.** The app calls `seq_tick()` only when `cal_tick()` says the mode is not active. |
 
-**Phase 6.** 61 was the owner's. 62 and 63 were put to the owner and not answered, so the recommendation was built; go through those two first. 64 to 67 and 72 are the ones to check with a real clock patched in.
+**Phase 6.** 61 was the owner's.
+62 and 63 were put to the owner and not answered, so the recommendation was built; go through those two first.
+64 to 67 and 72 are the ones to check with a real clock patched in.
 
 | # | Decision | Outcome |
 |---|---|---|
@@ -117,7 +122,8 @@ Decision numbers are referred to from the code's docs; never renumber them. Unle
 | 72 | Pins | **PB0 clock in, PD2 reset in, PD7 the run button.** |
 | 73 | The log line | **`Transport = 2`**, on a change: 0 stopped, 1 the internal clock, 2 the external. |
 
-**Phase 7, the stage engine.** 74 to 76 were the owner's. 78 to 81 are the ones that are heard.
+**Phase 7, the stage engine.** 74 to 76 were the owner's.
+78 to 81 are the ones that are heard.
 
 | # | Decision | Outcome |
 |---|---|---|
@@ -133,7 +139,8 @@ Decision numbers are referred to from the code's docs; never renumber them. Unle
 | 83 | The log line | **`Step 2 Note = 8` gives the stage**, once for each step it lasts. |
 | 84 | Its name | **`engine_stage`.** |
 
-**The rest of phase 7.** The owner chose Klee as the next piece. 86, 87 and 91 depart from section 3.
+**The rest of phase 7.** The owner chose Klee as the next piece.
+86, 87 and 91 depart from section 3.
 
 | # | Decision | Outcome |
 |---|---|---|
@@ -185,7 +192,8 @@ Decision numbers are referred to from the code's docs; never renumber them. Unle
 |---|---|---|
 | 116 | Power | **USB for now, with a Eurorack supply a possible later step, so the analogue stages are to work from either.** That bears on the pitch buffer (a rail-to-rail op-amp, to reach 0 V on a single 5 V rail), the gate and clock level (5 V from USB), and where 5 V comes from (never both sources at once without something to keep them apart). |
 
-**Phase 10, MIDI out.** 117 to 119 were the owner's. 121 to 125 are the ones a receiving instrument shows.
+**Phase 10, MIDI out.** 117 to 119 were the owner's.
+121 to 125 are the ones a receiving instrument shows.
 
 | # | Decision | Outcome |
 |---|---|---|
@@ -204,7 +212,9 @@ Decision numbers are referred to from the code's docs; never renumber them. Unle
 | 129 | Calibration mode | **Nothing is sent.** |
 | 130 | Not built | MIDI in; a control for the channel, velocity or lowest note; running status; Continue; Song Position; All Notes Off at start-up; a second note for a second gate. |
 
-**Modulation, stage 1.** 131 to 139 were the owner's; 133 to 136 are the owner's own design. 137 departs from what the owner first said and was put to them with the plan. 140 to 142 are the ones that are heard.
+**Modulation, stage 1.** 131 to 139 were the owner's; 133 to 136 are the owner's own design.
+137 departs from what the owner first said and was put to them with the plan.
+140 to 142 are the ones that are heard.
 
 | # | Decision | Outcome |
 |---|---|---|
