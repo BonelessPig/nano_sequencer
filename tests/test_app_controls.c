@@ -181,13 +181,16 @@ static void test_the_pot_sets_the_tempo_only_while_the_selector_is_on_it(void)
 
 static void test_the_lfo_and_the_note_amount_reach_the_sequencer(void)
 {
-    // Step 0 as it is set. The LFO is read on every tick, the panel on the
-    // first of them only
+    // Step 0 as it is set. The LFO is read on every tick but the ones the
+    // panel is read on, which the first is
     start_app();
     run_ticks(2U);
     expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
     TEST_ASSERT_EQUAL(1, host_step_read_count());
-    TEST_ASSERT_EQUAL(2, host_mod_read_count());
+    TEST_ASSERT_EQUAL(1, host_mod_read_count());
+    run_ticks(8U);
+    TEST_ASSERT_EQUAL(2, host_step_read_count());
+    TEST_ASSERT_EQUAL(8, host_mod_read_count());
 
     // Position 1 is the note. Full amount and the LFO at its top is seven
     // places up, which takes step 1's 14 to the top note
@@ -270,24 +273,87 @@ static void test_position_7_is_the_vibrato(void)
     run_ticks(2U);
     TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
 
-    // Full amount: the LFO is followed from one tick to the next, the
-    // output a tick behind it, and the note logged is not moved
+    // Full amount: the LFO is followed from one tick to the next, or the
+    // one after where a panel read comes between, the output a tick
+    // behind it, and the note logged is not moved
     set_amount(7U, 1023U);
     host_set_mod(1023U, STATUS_OK);
-    run_ticks(2U);
+    run_ticks(3U);
     TEST_ASSERT_EQUAL(1333, host_cv_millivolts());
     host_set_mod(0U, STATUS_OK);
-    run_ticks(2U);
+    run_ticks(3U);
     TEST_ASSERT_EQUAL(1000, host_cv_millivolts());
     host_set_mod(512U, STATUS_OK);
-    run_ticks(2U);
+    run_ticks(3U);
     TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
     TEST_ASSERT_EQUAL(1, host_event_count());
 
     // An LFO that cannot be read moves nothing
     host_set_mod(1023U, ERR_TIMEOUT);
-    run_ticks(2U);
+    run_ticks(3U);
     TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
+}
+
+
+
+static void test_the_rate_pot_runs_an_lfo_of_the_sequencer_s_own(void)
+{
+    uint16_t highest = 0U;
+    uint16_t lowest  = UINT16_MAX;
+
+    // The rate pot is read with the panel, and at 0 there is no LFO: with
+    // all of the vibrato, step 0 stays at its 1167 mV
+    start_app();
+    run_ticks(2U);
+    set_amount(7U, 1023U);
+    TEST_ASSERT_EQUAL(host_step_read_count(), host_rate_read_count());
+    TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
+
+    // Right up it is a cycle every 48 ticks or so, and with nothing at the
+    // modulation input the pitch goes all but two semitones either way
+    host_set_rate(1023U, STATUS_OK);
+    for (unsigned int tick = 0U; tick < 70U; tick++)
+    {
+        const uint16_t before = host_cv_millivolts();
+
+        run_ticks(1U);
+        highest = (host_cv_millivolts() > highest) ? host_cv_millivolts() : highest;
+        lowest  = (host_cv_millivolts() < lowest) ? host_cv_millivolts() : lowest;
+
+        // A sine, not a square: 1354 of 65536 a tick is 22 mV at the most
+        TEST_ASSERT(host_cv_millivolts() <= (before + 30U));
+        TEST_ASSERT((host_cv_millivolts() + 30U) >= before);
+    }
+    TEST_ASSERT(highest >= 1328U);
+    TEST_ASSERT(highest <= 1333U);
+    TEST_ASSERT(lowest <= 1005U);
+    TEST_ASSERT(lowest >= 1000U);
+    TEST_ASSERT_EQUAL(1, host_event_count());
+}
+
+
+
+static void test_the_lfo_s_swing_is_added_to_the_modulation_input_s(void)
+{
+    uint16_t highest = 0U;
+    uint16_t lowest  = UINT16_MAX;
+
+    // The modulation input at its top already: the sum stays there for
+    // the half of the cycle that goes up, and comes down to the centre
+    start_app();
+    run_ticks(2U);
+    set_amount(7U, 1023U);
+    host_set_mod(1023U, STATUS_OK);
+    host_set_rate(1023U, STATUS_OK);
+    for (unsigned int tick = 0U; tick < 70U; tick++)
+    {
+        run_ticks(1U);
+        highest = (host_cv_millivolts() > highest) ? host_cv_millivolts() : highest;
+        lowest  = (host_cv_millivolts() < lowest) ? host_cv_millivolts() : lowest;
+    }
+    TEST_ASSERT_EQUAL(1333, highest);
+    TEST_ASSERT(lowest >= 1167U);
+    TEST_ASSERT(lowest <= 1172U);
 }
 
 
@@ -360,6 +426,8 @@ int main(void)
     RUN_TEST(test_positions_2_and_3_are_the_gate_length_and_the_chance);
     RUN_TEST(test_position_4_is_the_step_played);
     RUN_TEST(test_position_7_is_the_vibrato);
+    RUN_TEST(test_the_rate_pot_runs_an_lfo_of_the_sequencer_s_own);
+    RUN_TEST(test_the_lfo_s_swing_is_added_to_the_modulation_input_s);
     RUN_TEST(test_the_level_light_shows_the_amount_the_selector_is_on);
     RUN_TEST(test_the_level_light_is_dark_in_calibration_mode);
     RUN_TEST(test_calibration_mode_leaves_the_transport_alone);

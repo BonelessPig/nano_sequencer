@@ -16,10 +16,10 @@ One marked **unverified** is from memory or a secondary source; check it before 
 Read this section to know what comes next; the rest of the document is the record behind it.
 Keep it to a screen, and bring it up to date at the end of each piece of work.
 
-- **Next piece of work: modulation, stage 5, an LFO of the sequencer's own**, with a rate pot on PC0 where 0 Hz is off, summed with the external one (decision 146).
-  Nothing about it is settled beyond that; put the options to the owner before any code, as stages 2 to 4 were.
-  The vibrato (stage 4, decisions 165 to 171) is built, and the LFO is read on every tick for it.
-  The stages after it, in order: profiles with their button, and a status light.
+- **Next piece of work: modulation, stage 6, profiles**: eight sets of the amounts in the EEPROM, chosen by the selector, with one button (decision 146).
+  Nothing about it is settled beyond that; put the options to the owner before any code, as stages 2 to 5 were.
+  The sequencer's own LFO (stage 5, decisions 172 to 178) is built, with its rate pot on PC0.
+  The stage after it: a status light.
 - **After the modulation: MIDI in**, the second piece of phase 10 (decision 117), and then phase 11.
 - **Waiting on the board, not on firmware:** everything from phase 1 on is unrun on hardware.
   Section 8 lists what to check, and OPEN_ITEMS.md the order to check it in.
@@ -64,7 +64,7 @@ Adding one is a core file and its tests.
 The layers, the modules, the ports and the tick are built and are described in ARCHITECTURE.md; `core/CLAUDE.md` lists the modules.
 What is planned and not yet there:
 
-- **Core modules to come:** a parser for MIDI in, beside `midi_out`; ratchets, slide and swing, in `gate` and `clock`; an LFO of the sequencer's own, an envelope and the profiles (decision 146).
+- **Core modules to come:** a parser for MIDI in, beside `midi_out`; ratchets, slide and swing, in `gate` and `clock`; the profiles (decision 146).
 - **Ports are named for what the core needs**, not for the bus.
   No `spi_port`.
 - **`adapters/target/` has two levels**: peripheral drivers with headers private to that folder, and device adapters above them that implement ports.
@@ -146,7 +146,7 @@ The firmware of every phase down to 10a, and the step position of 10b, is done b
 | 9. Watchdog and crash log | The watchdog, `errlog`, the breadcrumb | Optiboot, and the reset cause taken from it (decision 115, firmware) |
 | 10. MIDI | Out: `CONFIG=midi`, the clock, Start, Stop and notes | DIN socket and two 220 Ω resistors. **In is firmware still to write** (decision 117), with an optocoupler |
 | 10a. Modulation, stage 1 | The clock choosing itself; `pickup`, `bank`, `mod`; the selector, level light and LFO input | Tenth 74HC165, coded rotary switch, LED, a jack and its input stage |
-| 10b. Modulation, later stages | Step position (decisions 147 to 154); the envelope on the DAC's channel B, with amplitude and its time (155 to 164); the vibrato (165 to 171). **The rest is firmware still to write** (decision 146) | Buffer and jack for channel B, a pot, a button, an LED |
+| 10b. Modulation, later stages | Step position (decisions 147 to 154); the envelope on the DAC's channel B, with amplitude and its time (155 to 164); the vibrato (165 to 171); the sequencer's own LFO (172 to 178). **The rest is firmware still to write** (decision 146) | Buffer and jack for channel B, a pot, a button, an LED |
 | 11. Later | **Firmware still to write**: 24 PPQN sync, timing an edge more finely than a tick (Timer1 timestamps), slide, swing and ratchets | — |
 
 Each phase is one or more small commits, leaves every check green, and updates README and ARCHITECTURE in the same piece of work.
@@ -163,7 +163,7 @@ In use today, but for the 74HC595 on PB1 and PB3 (not wired) and the proposals m
 | PD4 | Gate out | PB3 (MOSI) | DAC and 595 data |
 | PD5 | Clock out | PB4 (MISO) | 74HC165 data, through 1 kΩ |
 | PD6 (OC0A) | Level light, by pulse width | PB5 (SCK) | SPI clock (on-board LED flickers) |
-| PD7 | Run/stop button | PC0 to PC3 | Proposed: CV in, pots; PC0 the internal LFO's rate |
+| PD7 | Run/stop button | PC0 to PC3 | PC0 the LFO's rate pot. PC1 to PC3 proposed: CV in, pots |
 | ADC6 | The pot | PC4, PC5 | Reserved for I2C |
 | ADC7 | Modulation input | | |
 

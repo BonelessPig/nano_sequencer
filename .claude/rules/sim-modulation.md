@@ -12,6 +12,8 @@ Loaded with the files below, on top of `tools/sim/CLAUDE.md`, whose rules apply 
   The LFO reads 512 on a new board, which moves nothing.
 - The envelope CV is written a tick after the core works it out, in the same tick as the gate's edge and after it.
   Ask for it a whole millisecond after a gate edge (`envMillivoltsAt(rise + ms(1))`), and n milliseconds after the rise for the level n ticks into a slope.
-- The LFO is read on every tick, so the vibrato (position 7) is at the DAC two ticks after `setLfoReading()`; look at the last of `cvWrites` a few milliseconds on, not at a gate.
+- The LFO is read on every tick but a scan's, so the vibrato (position 7) is at the DAC within three ticks of `setLfoReading()`; look at the last of `cvWrites` a few milliseconds on, not at a gate.
   The other moves still take the LFO as a step begins.
 - That read is about 0.1 ms of every tick, which puts every MIDI byte that much later behind its pin; the bounds in `midi_fixture.js` say what was measured.
+- The rate pot (`setRateReading()`) is at 0 on a new board, where the board's own LFO is off, so a scenario that does not set it has only the modulation input.
+  It is read in the scan; the LFO it runs is seen through the vibrato, as the pitch written on each tick (`cvWrites`).

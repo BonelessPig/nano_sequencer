@@ -7,7 +7,7 @@ The numbers are referred to from other documents, so a closed item keeps its num
 
 ## 1. Unused pins are configured
 
-PC0 and PC1 are given a direction in `register_init.c` and never used, and PD3 is made an input with its pull-up on.
+PC1 is given a direction in `register_init.c` and never used, and PD3 is made an input with its pull-up on.
 
 ## 2. The crash log has not run on the board, and needs the reset cause
 
@@ -30,7 +30,7 @@ The tick that starts the pattern no longer counts towards its second step.
 
 ## 5. `make check` under-reports static RAM
 
-`avr-size` counts constant data under flash only, although it is also copied to RAM: it prints 360 bytes for the debug build where 840 are used, 226 for release where 278 are, and 260 for midi where 312 are.
+`avr-size` counts constant data under flash only, although it is also copied to RAM: it prints 370 bytes for the debug build where 868 are used, 236 for release where 304 are, and 270 for midi where 338 are.
 
 ## 6. The pattern controls have no hardware
 

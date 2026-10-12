@@ -275,6 +275,10 @@ function showPanel() {
         el('lfo').value = String(state.lfo);
     }
     el('lfo-reading').textContent = lfoMeaning();
+    if (document.activeElement !== el('rate')) {
+        el('rate').value = String(state.rate);
+    }
+    el('rate-reading').textContent = rateMeaning();
     el('run').classList.toggle('down', state.runDown);
     el('clock-on').checked = state.clockOn;
     el('clock-pulse').disabled = state.clockOn; // The jack is already taken
@@ -283,6 +287,23 @@ function showPanel() {
         el('clock-ms').value = String(state.clockMs);
         showClockRate(state.clockMs);
     }
+}
+
+// What the rate pot makes of the board's own LFO, as the firmware works
+// it out: the reading over 4, squared, over 48, in 65536ths of a cycle a
+// millisecond
+function rateMeaning() {
+    const step = Math.floor((Math.floor(state.rate / RATE_PER_LEVEL) ** 2) / RATE_DIVISOR);
+
+    if (step === 0) {
+        return `${state.rate}: off`;
+    }
+
+    const hertz = (step * 1000) / RATE_CYCLE;
+
+    return (hertz < 1)
+        ? `${state.rate}: a cycle every ${(1 / hertz).toFixed(1)} s`
+        : `${state.rate}: ${hertz.toFixed(1)} Hz`;
 }
 
 // Where the LFO input stands, as the firmware takes it: nothing within 16

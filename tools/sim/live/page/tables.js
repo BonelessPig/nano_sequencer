@@ -282,6 +282,11 @@ const SCOPE_ENVELOPE_LEVELS = [[0, '0'], [1, '1']];
 const BPM_MIN = 30;
 const LFO_CENTRE = 512;   // Where the modulation input moves nothing
 const LFO_DEAD_ZONE = 16; // How far from it still moves nothing
+// The board's own LFO: its rate pot's reading over the first, squared, over
+// the second, is how much of a cycle of the third goes by in a millisecond
+const RATE_PER_LEVEL = 4;
+const RATE_DIVISOR = 48;
+const RATE_CYCLE = 65536;
 // What each selector position's amount is for
 const SELECTOR_NAMES = [
     '0 Tempo', '1 Note', '2 Gate length', '3 Step chance',

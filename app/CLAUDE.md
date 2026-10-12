@@ -31,8 +31,9 @@ The only code that knows about both the core and the ports.
   Otherwise `bank_tick()` runs ahead of `seq_tick()`, with the selector as `panel_selector_value()` gives it, and the sequencer's tempo reading is the bank's tempo slot, always valid.
   The slots are named by `SLOT_*` at the top of `app.c`: the tempo is position 0, which is what a board with no selector wired reads, and positions 1 to 5 are how much of the LFO goes to the note, the gate length, the chance of a step dropping out, the step played and the amplitude, position 6 is the envelope's time, which goes to `env_tick()` and not to the sequencer, and position 7 is how much of the LFO goes to the vibrato.
   Their amounts are copied into the sequencer's inputs on every tick.
-- The LFO is read on every tick, for the vibrato, straight into the sequencer's inputs with its valid flag, at the end of the gather step: after the scan, so that the panel read stays where it was in the tick.
-  A read that fails is not logged: the core takes it as an LFO at its centre.
+- The modulation input is read into the app's own snapshot on every tick but a scan's, and the LFO rate pot in the scan, after the pot: a scan's tick has the rate pot's conversion where the others have the modulation input's, so no tick is longer than it was.
+  `lfo_tick()` runs after the bank and ahead of `seq_tick()`, and what it gives is the sequencer's LFO, always valid; it is not called in calibration mode.
+  A read of either that fails is not logged: the core takes a missing modulation input as one at its centre and keeps the last rate.
 - The level light is given `bank_level()`, worked out with the bank and written in the apply step of the next tick, after the step lights, on every tick.
   In calibration mode it stays at 0.
 - The envelope is `env_tick()`, called after `seq_tick()` and MIDI out with the gate and the amplitude the sequencer gave, and not called in calibration mode, where its level stays 0.

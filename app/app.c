@@ -21,6 +21,7 @@
 #include "panel.h"
 #include "pitch_cal.h"
 #include "seq.h"
+#include "lfo.h"
 #include "transport.h"
 #include "breadcrumb_port.h"
 #include "clock_input_port.h"
@@ -35,6 +36,7 @@
 #include "mod_input_port.h"
 #include "nv_port.h"
 #include "platform_port.h"
+#include "rate_input_port.h"
 #include "reset_cause_port.h"
 #include "reset_input_port.h"
 #include "run_input_port.h"
@@ -97,6 +99,12 @@ static bank_state_t g_bank;                // The amounts the pot sets, one a sl
 static uint16_t     g_pot_raw     = 0U;    // The pot's position, as last read
 static bool         g_b_pot_valid = false; // false if it could not be read
 static uint8_t      g_level       = 0U;    // The level light, as the last tick left it
+
+static lfo_state_t g_lfo_state;           // The LFO's state carried between ticks
+static uint16_t    g_lfo_raw      = 0U;    // The modulation input, as last read
+static bool        g_b_lfo_valid  = false; // false if it could not be read
+static uint16_t    g_rate_raw     = 0U;    // The rate pot's position, as last read
+static bool        g_b_rate_valid = false; // false if it could not be read
 
 static env_state_t g_env_state;      // The envelope's state carried between ticks
 static uint16_t    g_env_level = 0U; // What it computed on the last tick
@@ -213,10 +221,10 @@ static void apply_outputs(void)
 
 
 /**
- * @brief  Reads the panel into the snapshot and the pot beside it; the
- *         panel read brings the mode switches and the selector with it. A
- *         failed read clears that input's valid flag and leaves its data as
- *         it was.
+ * @brief  Reads the panel into the snapshot and the two pots beside it;
+ *         the panel read brings the mode switches and the selector with
+ *         it. A failed read clears that input's valid flag and leaves its
+ *         data as it was.
  */
 static void scan_inputs(void)
 {
@@ -225,15 +233,20 @@ static void scan_inputs(void)
 
     g_tempo_read_status = pot_input_read(&g_pot_raw);
     g_b_pot_valid       = (STATUS_OK == g_tempo_read_status);
+
+    g_b_rate_valid = (STATUS_OK == rate_input_read(&g_rate_raw));
 }
 
 
 
 /**
  * @brief  Brings the input snapshot up to date for this tick: records the
- *         elapsed time, reads the transport inputs, the LFO and the room
- *         the MIDI output has, which are read on every tick, and re-reads
- *         the panel and the pot if a scan is due. An LFO read that fails
+ *         elapsed time, reads the transport inputs and the room the MIDI
+ *         output has, which are read on every tick, and then either
+ *         re-reads the panel and the pots, if a scan is due, or reads the
+ *         LFO. A scan's tick has the rate pot's conversion where the
+ *         others have the LFO's, so that no tick is longer for it, and the
+ *         LFO is as it was read the tick before. An LFO read that fails
  *         clears its valid flag and leaves the reading as it was.
  * @param  elapsed_ticks  Ticks since the previous tick, 1 to 255.
  */
@@ -253,10 +266,8 @@ static void gather_inputs(uint8_t elapsed_ticks)
     else
     {
         g_ticks_until_scan = (uint8_t)(g_ticks_until_scan - elapsed_ticks);
+        g_b_lfo_valid      = (STATUS_OK == mod_input_read(&g_lfo_raw));
     }
-
-    // After the scan, so that the panel is read where it was in the tick
-    g_inputs.mod.b_lfo_valid = (STATUS_OK == mod_input_read(&g_inputs.mod.lfo));
 }
 
 
@@ -315,6 +326,28 @@ static void run_bank(void)
 
 
 /**
+ * @brief  Gives the sequencer its modulating signal for this tick: the one
+ *         read at the modulation input with the sequencer's own LFO added
+ *         to it, at the rate its pot has set. There is always one to give,
+ *         so it is always valid.
+ */
+static void run_lfo(void)
+{
+    lfo_inputs_t lfo_in;
+
+    lfo_in.rate             = g_rate_raw;
+    lfo_in.b_rate_valid     = g_b_rate_valid;
+    lfo_in.external         = g_lfo_raw;
+    lfo_in.b_external_valid = g_b_lfo_valid;
+    lfo_in.elapsed_ticks    = g_inputs.elapsed_ticks;
+
+    g_inputs.mod.lfo         = lfo_tick(&g_lfo_state, &lfo_in);
+    g_inputs.mod.b_lfo_valid = true;
+}
+
+
+
+/**
  * @brief  Works out the envelope's level for this tick from the gate the
  *         sequencer gave, the amplitude of a note that began, and the time
  *         the pot has set.
@@ -337,8 +370,8 @@ static void run_envelope(void)
  * @brief  Runs the core for this tick. Calibration goes first: if the panel
  *         asked for calibration mode at start-up, it gives the pitch CV and
  *         the gate, with the pot as it reads, and nothing is sequenced, and
- *         no MIDI is sent; otherwise the bank takes the pot, the sequencer
- *         runs, and MIDI out after it.
+ *         no MIDI is sent; otherwise the bank takes the pot, the LFO moves
+ *         on, the sequencer runs, and MIDI out after it.
  */
 static void run_core(void)
 {
@@ -362,6 +395,7 @@ static void run_core(void)
     else
     {
         run_bank();
+        run_lfo();
         seq_tick(&g_seq_state, &g_inputs, &g_outputs);
         run_midi_out();
         run_envelope();
@@ -450,6 +484,12 @@ static void reset_tick_state(void)
     g_pot_raw     = 0U;
     g_b_pot_valid = false;
     g_level       = 0U;
+
+    lfo_init(&g_lfo_state);
+    g_lfo_raw      = 0U;
+    g_b_lfo_valid  = false;
+    g_rate_raw     = 0U;
+    g_b_rate_valid = false;
 
     env_init(&g_env_state);
     g_env_level = 0U;

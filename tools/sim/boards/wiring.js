@@ -72,6 +72,7 @@ const WIRING = {
             nano: 'A7', channel: 7, kind: 'ana',
             net: 'modulation input, from its stage',
         },
+        rate: { nano: 'A0', channel: 0, kind: 'ana', net: 'LFO rate pot wiper' },
     },
 };
 

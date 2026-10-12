@@ -14,18 +14,18 @@ Timing figures marked as measured come from the emulated board; the rest are cal
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano, old bootloader), 16 MHz |
-| Flash | 11996 bytes debug, 10712 release, 10864 midi, of 30720 below the bootloader |
-| Static RAM | 840 bytes debug, 278 release, 312 midi (`avr-size` reports less: open item 5) |
+| Flash | 12482 bytes debug, 11196 release, 11348 midi, of 30720 below the bootloader |
+| Static RAM | 868 bytes debug, 304 release, 338 midi (`avr-size` reports less: open item 5) |
 | EEPROM | 52 of 1024 bytes: the calibration record (12, from address 0) and the crash log (40, from address 16) |
 | Interrupts | One: Timer/Counter2 compare match, 1000 times a second, which adds one to a counter. The clock and reset inputs use interrupt flags, polled, with their interrupts off |
 | Main loop | Never blocks. One sequencer tick a millisecond; every output is applied at the next tick boundary |
 | Watchdog | About 250 ms, kicked once a tick. After a watchdog reset the firmware records in the EEPROM which part of the loop it had reached |
-| Inputs | 16 steps × 4 bits, 8 mode switches and an 8-way selector on ten 74HC165s (SPI), and a pot (ADC 6), all read every 8 ms. Clock input (PB0), reset input (PD2), run button (PD7) and a modulation input (ADC 7), read every tick |
+| Inputs | 16 steps × 4 bits, 8 mode switches and an 8-way selector on ten 74HC165s (SPI), a pot (ADC 6) and the LFO rate pot (ADC 0), all read every 8 ms. Clock input (PB0), reset input (PD2) and run button (PD7), read every tick, and a modulation input (ADC 7), read on every tick but those |
 | Outputs | Pitch CV from an MCP4822 DAC (SPI), 1 V to the octave; gate (PD4); clock (PD5); 16 step lights on two 74HC595s (SPI); a level light (PD6, PWM). A serial log in the debug build, MIDI out in the midi build |
 | Tempo | 30 to 285 BPM, a step being a sixteenth note (500 ms down to 52.6 ms) |
-| Tests | 670 host tests in 59 programs: 421 for the core, 91 for the app loop, 155 for the target adapters, 3 for `main.c` |
+| Tests | 685 host tests in 60 programs: 433 for the core, 93 for the app loop, 156 for the target adapters, 3 for `main.c` |
 | Coverage | 100% of lines (1669) and branches (758) in `core/`, `app/` and `adapters/target/` |
-| Emulated board | 209 scenarios across the three images |
+| Emulated board | 212 scenarios across the three images |
 | MISRA | Zero findings from cppcheck's addon over four runs; one inline suppression (see "Static analysis") |
 
 The sizes and counts are copied from [FIGURES.md](FIGURES.md), which `make figures` writes.
@@ -98,11 +98,14 @@ With none, it polls the log, the MIDI output and the EEPROM and returns, a few m
 With one or more it runs one tick first, handing the count to the core so that a late pass loses no time.
 
 1. **Apply outputs** from the previous tick: the pitch CV, then the gate, then the clock output, on every tick and ahead of everything else; then the envelope CV, the step lights, the level light and any MIDI bytes; then the log lines (a transport change, the step that began, errors).
-2. **Gather inputs.** Every tick: the clock and reset edges, the run button, the room in the MIDI output and, last, the modulation input, whose conversion is about 0.1 ms of every tick.
-   Every eighth tick: the ten panel bytes and the pot.
+2. **Gather inputs.** Every tick: the clock and reset edges, the run button and the room in the MIDI output.
+   Every eighth tick: the ten panel bytes, the pot and the rate pot.
+   Every other tick: the modulation input.
+   So every tick has one ADC conversion of about 0.1 ms for the LFO, its own or the one from outside, and a scan's tick has the pot's as well, as it had before there was a rate pot.
    Between scans the core is given the last snapshot again.
    A read's status is kept beside the snapshot so that a failure can be logged with its code, once per step.
 3. **Run the core.** `bank_tick()` lets the pot set the amount the selector is on; the app copies the tempo and the six modulation amounts into the sequencer's inputs.
+   `lfo_tick()` moves the sequencer's own LFO on and adds it to the modulation input, and the sum is the sequencer's LFO.
    `seq_tick()` works out whether a step begins and the level of every output after this tick.
    `midi_out_tick()` turns that into at most as many MIDI bytes as there was room for.
    The results wait for the next tick.
@@ -156,9 +159,10 @@ An external edge is noticed at the next tick and acted on at the one after, so s
 | `errlog`, `crc8` | Which crash record is the newest, and what does this start-up add? |
 | `midi_out` | Which MIDI bytes does this tick send? |
 | `env` | What is the envelope's level this tick? |
+| `lfo` | What is the modulating signal this tick: the sequencer's own LFO added to the one from outside? |
 
 `seq` owns the clock, transport, engines, gate, note mapping, modulation and pitch calibration.
-`bank`, `cal`, `cal_record`, `errlog`, `midi_out` and `env` stand beside it: the app calls them itself and they include nothing of the sequencer's.
+`bank`, `cal`, `cal_record`, `errlog`, `midi_out`, `env` and `lfo` stand beside it: the app calls them itself and they include nothing of the sequencer's.
 
 ### The clock
 
@@ -364,7 +368,7 @@ In the Euclidean engine it changes which note a beat sounds, never which steps a
 
 The amplitude is given with each step and `seq` does nothing with it: `midi_out` makes it the Note On's velocity (100 at 255, 1 at 0) and `env` the peak of that note's envelope.
 
-The sixth thing the LFO moves is the vibrato, and it is the only one that follows the LFO between steps: `seq_tick()` works it out on every tick, from the LFO as read on that tick.
+The sixth thing the LFO moves is the vibrato, and it is the only one that follows the LFO between steps: `seq_tick()` works it out on every tick, from the LFO as it is given on that tick (see The LFO, below).
 The pitch CV given is the last note's, moved towards the value the calibration table gives the pitch 2 semitones above it, or below it, by as much of the way as the depth says (`mod_scale()`); the range is `MOD_VIBRATO_RANGE` at the top of `seq.c`.
 Using the table makes the swing as wide as the output stage makes two semitones there.
 Nothing is below the lowest pitch, so a note within 2 semitones of it is moved down no further than to it.
@@ -373,6 +377,32 @@ It goes on through rests and while the pattern is stopped, and not in calibratio
 The dead zone makes a small step in it: at full amount the pitch holds still while the LFO is within 16 of its centre and is about 5 mV off as it leaves.
 
 An LFO that could not be read is taken to be at its centre.
+
+### The LFO
+
+What the sequencer is given as its LFO is worked out by `lfo`, on every tick, ahead of `seq_tick()`: the reading of the modulation input with the swing of the sequencer's own LFO added to it, kept within 0 to 1023.
+A modulation input that could not be read counts as its centre there, so the sequencer's LFO is always valid.
+
+Its own LFO is a sine with the whole swing, 511 either way.
+The place in its cycle is 16 bits, 65536 to a cycle, and the sine is a quarter-wave table of 17 points with a straight line between them, which costs 17 bytes of RAM as well as flash.
+The rate pot is on a curve like the envelope's time: its reading over 4, squared, over 48 is how far the cycle moves on in a tick.
+
+| Rate pot | Step a tick | Rate |
+|---|---|---|
+| Below 28 | 0 | Off: at its centre, and the cycle put back to its start |
+| 28 | 1 | A cycle in 65.5 s |
+| 256, a quarter of the way | 85 | 1.3 Hz |
+| 512, half way | 341 | 5.2 Hz |
+| 1023 | 1354 | 20.7 Hz |
+
+It runs free: a stop, a start and a reset do not touch it, and only the rate at 0 begins its cycle again, from the centre going up.
+A rate pot that could not be read leaves the last rate.
+It does not run in calibration mode.
+The numbers are constants at the top of `lfo.c`.
+
+The rate pot is read in the 8 ms scan, and on that tick the modulation input is not: the sum uses its reading of the tick before.
+That keeps every tick at the length it had, so no output edge and no MIDI byte moved for it; read as a third conversion in the scan, the first tick after power-on ran past its millisecond on the emulated board.
+A vibrato from the modulation input therefore holds for one tick in eight; the sequencer's own LFO moves on every tick.
 
 ### The envelope
 
@@ -407,7 +437,8 @@ Pitches run from 0 to 45 semitones, which is 3.75 V of the DAC's 4.095.
 | PB3 | D11 (MOSI) | output | MCP4822 and 74HC595 data |
 | PB4 | D12 (MISO) | input | 74HC165 data, through 1 kΩ so an ISP programmer can win |
 | PB5 | D13 (SCK) | output | SPI clock to every chip |
-| PC0, PC1 | A0, A1 | input, output | Nothing (open item 1) |
+| PC0 | A0 | analog (ADC0) | The LFO rate pot |
+| PC1 | A1 | output | Nothing (open item 1) |
 | PD0, PD1 | D0, D1 | as at reset | The USART, when a logger or the MIDI output enables it |
 | PD2 | D2 (INT0) | input, pull-up | Reset input: a falling edge is latched by the INT0 flag |
 | PD3 | D3 | input, pull-up | Free |
@@ -493,7 +524,7 @@ The details are in [tools/sim/CLAUDE.md](../tools/sim/CLAUDE.md).
 | `release.test.js` | 15 | No USART, pin timing, the SPI and timer settings, the DAC frames |
 | `calibration.test.js` | 30 | The mode, the stored record, a power cycle |
 | `transport.test.js` | 48 | The clock and reset inputs, the run button, the pot and selector, the level light |
-| `modulation.test.js` | 27 | The LFO moving the note, the gate length, the step chance, the step played, the amplitude and the pitch of a sounding note; the envelope CV |
+| `modulation.test.js` | 30 | The LFO moving the note, the gate length, the step chance, the step played, the amplitude and the pitch of a sounding note; the envelope CV; the sequencer's own LFO |
 | `engines.test.js` | 41 | The six engines and the step lights |
 | `watchdog.test.js` | 21 | The watchdog, the breadcrumb and the crash log |
 | `midi.test.js` | 10 | MIDI out on the midi image: the bytes, the notes and ties |
@@ -528,8 +559,8 @@ The chip has one USART, so an image has the log or MIDI out, not both.
 | Logger | `serial_logger.c` | `null_logger.c` | `null_logger.c` |
 | MIDI output | `null_midi_output.c` | `null_midi_output.c` | `midi_output.c` |
 | USART0 | The log, 115200 baud | Never switched on | MIDI out, 31250 baud |
-| Flash | 11996 bytes | 10712 bytes | 10864 bytes |
-| Static RAM | 840 bytes | 278 bytes | 312 bytes |
+| Flash | 12482 bytes | 11196 bytes | 11348 bytes |
+| Static RAM | 868 bytes | 304 bytes | 338 bytes |
 
 ### Where the flash goes
 

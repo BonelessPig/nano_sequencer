@@ -23,7 +23,10 @@ const POSITION_STEP = 4;
 const POSITION_AMPLITUDE = 5;
 const POSITION_ENV_TIME = 6;
 const POSITION_VIBRATO = 7;
-const VIBRATO_MS = 3;            // The LFO is read every tick and written the next
+const VIBRATO_MS = 4;            // The LFO is read within two ticks and written the next
+const RATE_HALF = 512;           // Over 4, squared, over 48: 341 of 65536 a tick
+const RATE_HALF_CYCLE_MS = 65536 / 341;
+const VIBRATO_SWING = 167;       // Two semitones, in millivolts
 const ENV_TOP = 4095;            // The envelope CV at its highest, in millivolts
 const READING_16_MS = 128;       // Over 4, squared, over 64: a slope of 16 ms
 const SLOPE_MS = 16;
@@ -313,5 +316,66 @@ for (const config of CONFIGS) {
 
             assert.equal(notes[notes.length - 1].note, MIDI_LOWEST_NOTE + NOTE - 1);
         }
+    });
+
+    test(`${config}: the rate pot runs an LFO of the board's own, a sine`, () => {
+        const board = playingBoard(config);
+        const centre = noteMillivolts(NOTE);
+        const cycles = 5;
+
+        // With all of the vibrato and the rate pot down, nothing moves
+        setAmount(board, POSITION_VIBRATO, TOP);
+        assertAllEqual(playWithLfo(board, LFO_CENTRE, 2).pitches, centre, 'rate at 0');
+
+        // Half way up it is 5.2 Hz, with nothing at the modulation input:
+        // the pitch goes two semitones either way, and comes up through
+        // the note once a cycle, a cycle apart
+        board.setRateReading(RATE_HALF);
+        board.runForMs(SCAN_MS);
+
+        const from = board.machine.cpu.cycles;
+
+        board.runForMs((cycles + 0.5) * RATE_HALF_CYCLE_MS);
+
+        const writes = board.cvWrites.filter((write) => write.cycle > from);
+        const pitches = writes.map((write) => write.millivolts);
+        const risings = writes.filter((write, i) => (i > 0)
+            && (writes[i - 1].millivolts <= centre) && (write.millivolts > centre));
+
+        assert.ok(Math.max(...pitches) >= centre + VIBRATO_SWING - 1, 'the top');
+        assert.ok(Math.max(...pitches) <= centre + VIBRATO_SWING, 'no higher');
+        assert.ok(Math.min(...pitches) <= centre - VIBRATO_SWING + 1, 'the bottom');
+        assert.ok(Math.min(...pitches) >= centre - VIBRATO_SWING, 'no lower');
+        assert.ok(risings.length >= cycles, `${risings.length} cycles`);
+        for (let i = 1; i < risings.length; i += 1) {
+            const periodMs = board.machine.cyclesToMs(risings[i].cycle - risings[i - 1].cycle);
+
+            assert.ok(Math.abs(periodMs - RATE_HALF_CYCLE_MS) <= 1.5, `a cycle of ${periodMs} ms`);
+        }
+        // A sine and not a square: no tick moves it far
+        for (let i = 1; i < pitches.length; i += 1) {
+            assert.ok(Math.abs(pitches[i] - pitches[i - 1]) <= 12, `a jump at write ${i}`);
+        }
+
+        // Its swing is added to the modulation input's: with that at its
+        // top the sum never comes below the centre, so neither does the pitch
+        board.setLfoReading(TOP);
+        board.runForMs(VIBRATO_MS);
+
+        const summedFrom = board.machine.cpu.cycles;
+
+        board.runForMs(2 * RATE_HALF_CYCLE_MS);
+
+        const summed = board.cvWrites.filter((write) => write.cycle > summedFrom)
+            .map((write) => write.millivolts);
+
+        assert.equal(Math.max(...summed), centre + VIBRATO_SWING);
+        assert.equal(Math.min(...summed), centre);
+
+        // And the pot back down turns it off
+        board.setLfoReading(LFO_CENTRE);
+        board.setRateReading(0);
+        board.runForMs(SCAN_MS);
+        assertAllEqual(playWithLfo(board, LFO_CENTRE, 2).pitches, centre, 'off again');
     });
 }

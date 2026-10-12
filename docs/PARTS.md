@@ -36,6 +36,7 @@ They share the SPI clock, and one pin (D9) serves as both the 165s' load line an
 | 75 | Pull-down resistors, about 10 kΩ (or 10 eight-way resistor networks) | One per switch input, and one for each of the selector's three lines. The tenth chip's five spare inputs go to ground. Value not fixed |
 | 1 | 1 kΩ resistor | Between the chain's output and D12, so a programmer can still override the line |
 | 1 | Potentiometer, linear, about 10 kΩ | Sets whichever amount the selector is on: the tempo at position 0. Value not fixed |
+| 1 | Potentiometer, linear, about 10 kΩ | The rate of the sequencer's own LFO, on A0: its ends to 5 V and ground. Right down is off. Value not fixed |
 | 1 | Rotary switch, 8 positions, binary coded (real code, with a common that goes to 5 V) | The selector: which amount the pot sets |
 | 1 | LED and resistor | The level light on D6: as bright as the amount the selector is on |
 | 1 | Momentary push button | Run and stop |

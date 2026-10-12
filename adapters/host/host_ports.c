@@ -20,6 +20,7 @@
 #include "level_output_port.h"
 #include "midi_output_port.h"
 #include "mod_input_port.h"
+#include "rate_input_port.h"
 #include "nv_port.h"
 #include "platform_port.h"
 #include "reset_cause_port.h"
@@ -47,6 +48,9 @@ static uint16_t      g_tempo_read_count = 0U;
 static uint16_t      g_host_mod_raw = HOST_MOD_CENTRE;
 static port_status_t g_host_mod_status = STATUS_OK;
 static uint16_t      g_host_mod_read_count = 0U;
+static uint16_t      g_host_rate_raw = 0U;
+static port_status_t g_host_rate_status = STATUS_OK;
+static uint16_t      g_host_rate_read_count = 0U;
 
 static uint8_t       g_elapsed_ticks = 0U;
 static uint16_t      g_watchdog_kick_count = 0U;
@@ -165,6 +169,9 @@ void host_reset(void)
     g_host_mod_raw             = HOST_MOD_CENTRE;
     g_host_mod_status          = STATUS_OK;
     g_host_mod_read_count      = 0U;
+    g_host_rate_raw            = 0U;
+    g_host_rate_status         = STATUS_OK;
+    g_host_rate_read_count     = 0U;
     g_host_level               = 0U;
     g_host_level_write_count   = 0U;
     g_host_leds                = 0U;
@@ -465,6 +472,21 @@ uint16_t host_mod_read_count(void)
 
 
 
+void host_set_rate(uint16_t raw, port_status_t status)
+{
+    g_host_rate_raw    = raw;
+    g_host_rate_status = status;
+}
+
+
+
+uint16_t host_rate_read_count(void)
+{
+    return g_host_rate_read_count;
+}
+
+
+
 void host_set_elapsed_ticks(uint8_t ticks)
 {
     g_elapsed_ticks = ticks;
@@ -695,6 +717,29 @@ port_status_t mod_input_read(uint16_t *p_raw)
     else if (STATUS_OK == status)
     {
         *p_raw = g_host_mod_raw;
+    }
+    else
+    {
+        // Scripted failure: leave the caller's value untouched
+    }
+    return status;
+}
+
+
+
+port_status_t rate_input_read(uint16_t *p_raw)
+{
+    port_status_t status = g_host_rate_status;
+
+    g_host_rate_read_count++;
+
+    if (NULL == p_raw)
+    {
+        status = ERR_INVALID_PARAM;
+    }
+    else if (STATUS_OK == status)
+    {
+        *p_raw = g_host_rate_raw;
     }
     else
     {

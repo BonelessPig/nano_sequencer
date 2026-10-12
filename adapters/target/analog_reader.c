@@ -1,8 +1,9 @@
 /**
  * @file analog_reader.c
  * @author BonelessPig
- * @brief Target implementation of the pot input port and the modulation
- *        input port: reads each with the ADC, which this file owns
+ * @brief Target implementation of the pot input port, the modulation
+ *        input port and the rate input port: reads each with the ADC,
+ *        which this file owns
  * @version 0.1
  * @date 2026-02-18
  *
@@ -11,6 +12,7 @@
  */
 #include "pot_input_port.h"
 #include "mod_input_port.h"
+#include "rate_input_port.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include "atmega328p_regs.h"
@@ -23,6 +25,7 @@
 
 #define TEMPO_ADC_CHANNEL (6U)    // ADC channel the tempo pot is wired to (A6 on the Nano)
 #define MOD_ADC_CHANNEL   (7U)    // ADC channel the modulation input is on (A7 on the Nano)
+#define RATE_ADC_CHANNEL  (0U)    // ADC channel the rate pot is wired to (A0 on the Nano)
 #define ADC_CHANNEL_MAX   (7U)    // Highest ADC channel on the ATmega328P
 #define ADC_CHANNEL_MASK  (0x0FU) // Channel-select bits (MUX3..0) in ADMUX
 
@@ -97,4 +100,16 @@ port_status_t pot_input_read(uint16_t *p_raw)
 port_status_t mod_input_read(uint16_t *p_raw)
 {
     return read_analog_value(p_raw, MOD_ADC_CHANNEL);
+}
+
+
+
+/**
+ * @brief Reads the rate pot once (see rate_input_port.h).
+ * @param p_raw pointer to where the 10-bit reading (0-1023) is stored
+ * @return port_status_t status code (STATUS_OK for success)
+ */
+port_status_t rate_input_read(uint16_t *p_raw)
+{
+    return read_analog_value(p_raw, RATE_ADC_CHANNEL);
 }

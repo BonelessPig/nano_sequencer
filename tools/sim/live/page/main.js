@@ -63,6 +63,7 @@ buildPots();
 el('tempo').addEventListener('input', () => post({ tempo: Number(el('tempo').value) }));
 el('lfo').addEventListener('input', () => post({ lfo: Number(el('lfo').value) }));
 el('lfo-centre').addEventListener('click', () => post({ lfo: LFO_CENTRE }));
+el('rate').addEventListener('input', () => post({ rate: Number(el('rate').value) }));
 function powerCycle() {
     post({ power: el('config').value, keepEeprom: el('keep-eeprom').checked });
 }

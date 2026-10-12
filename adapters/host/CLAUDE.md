@@ -18,6 +18,7 @@ The ports faked for the PC: tests script what the input ports return and read ba
   The run button is a level (`host_set_run_button()`); nothing bounces, but the core's debounce still makes a change wait 20 ticks.
 - The modulation input reads 512, its centre, after `host_reset()`, so a test that does not set it (`host_set_mod()`) has no modulation.
   Its reads are counted and not put in the event record.
+  The rate pot reads 0 after `host_reset()`, where the sequencer's own LFO is off, so the modulation input alone is the LFO until a test turns it up (`host_set_rate()`).
 - The MIDI output gives the room a test sets (`host_set_midi_room()`) and records every byte it is written, at write time, a write of more than the room included, so that a test can see an overrun.
   The bytes are kept out of the event record and nothing is sent on a poll.
   Two readbacks show the order of the apply step: `host_midi_byte_count_at_gate_rise()` and `host_midi_byte_count_at_first_event()`.
