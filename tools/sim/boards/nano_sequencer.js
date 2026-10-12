@@ -35,6 +35,7 @@ const { attachMcp4822 } = require('../parts/mcp4822');
 const { attachSwitch } = require('../parts/switch');
 const { readCrashLog, CRASH_LOG_ADDRESS, CRASH_LOG_BYTES } = require('./crash_record');
 const { createMidiParser } = require('./midi_messages');
+const WIRING = require('./wiring');
 
 const CLOCK_HZ = 16000000;
 const STEP_COUNT = 16;
@@ -43,17 +44,15 @@ const MODE_BITS = 8;
 const BITS_PER_CHIP = 8;
 const SELECTOR_POSITIONS = 8; // The low three inputs of the tenth chip
 const LED_CHIPS = 2;
-const TEMPO_ADC_CHANNEL = 6;
-const MOD_ADC_CHANNEL = 7;    // The modulation input: an LFO, through its input stage
+const TEMPO_ADC_CHANNEL = WIRING.analog.pot.channel;
+// The modulation input: an LFO, through its input stage
+const MOD_ADC_CHANNEL = WIRING.analog.modulation.channel;
 const MOD_CENTRE_READING = 512; // What it reads with nothing plugged in
 const ADC_REFERENCE_VOLTS = 5;
 const ADC_STEPS = 1024;
-const SHIFT_REG_LOAD_PIN = 1; // On port B
-const DAC_SELECT_PIN = 2;     // On port B
-const GATE_PIN = 4;           // On port D
-const CLOCK_OUT_PIN = 5;      // On port D
-const LEVEL_PIN = 6;          // On port D: the level light, on Timer/Counter0
-const RUN_BUTTON_PIN = 7;     // On port D
+// Which pin each wire is on comes from wiring.js, which the schematic page
+// reads as well
+const PINS = WIRING.pins;
 const MCUSR = 0x54;           // Reset flags register, data address
 const SREG = 0x5F;            // Status register, data address
 const INTERRUPT_ENABLE = 0x80; // Its global interrupt enable bit
@@ -112,6 +111,11 @@ function createBoard(config, options = {}) {
     machine.eepromMemory.set(options.eeprom || []);
     machine.cpu.data[MCUSR] = options.resetFlags || 0;
 
+    // The emulated port a wire's pin is on
+    function portOf(pin) {
+        return machine[`port${pin.port}`];
+    }
+
     // Step 0's most significant bit is the first bit out of the chain, the
     // mode switches follow the last step, highest switch first, and then
     // the selector's chip, whose five spare inputs are low
@@ -131,14 +135,14 @@ function createBoard(config, options = {}) {
         return bits;
     }
 
-    const chain = attachHc165Chain(machine.cpu, machine.portB, SHIFT_REG_LOAD_PIN, panelBits);
-    const dac = attachMcp4822(machine.cpu, machine.portB, DAC_SELECT_PIN);
+    const chain = attachHc165Chain(machine.cpu, portOf(PINS.load), PINS.load.bit, panelBits);
+    const dac = attachMcp4822(machine.cpu, portOf(PINS.dacSelect), PINS.dacSelect.bit);
     // The step lights: bit n of the chain's outputs is the light of step n
-    const leds = attachHc595Chain(machine.cpu, machine.portB, SHIFT_REG_LOAD_PIN, LED_CHIPS);
-    const gate = attachPinRecorder(machine.cpu, machine.portD, GATE_PIN);
-    const clockOut = attachPinRecorder(machine.cpu, machine.portD, CLOCK_OUT_PIN);
+    const leds = attachHc595Chain(machine.cpu, portOf(PINS.load), PINS.load.bit, LED_CHIPS);
+    const gate = attachPinRecorder(machine.cpu, portOf(PINS.gate), PINS.gate.bit);
+    const clockOut = attachPinRecorder(machine.cpu, portOf(PINS.clockOut), PINS.clockOut.bit);
     // Switched a thousand times a second, so measured and not recorded
-    const levelLight = attachDutyMeter(machine.cpu, machine.portD, LEVEL_PIN);
+    const levelLight = attachDutyMeter(machine.cpu, portOf(PINS.levelLight), PINS.levelLight.bit);
 
     // The two jacks, each through its inverting input stage, and whatever
     // is plugged into them: a clock source, and a source of reset pulses
@@ -149,7 +153,7 @@ function createBoard(config, options = {}) {
 
     // The run button closes its pin to ground
     const runButton = attachSwitch(
-        machine.cpu, (closed) => machine.portD.setPin(RUN_BUTTON_PIN, !closed));
+        machine.cpu, (closed) => portOf(PINS.runButton).setPin(PINS.runButton.bit, !closed));
 
     // No LFO: the modulation input sits at its centre
     machine.adc.channelValues[MOD_ADC_CHANNEL] =
@@ -158,7 +162,7 @@ function createBoard(config, options = {}) {
     // Nothing plugged in and the button up: every pin high
     machine.inputCapture1.setPin(true);
     machine.externalInt0.setPin(true);
-    machine.portD.setPin(RUN_BUTTON_PIN, true);
+    portOf(PINS.runButton).setPin(PINS.runButton.bit, true);
 
     // A recorder's completed pulses, in milliseconds of chip time
     function pulsesMs(recorder) {
