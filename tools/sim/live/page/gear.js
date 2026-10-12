@@ -27,13 +27,31 @@ function probe(context, signal, size) {
     return { analyser, samples: new Float32Array(size) };
 }
 
+// A wavetable's waves, each made from its harmonics
+function buildTable(context, waves) {
+    return waves.map((wave) => {
+        const real = new Float32Array(WAVETABLE_HARMONICS + 1);
+        const imag = new Float32Array(WAVETABLE_HARMONICS + 1);
+
+        for (let n = 1; n <= WAVETABLE_HARMONICS; n++) {
+            [real[n], imag[n]] = wave.part(n);
+        }
+        return context.createPeriodicWave(real, imag);
+    });
+}
+
 // The patch: the oscillator and the noise each through a switch to the VCO's
 // output, that through the VCA to the audio output, and a steady 1 through
 // the envelope to the VCA's CV. The volume is the listener's, after the
-// audio output, so the scope does not show it
+// audio output, so the scope does not show it. The oscillator is two, kept
+// in step and mixed: a wavetable is played as two waves next to each other
+// in it, more of one and less of the other as the position moves
 function buildGear() {
     const context = new AudioContext();
     const oscillator = context.createOscillator();
+    const oscillatorB = context.createOscillator();
+    const mixA = context.createGain();
+    const mixB = context.createGain();
     const noise = context.createBufferSource();
     const oscillatorOn = context.createGain();
     const noiseOn = context.createGain();
@@ -47,15 +65,22 @@ function buildGear() {
     noise.loop = true;
     envelope.gain.value = 0;
     vca.gain.value = 0;
-    oscillator.connect(oscillatorOn).connect(vcoOut);
+    mixB.gain.value = 0;
+    oscillator.connect(mixA).connect(oscillatorOn).connect(vcoOut);
+    oscillatorB.connect(mixB).connect(oscillatorOn);
     noise.connect(noiseOn).connect(vcoOut);
     vcoOut.connect(vca).connect(volume).connect(context.destination);
     one.connect(envelope).connect(vca.gain);
     oscillator.start();
+    oscillatorB.start();
     noise.start();
     one.start();
     return {
-        context, oscillator, oscillatorOn, noiseOn, envelope, volume,
+        context, oscillator, oscillatorB, mixA, mixB, oscillatorOn, noiseOn,
+        envelope, volume,
+        tables: Object.fromEntries(Object.entries(WAVETABLES)
+            .map(([name, waves]) => [name, buildTable(context, waves)])),
+        held: [null, null],     // The table's wave each oscillator is on
         vcoProbe: probe(context, vcoOut, SCOPE_PROBE_SAMPLES),
         outProbe: probe(context, vca, SCOPE_PROBE_SAMPLES),
         envelopeProbe: probe(context, envelope, ENVELOPE_PROBE_SAMPLES),
@@ -85,9 +110,64 @@ function gearPitch(millivolts) {
             + (Number(el('vco-tune').value) / SEMITONES_PER_OCTAVE);
 
         addPoint(gear.pitchPoints, octaves);
-        gear.oscillator.frequency.setValueAtTime(
-            VCO_BASE_HZ * (2 ** octaves), gear.context.currentTime);
+        for (const one of [gear.oscillator, gear.oscillatorB]) {
+            one.frequency.setValueAtTime(
+                VCO_BASE_HZ * (2 ** octaves), gear.context.currentTime);
+        }
     }
+}
+
+// Puts one of the two oscillators on a wave of a table, if it is not on it
+function holdWave(which, oscillator, wave) {
+    if (gear.held[which] !== wave) {
+        oscillator.setPeriodicWave(wave);
+        gear.held[which] = wave;
+    }
+}
+
+// Plays a wavetable at where the position pot is: the two waves it is
+// between, the even one of the table on the first oscillator and the odd on
+// the second, so the one moved to a new wave is the one mixed out just then.
+// Returns the two waves' places in the table and how far it is to the second
+function playTable(name) {
+    const waves = gear.tables[name];
+    const place = (Number(el('vco-position').value) / POSITION_STEPS) * (waves.length - 1);
+    const low = Math.min(Math.floor(place), waves.length - 2);
+    const part = place - low;
+    const even = low + (low % 2);
+    const odd = (low + 1) - (low % 2);
+
+    holdWave(0, gear.oscillator, waves[even]);
+    holdWave(1, gear.oscillatorB, waves[odd]);
+    gear.mixA.gain.value = (even === low) ? (1 - part) : part;
+    gear.mixB.gain.value = (odd === low) ? (1 - part) : part;
+    return { low, part };
+}
+
+// The wave chosen, put on the gear: a wavetable, the noise, or one of the
+// oscillator's own on the first oscillator alone. Says what the position
+// pot is doing
+function applyWave() {
+    const wave = el('vco-wave').value;
+    const isNoise = wave === VCO_NOISE;
+    let reading = 'no use on this wave';
+
+    if (WAVETABLES[wave] !== undefined) {
+        const { low, part } = playTable(wave);
+
+        reading = `${WAVETABLES[wave][low].name} to ${WAVETABLES[wave][low + 1].name}, `
+            + `${Math.round(part * 100)}%`;
+    } else if (!isNoise) {
+        gear.oscillator.type = wave;
+        gear.held[0] = null;
+        gear.mixA.gain.value = 1;
+        gear.mixB.gain.value = 0;
+    } else {
+        // The noise: the oscillators are left as they are, switched out
+    }
+    gear.oscillatorOn.gain.value = isNoise ? 0 : 1;
+    gear.noiseOn.gain.value = isNoise ? 1 : 0;
+    el('vco-position-reading').textContent = reading;
 }
 
 // The gate at the envelope: up at the attack's rate while it is high, down
@@ -103,7 +183,6 @@ function gearGate(isHigh) {
 
 // The gear's knobs, worded, and put on the gear if it is on
 function applyGear() {
-    const wave = el('vco-wave').value;
     const tune = Number(el('vco-tune').value);
 
     el('vco-tune-reading').textContent = `${(tune > 0) ? '+' : ''}${tune} semitones`;
@@ -111,13 +190,7 @@ function applyGear() {
     el('env-release-reading').textContent = `${el('env-release').value} ms`;
     el('gear-power').textContent = `Gear: ${(gear === null) ? 'off' : 'on'}`;
     if (gear !== null) {
-        const isNoise = wave === VCO_NOISE;
-
-        if (!isNoise) {
-            gear.oscillator.type = wave;
-        }
-        gear.oscillatorOn.gain.value = isNoise ? 0 : 1;
-        gear.noiseOn.gain.value = isNoise ? 1 : 0;
+        applyWave();
         gear.volume.gain.value = Number(el('volume').value) / VOLUME_STEPS;
         gearPitch(lastValue(trace.cv));
     }

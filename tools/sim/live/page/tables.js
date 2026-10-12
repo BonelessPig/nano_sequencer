@@ -104,6 +104,33 @@ const MS_PER_S = 1000;
 const VCO_BASE_HZ = 130.81;
 const VCO_NOISE = 'noise';
 const SEMITONES_PER_OCTAVE = 12;
+// The VCO's wavetables. A wave is its harmonics: `part(n)` gives harmonic
+// n's cosine and sine amounts, up to WAVETABLE_HARMONICS. The position pot
+// goes through a table from its first wave to its last
+const WAVETABLE_HARMONICS = 32;
+const POSITION_STEPS = 1000;    // The position pot's top
+const HARMONIC_WAVES = 16;
+const sawPart = (n) => [0, (((n % 2) === 1) ? 1 : -1) / n];
+// A pulse high for `duty` of its cycle from the start of it, so its rising
+// edge is where the other waves rise through zero and a mix keeps its level
+const pulsePart = (duty) => (n) => [Math.sin(2 * Math.PI * n * duty) / n,
+    (1 - Math.cos(2 * Math.PI * n * duty)) / n];
+const WAVETABLES = {
+    classic: [
+        { name: 'sine', part: (n) => [0, (n === 1) ? 1 : 0] },
+        { name: 'triangle', part: (n) => [0, ((n % 2) === 0) ? 0
+            : (((n % 4) === 1) ? 1 : -1) / (n * n)] },
+        { name: 'saw', part: sawPart },
+        { name: 'square', part: pulsePart(0.5) },
+        { name: '25% pulse', part: pulsePart(0.25) },
+        { name: '10% pulse', part: pulsePart(0.1) },
+    ],
+    // A saw let through a harmonic at a time, like a filter opening
+    harmonics: Array.from({ length: HARMONIC_WAVES }, (unused, i) => ({
+        name: (i === 0) ? 'harmonic 1' : `harmonics 1 to ${i + 1}`,
+        part: (n) => ((n <= (i + 1)) ? sawPart(n) : [0, 0]),
+    })),
+};
 const NOISE_SECONDS = 2;        // Before the noise comes round again
 // An attack or release is the time to get about 95% of the way, which is
 // this many of the time constants the envelope is given

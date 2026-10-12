@@ -7,7 +7,12 @@
                 <option value="triangle" selected>Triangle</option>
                 <option value="sawtooth">Saw</option>
                 <option value="noise">White noise</option>
+                <option value="classic">Wavetable: classic</option>
+                <option value="harmonics">Wavetable: harmonics</option>
             </select></label>
+            <label for="vco-position">Position</label>
+            <input type="range" id="vco-position" min="0" max="1000" step="1" value="0">
+            <span class="num" id="vco-position-reading"></span>
             <label for="vco-tune">Tune</label>
             <input type="range" id="vco-tune" min="-24" max="24" step="1" value="0">
             <span class="num" id="vco-tune-reading"></span>
@@ -42,6 +47,16 @@
                     <td>An octave up per volt. With the tune knob at its
                         middle 0 V plays C, 130.81 Hz. White noise has no
                         pitch and takes no notice of the CV.</td></tr>
+                <tr><th>Wavetables</th>
+                    <td>A row of waves the position pot goes through, the
+                        VCO playing a mix of the two it is between. Classic:
+                        sine, triangle, saw, square, 25% pulse, 10% pulse.
+                        Harmonics: a saw let through one harmonic at a time,
+                        1 to 16, like a filter opening.</td></tr>
+                <tr><th>Position</th>
+                    <td>Where in the wavetable the VCO is. No use on the
+                        other waves. Until the gear is on it says
+                        nothing.</td></tr>
                 <tr><th>Envelope</th>
                     <td>Rises while the gate is high and stays up, then
                         falls once it is low. Each time is how long it takes
