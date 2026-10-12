@@ -86,10 +86,24 @@
             <span><span class="led" id="clock-led"></span> Clock (D5)</span>
             <span>Pitch CV <span class="num" id="cv"></span></span>
             <span>Envelope CV <span class="num" id="env"></span></span>
-            <span class="dim">The last two rows of the trace mark each edge
-                arriving at the clock and reset inputs.</span>
+            <label><input type="checkbox" id="trace-axes"> Axes</label>
         </div>
         <canvas id="trace"></canvas>
+        <details>
+            <summary>The trace</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>What it shows</th>
+                    <td>The last four seconds, the present at the right:
+                        the pitch CV, the gate and the clock output.</td></tr>
+                <tr><th>Clock in, Reset in</th>
+                    <td>A mark for each edge arriving at that input. Only
+                        the instant is known, not how long it was high.</td></tr>
+                <tr><th>Axes</th>
+                    <td>A line across the pitch CV at each volt, and a line
+                        down every row at each second back from the
+                        present.</td></tr>
+            </table></div>
+        </details>
     </section>
 
     <!-- part: gear.html -->

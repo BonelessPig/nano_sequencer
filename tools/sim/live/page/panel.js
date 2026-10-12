@@ -1,70 +1,15 @@
 'use strict';
-// The panel: the steps, the engine switch, the mode switches, the transport
+// The panel: the steps, the engine and the mode switches, the transport.
+// What draws its two rotary switches is in pots.js
 // ---- Panel ----
 
-// Where a position of the rotary switch is on its picture, at a distance
-// from the middle
-function knobPoint(position, radius) {
-    const radians = ((KNOB_FIRST_DEG + (position * KNOB_STEP_DEG)) * Math.PI) / 180;
-
-    return [KNOB_X + (radius * Math.sin(radians)), KNOB_Y - (radius * Math.cos(radians))];
-}
+// Each step's column and the parts of it that are set again and again,
+// found once as the panel is built: { column, led, switches, note, means }
+const stepParts = [];
 
 // Sets the low three mode switches together, as the rotary switch does
 function setEngine(engine) {
     post({ mode: (state.mode & ~ENGINE_MASK) | engine });
-}
-
-// Draws a rotary switch of eight positions: a dot and a name at each, a
-// bare number where `names` has none, and the knob with its pointer. A
-// position is chosen by clicking its name, by clicking the knob for the
-// next one round, or with the arrow keys. `current` says where the switch
-// stands and `set` posts a new position
-function buildKnob(id, names, current, set) {
-    const knob = el(id);
-    let marks = '';
-
-    for (let position = 0; position < KNOB_POSITIONS; position++) {
-        const [dotX, dotY] = knobPoint(position, KNOB_DOT_RADIUS);
-        const [textX, textY] = knobPoint(position, KNOB_LABEL_RADIUS);
-
-        marks += `<g class="detent" data-position="${position}">`
-            + `<circle cx="${dotX.toFixed(1)}" cy="${dotY.toFixed(1)}" r="3"/>`
-            + `<text x="${textX.toFixed(1)}" y="${textY.toFixed(1)}"`
-            + ` text-anchor="${(textX < KNOB_X) ? 'end' : 'start'}">`
-            + `${names[position] ?? position}</text></g>`;
-    }
-    knob.innerHTML = `<svg viewBox="0 0 ${KNOB_WIDTH} ${KNOB_HEIGHT}" aria-hidden="true">`
-        + `${marks}<circle class="knob-body" cx="${KNOB_X}" cy="${KNOB_Y}"`
-        + ` r="${KNOB_RADIUS}"/><line class="knob-pointer" x1="${KNOB_X}" y1="${KNOB_Y}"`
-        + ` x2="${KNOB_X}" y2="${KNOB_Y - KNOB_RADIUS + 4}"/></svg>`;
-    for (const detent of knob.querySelectorAll('.detent')) {
-        detent.addEventListener('click', () => set(Number(detent.dataset.position)));
-    }
-    knob.querySelector('.knob-body').addEventListener('click',
-        () => set((current() + 1) % KNOB_POSITIONS));
-    knob.addEventListener('keydown', (event) => {
-        const turn = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[event.key];
-
-        if (turn !== undefined) {
-            event.preventDefault();
-            set(Math.max(0, Math.min(KNOB_POSITIONS - 1, current() + turn)));
-        }
-    });
-}
-
-// Turns a rotary switch's picture to a position, which `name` words
-function turnKnob(id, position, name) {
-    const knob = el(id);
-    const degrees = KNOB_FIRST_DEG + (position * KNOB_STEP_DEG);
-
-    knob.setAttribute('aria-valuenow', String(position));
-    knob.setAttribute('aria-valuetext', name);
-    knob.querySelector('.knob-pointer')
-        .setAttribute('transform', `rotate(${degrees} ${KNOB_X} ${KNOB_Y})`);
-    for (const detent of knob.querySelectorAll('.detent')) {
-        detent.classList.toggle('chosen', Number(detent.dataset.position) === position);
-    }
 }
 
 function buildPanel() {
@@ -76,7 +21,6 @@ function buildPanel() {
             el('steps').insertAdjacentHTML('beforeend', '<div class="row-caption dim"></div>');
         }
         column.className = isGroupStart ? 'step group' : 'step';
-        column.id = `step-${step}`;
         column.innerHTML = `<span class="dim num">${step}</span><span class="led"></span>`;
         for (let bit = NOTE_BITS - 1; bit >= 0; bit--) {
             const button = document.createElement('button');
@@ -95,6 +39,13 @@ function buildPanel() {
         column.insertAdjacentHTML('beforeend', '<span class="num note"></span>'
             + '<span class="num dim means"></span><span class="num dim means"></span>');
         el('steps').append(column);
+        stepParts.push({
+            column,
+            led: column.querySelector('.led'),
+            switches: [...column.querySelectorAll('.switch')],
+            note: column.querySelector('.note'),
+            means: [...column.querySelectorAll('.means')],
+        });
     }
     // Mode switches 7 to 3, each a toggle with its number under it
     for (let bit = MODE_BITS - 1; bit >= ENGINE_BITS; bit--) {
@@ -304,13 +255,13 @@ function showPanel() {
     const volts = ((state.tempo + 0.5) * ADC_REFERENCE_VOLTS) / ADC_STEPS;
 
     state.notes.forEach((note, step) => {
-        const column = el(`step-${step}`);
+        const parts = stepParts[step];
 
-        for (const button of column.querySelectorAll('.switch')) {
+        for (const button of parts.switches) {
             button.classList.toggle('on', ((note >> Number(button.dataset.bit)) & 1) === 1);
         }
-        column.querySelector('.note').textContent = noteText(note);
-        column.classList.toggle('control', isStagePanel() && (step >= STAGE_COUNT));
+        parts.note.textContent = noteText(note);
+        parts.column.classList.toggle('control', isStagePanel() && (step >= STAGE_COUNT));
     });
     showModes();
     if (document.activeElement !== el('tempo')) {
@@ -455,11 +406,10 @@ function showStep() {
     el('place').textContent = placeText(state.step);
 
     for (let step = 0; step < STEP_COUNT; step++) {
-        const column = el(`step-${step}`);
+        const { column, means: [top, bottom] } = stepParts[step];
         const isControl = isStage && (step >= STAGE_COUNT);
         const isPlaying = (step === playing)
             || (isControl && ((step - STAGE_COUNT) === playing));
-        const [top, bottom] = column.querySelectorAll('.means');
 
         column.classList.toggle('playing', isPlaying);
         [top.textContent, bottom.textContent] = stepTerms(step, isPlaying);
@@ -469,8 +419,7 @@ function showStep() {
 // The sixteen step lights, as the chip last latched them: bit n of the
 // value is the light of step n. Nothing else on the page lights them
 function showLeds() {
-    for (let step = 0; step < STEP_COUNT; step++) {
-        el(`step-${step}`).querySelector('.led')
-            .classList.toggle('lit', ((state.leds >> step) & 1) === 1);
-    }
+    stepParts.forEach(({ led }, step) => {
+        led.classList.toggle('lit', ((state.leds >> step) & 1) === 1);
+    });
 }

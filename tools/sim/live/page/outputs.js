@@ -112,12 +112,16 @@ function midiLine(event) {
     return `${time}Not a message the firmware should send: byte ${event.byte}`;
 }
 
+// Adds a line to a pane, which keeps its last `max`. Each line is a piece
+// of text of its own in the pane, so the oldest is dropped without the
+// rest being read back and written again
 function addLine(id, text, max) {
     const pane = el(id);
-    const lines = (pane.textContent === '') ? [] : pane.textContent.split('\n').slice(-max);
 
-    lines.push(text);
-    pane.textContent = lines.join('\n');
+    pane.append(`${text}\n`);
+    while (pane.childNodes.length > max) {
+        pane.firstChild.remove();
+    }
     pane.scrollTop = pane.scrollHeight;
 }
 

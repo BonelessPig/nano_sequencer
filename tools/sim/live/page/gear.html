@@ -1,45 +1,66 @@
     <section>
         <h2>Patched gear</h2>
         <div class="row">
-            <button id="gear-power">Gear: off</button>
-            <label>VCO wave <select id="vco-wave">
-                <option value="sine">Sine</option>
-                <option value="triangle" selected>Triangle</option>
-                <option value="sawtooth">Saw</option>
-                <option value="noise">White noise</option>
-                <option value="classic">Wavetable: classic</option>
-                <option value="harmonics">Wavetable: harmonics</option>
-                <option value="odd">Wavetable: odd harmonics</option>
-                <option value="pwm">Wavetable: pulse width</option>
-                <option value="formant">Wavetable: formant</option>
-                <option value="fold">Wavetable: wavefolder</option>
-                <option value="sync">Wavetable: hard sync</option>
-            </select></label>
+            <button id="gear-power" aria-pressed="false">Gear: off</button>
+            <span class="dim" id="gear-hint">Off: nothing is heard, and a
+                browser plays nothing until this is clicked.</span>
         </div>
-        <div class="pots">
-            <div><label for="vco-tune">Tune</label>
-                <input type="range" id="vco-tune" min="-24" max="24" step="1" value="0">
-                <span class="num" id="vco-tune-reading"></span></div>
-            <div><label for="vco-position">Position</label>
-                <input type="range" id="vco-position" min="0" max="1000" step="1" value="0">
-                <span class="num" id="vco-position-reading"></span></div>
-            <div><label for="chorus">Chorus</label>
-                <input type="range" id="chorus" min="0" max="100" step="1" value="0">
-                <span class="num" id="chorus-reading"></span></div>
-            <div><label for="env-attack">Attack</label>
-                <input type="range" id="env-attack" min="1" max="500" step="1" value="5">
-                <span class="num" id="env-attack-reading"></span></div>
-            <div><label for="env-release">Release</label>
-                <input type="range" id="env-release" min="1" max="2000" step="1" value="50">
-                <span class="num" id="env-release-reading"></span></div>
-            <div><label for="env-position">Envelope to position</label>
-                <input type="range" id="env-position" min="0" max="100" step="1" value="0">
-                <span class="num" id="env-position-reading"></span></div>
-            <div><label for="volume">Volume</label>
-                <input type="range" id="volume" min="0" max="100" step="1" value="20">
-                <span class="num" id="volume-reading"></span></div>
+        <div class="groups">
+            <fieldset class="group">
+                <legend>VCO</legend>
+                <label>Wave <select id="vco-wave">
+                    <option value="sine">Sine</option>
+                    <option value="triangle" selected>Triangle</option>
+                    <option value="sawtooth">Saw</option>
+                    <option value="noise">White noise</option>
+                    <option value="classic">Wavetable: classic</option>
+                    <option value="harmonics">Wavetable: harmonics</option>
+                    <option value="odd">Wavetable: odd harmonics</option>
+                    <option value="pwm">Wavetable: pulse width</option>
+                    <option value="formant">Wavetable: formant</option>
+                    <option value="fold">Wavetable: wavefolder</option>
+                    <option value="sync">Wavetable: hard sync</option>
+                </select></label>
+                <div class="pots">
+                    <div><label for="vco-tune">Tune</label>
+                        <input type="range" id="vco-tune" min="-24" max="24" step="1" value="0">
+                        <span class="num" id="vco-tune-reading"></span></div>
+                    <div><label for="vco-position">Position</label>
+                        <input type="range" id="vco-position" min="0" max="1000" step="1" value="0">
+                        <span class="num" id="vco-position-reading"></span></div>
+                    <div><label for="chorus">Chorus</label>
+                        <input type="range" id="chorus" min="0" max="100" step="1" value="0">
+                        <span class="num" id="chorus-reading"></span></div>
+                </div>
+            </fieldset>
+            <fieldset class="group">
+                <legend>Envelope</legend>
+                <div class="pots">
+                    <div><label for="env-attack">Attack</label>
+                        <input type="range" id="env-attack" min="1" max="500" step="1" value="5">
+                        <span class="num" id="env-attack-reading"></span></div>
+                    <div><label for="env-release">Release</label>
+                        <input type="range" id="env-release" min="1" max="2000" step="1" value="50">
+                        <span class="num" id="env-release-reading"></span></div>
+                    <div><label for="env-position">To position</label>
+                        <input type="range" id="env-position" min="0" max="100" step="1" value="0">
+                        <span class="num" id="env-position-reading"></span></div>
+                </div>
+            </fieldset>
+            <fieldset class="group narrow">
+                <legend>Listening</legend>
+                <div class="pots">
+                    <div><label for="volume">Volume</label>
+                        <input type="range" id="volume" min="0" max="100" step="1" value="20">
+                        <span class="num" id="volume-reading"></span></div>
+                </div>
+            </fieldset>
         </div>
         <canvas id="wavetable" hidden></canvas>
+        <div class="row spaced">
+            <span class="dim">Scope</span>
+            <label><input type="checkbox" id="scope-axes"> Axes</label>
+        </div>
         <canvas id="scope"></canvas>
         <details>
             <summary>The gear and the scope</summary>
@@ -75,7 +96,7 @@
                         pot is at; the thin ones are the chorus's voices.
                         The table is drawn solid, so a part of any of them
                         that a nearer peak stands in front of is hidden.</td></tr>
-                <tr><th>Envelope to position</th>
+                <tr><th>Envelope, To position</th>
                     <td>How far the envelope carries the VCO along the
                         wavetable from where the position pot is: on every
                         note, up the table at the attack's rate and back at
@@ -127,6 +148,18 @@
                 <tr><th>Scope, audio out</th>
                     <td>The same few milliseconds after the VCA: the VCO's
                         wave at the height the envelope gives it.</td></tr>
+                <tr><th>Scope, axes</th>
+                    <td>On the two waves: a line at zero and at each peak,
+                        and one down every 5 ms. On the frequency: a line
+                        at each octave, named in hertz. On the envelope:
+                        its 0 and its 1. Those two have a line down at each
+                        second back from the present.</td></tr>
+                <tr><th>Pots</th>
+                    <td>Drag one up or down, or click it and use the arrow
+                        keys. Shift held makes a drag go slowly, and a
+                        double click puts a pot of the gear back where it
+                        started. A dimmed pot has no use on the wave
+                        chosen.</td></tr>
                 <tr><th>Limits</th>
                     <td>Paced by the browser, not the chip, so nothing here
                         is a measurement. Full scale is the VCO's own peak,

@@ -2,8 +2,10 @@
 // The wavetables' waves worked out, and the picture of the one chosen
 // ---- Wavetables ----
 
-// Each table's waves, worked out the first time they are asked for
+// Each table's waves, and the lines its picture is drawn with, worked out
+// the first time they are asked for
 const tablesMade = {};
+const picturesMade = {};
 
 // A wave from its harmonics: their cosine and sine amounts as the
 // oscillator takes them, and one cycle as heights. All are brought to a
@@ -117,20 +119,32 @@ function drawTableLine(context, shape, depth, box, colour, card) {
 // of these gives its lines as { depth, over, draw }: `over` puts lines at
 // one depth in order, the table's first
 
-// The table itself: its waves and some between each two, the back the
-// darkest and the front the lightest
-function tableLines(context, waves, box, colour) {
+// The lines a table's picture is drawn with, each as { depth, shape }: its
+// waves and as many between each two as bring it near PICTURE_LINES_ABOUT.
+// They are the same every frame, so they are kept
+function pictureLines(name) {
+    const waves = tableWaves(name);
     const perWave = Math.max(1, Math.round(PICTURE_LINES_ABOUT / (waves.length - 1)));
-    const last = (waves.length - 1) * perWave;
+
+    picturesMade[name] ??= Array.from({ length: ((waves.length - 1) * perWave) + 1 },
+        (unused, i) => ({ depth: i / perWave, shape: shapeAt(waves, i / perWave) }));
+    return picturesMade[name];
+}
+
+// The table itself, the back the darkest and the front the lightest
+function tableLines(context, name, box, colour) {
+    const lines = pictureLines(name);
+    const front = colour('--wave-front');
+    const back = colour('--wave-back');
     const card = colour('--card');
 
-    return Array.from({ length: last + 1 }, (unused, i) => ({
-        depth: i / perWave,
+    return lines.map(({ depth, shape }, i) => ({
+        depth,
         over: 0,
         draw: () => {
             context.lineWidth = PICTURE_TABLE_WIDTH;
-            drawTableLine(context, shapeAt(waves, i / perWave), i / perWave, box,
-                mixColour(colour('--wave-front'), colour('--wave-back'), i / last), card);
+            drawTableLine(context, shape, depth, box,
+                mixColour(front, back, i / (lines.length - 1)), card);
         },
     }));
 }
@@ -188,10 +202,11 @@ function voiceLine(context, waves, box, colour, place, voice) {
 // voice, which is the one the position pot is at
 function voiceLines(context, waves, box, colour) {
     const places = voicePlaces(waves.length);
+    const presences = voicePresences();
     const lines = gearVoices.slice(1)
-        .filter((k) => voicePresence(k) > 0)
+        .filter((k) => presences[k] > 0)
         .map((k) => voiceLine(context, waves, box, colour, places[k], {
-            over: 1, alpha: PICTURE_VOICE_ALPHA * voicePresence(k),
+            over: 1, alpha: PICTURE_VOICE_ALPHA * presences[k],
             width: PICTURE_VOICE_WIDTH, scanWidth: PICTURE_VOICE_SCAN_WIDTH }));
 
     lines.push(voiceLine(context, waves, box, colour, places[0], {
@@ -209,7 +224,7 @@ function drawWavetable() {
         const waves = tableWaves(name);
         const last = waves.length - 1;
         const box = pictureBox(width, height, waves.length);
-        const lines = [...tableLines(context, waves, box, colour),
+        const lines = [...tableLines(context, name, box, colour),
             ...voiceLines(context, waves, box, colour)];
 
         lines.sort((a, b) => (b.depth - a.depth) || (a.over - b.over));

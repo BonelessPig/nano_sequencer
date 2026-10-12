@@ -55,6 +55,10 @@ section { background: var(--card); border: 1px solid var(--line); border-radius:
 button, select { font: inherit; color: inherit; background: var(--off);
                  border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; }
 button { cursor: pointer; }
+button:hover:not(:disabled), select:hover { border-color: var(--dim); }
+button:focus-visible, select:focus-visible, .knob:focus-visible {
+    outline: 2px solid var(--on); outline-offset: 1px; }
+label { cursor: pointer; }
 /* The sixteen steps as two rows of eight, whatever the engine */
 #steps { display: grid; grid-template-columns: repeat(8, minmax(44px, 1fr)); gap: 6px;
          overflow-x: auto; }
@@ -99,6 +103,14 @@ button { cursor: pointer; }
               text-align: center; font-size: 13px; }
 .pots .num { min-height: 18px; }
 .pot:focus-within { outline: 2px solid var(--on); outline-offset: 1px; }
+.pots > div.unused { opacity: 0.45; }   /* A pot with no use just now */
+/* The gear's controls in groups, each a box under its name */
+.groups { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.group { flex: 3 1 300px; min-width: 0; margin: 0; padding: 4px 10px 10px;
+         border: 1px solid var(--line); border-radius: 6px; }
+.group.narrow { flex: 1 1 120px; }
+.group legend { padding: 0 4px; color: var(--dim); font-size: 12px; }
+.group .pots { min-width: 0; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
 /* Mode switches 7 to 3: a legend over five toggles, a column a switch */
 #mode-legend, #modes-spare { display: grid; grid-template-columns: repeat(5, 56px);
                              gap: 4px 6px; }
@@ -121,7 +133,8 @@ button { cursor: pointer; }
 #gate-led.lit { background: var(--gate); }
 #level-led { background: var(--on); border-color: var(--line); opacity: 0; }
 #clock-led.lit { background: var(--clock); }
-#run.down { background: var(--on); border-color: var(--on); color: #1b1b1b; }
+#run.down, #gear-power[aria-pressed="true"] { background: var(--on); border-color: var(--on);
+                                              color: #1b1b1b; }
 #transport { font-weight: 600; }
 button:disabled { opacity: 0.5; cursor: default; }
 /* What explains the page: tables, folded away until opened */

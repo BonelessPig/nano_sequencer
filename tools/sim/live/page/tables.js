@@ -34,6 +34,7 @@ const POT_RADIUS = 15;
 const POT_DOT_RADIUS = 20;
 const POT_SWEEP_DEG = 270;
 const POT_DRAG_PX = 200;
+const POT_FINE_DRAG = 5;    // How many times as far a drag goes with Shift held
 const ENGINE_PLAIN = 0;
 const ENGINE_STAGE = 1;
 const ENGINE_KLEE = 2;
@@ -58,7 +59,6 @@ const RANDOM_SLOTS_PER_EDGE = 2;
 // Mode switches 3 to 7 are the chosen engine's own. Klee: 3 load, 4 invert,
 // 5 merge, 6 and 7 the chance as a number; a step's highest switch is its
 // pattern switch and its low three its value
-const KLEE_LOAD_BIT = 3;
 const KLEE_INVERT_BIT = 4;
 const KLEE_MERGE_BIT = 5;
 const KLEE_CHANCE_SHIFT = 6;
@@ -180,25 +180,6 @@ const WAVETABLES = {
         part: shapePart((phase) => (2 * ((phase * (1 + (i * SYNC_STEP))) % 1)) - 1),
     })),
 };
-// The wavetable's picture: the points a wave's cycle is drawn through, and
-// as parts of the canvas where the front wave starts, a wave's width and
-// half height, and how far right and up the back wave is from the front.
-// Then the room under the front wave for its name, and the chosen wave's line
-const WAVE_PICTURE_POINTS = 96;
-const PICTURE_LEFT = 0.04;
-const PICTURE_WAVE_WIDTH = 0.6;
-const PICTURE_WAVE_HEIGHT = 0.14;
-const PICTURE_DEPTH_X = 0.32;
-const PICTURE_DEPTH_Y = 0.5;
-const PICTURE_FOOT_PX = 18;
-const PICTURE_CHOSEN_WIDTH = 2.5;
-// How many lines the picture draws a table with, about: its waves and as
-// many between each two as bring it near this. Then the line of each of
-// the chorus's voices, and how solid it is
-const PICTURE_LINES_ABOUT = 72;
-const PICTURE_TABLE_WIDTH = 1;  // A line of the table itself
-const PICTURE_VOICE_WIDTH = 1.5;
-const PICTURE_VOICE_ALPHA = 0.7;
 // The chorus: the voices it adds to the VCO's first, how far off pitch the
 // outermost two are at the top of the chorus pot, and the pot's top
 const CHORUS_VOICES = 36;
@@ -228,10 +209,39 @@ const CHORUS_BUNCHING = 1.6;
 // Any voice takes this much of the pot to come in fully
 const CHORUS_FIRST_VOICES = 2;
 const CHORUS_VOICE_FADE = 0.06;
+// Every voice by number: 0 the VCO's first, the rest the chorus's
+const gearVoices = Array.from({ length: CHORUS_VOICES + 1 }, (unused, k) => k);
+// How far each voice stands from the first, which stands at 0: the
+// chorus's own are spread evenly from -1 to 1
+const VOICE_SPREAD = gearVoices.map((k) => ((k === 0)
+    ? 0 : ((2 * CHORUS_STANDS[k - 1]) / (CHORUS_VOICES - 1)) - 1));
+// Where on the chorus pot, 0 to 1, each voice begins to come in
+const VOICE_COMES_IN = gearVoices.map((k) => (1 - CHORUS_VOICE_FADE)
+    * (Math.log(Math.max(1, k / CHORUS_FIRST_VOICES))
+        / Math.log(CHORUS_VOICES / CHORUS_FIRST_VOICES)));
 // The envelope's position pot's top, and how far the envelope has to move
 // before the wavetable is moved with it
 const SWEEP_STEPS = 100;
 const ENVELOPE_STEP = 0.002;
+// The wavetable's picture: the points a wave's cycle is drawn through, and
+// as parts of the canvas where the front wave starts, a wave's width and
+// half height, and how far right and up the back wave is from the front.
+// Then the room under the front wave for its name, and the chosen wave's line
+const WAVE_PICTURE_POINTS = 96;
+const PICTURE_LEFT = 0.04;
+const PICTURE_WAVE_WIDTH = 0.6;
+const PICTURE_WAVE_HEIGHT = 0.14;
+const PICTURE_DEPTH_X = 0.32;
+const PICTURE_DEPTH_Y = 0.5;
+const PICTURE_FOOT_PX = 18;
+const PICTURE_CHOSEN_WIDTH = 2.5;
+// How many lines the picture draws a table with, about: its waves and as
+// many between each two as bring it near this. Then the line of each of
+// the chorus's voices, and how solid it is
+const PICTURE_LINES_ABOUT = 72;
+const PICTURE_TABLE_WIDTH = 1;  // A line of the table itself
+const PICTURE_VOICE_WIDTH = 1.5;
+const PICTURE_VOICE_ALPHA = 0.7;
 // The picture's scan along the chosen wave: how often it goes along it at
 // VCO_BASE_HZ, twice as often an octave up, and the most often it goes.
 // Then how much of the wave it is long, its line and its glow
@@ -241,8 +251,6 @@ const PICTURE_SCAN_TAIL = 0.12;
 const PICTURE_SCAN_WIDTH = 5;
 const PICTURE_VOICE_SCAN_WIDTH = 3;     // On a voice of the chorus
 const PICTURE_SCAN_GLOW_PX = 10;
-// Every voice by number: 0 the VCO's first, the rest the chorus's
-const gearVoices = Array.from({ length: CHORUS_VOICES + 1 }, (unused, k) => k);
 const NOISE_SECONDS = 2;        // Before the noise comes round again
 // An attack or release is the time to get about 95% of the way, which is
 // this many of the time constants the envelope is given
@@ -256,6 +264,19 @@ const ENVELOPE_PROBE_SAMPLES = 32;
 const SCOPE_ROWS = 4;
 const SCOPE_LABEL_PX = 16;
 const SCOPE_GAP_PX = 4;
+// The axes of the trace and the scope, shown when asked for: how faint and
+// how dashed their lines are, how often there is one down a band that is
+// the trace's window wide, and down one that is a wave. A level's name is
+// over its line, or this far under it where the line is this far up the band
+const AXIS_ALPHA = 0.45;
+const AXIS_DASH = [2, 3];
+const AXIS_TICK_MS = 1000;
+const SCOPE_TICK_MS = 5;
+const AXIS_LABEL_UNDER = 0.8;
+const AXIS_LABEL_DROP_PX = 11;
+// What is named up a band of the scope, as [part of the way up, name]
+const SCOPE_WAVE_LEVELS = [[0, '-1'], [0.5, '0'], [1, '+1']];
+const SCOPE_ENVELOPE_LEVELS = [[0, '0'], [1, '1']];
 // What the tempo pot's reading means, as the firmware takes it: a tempo on
 // the internal clock, and one of seven ratios to the external clock
 const BPM_MIN = 30;
