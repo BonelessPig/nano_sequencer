@@ -9,16 +9,30 @@
 #include "mod.h"
 #include <stddef.h>
 
-#define READING_MAX (1023U) // The top of an amount and of the signal
+// The widths mod_config.h may give a reading: the swing, a bit narrower, has
+// to be 8 bits at the least, and the top of a reading has to fit in an int
+// of 16
+#define READING_BITS_MIN (9U)
+#define READING_BITS_MAX (15U)
+
+#if (MOD_CONFIG_READING_BITS < READING_BITS_MIN) \
+    || (MOD_CONFIG_READING_BITS > READING_BITS_MAX)
+#error "MOD_CONFIG_READING_BITS must be 9 to 15"
+#endif
+
+// The top of an amount and of the signal
+#define READING_MAX (((uint16_t)1U << MOD_CONFIG_READING_BITS) - 1U)
+#define DEPTH_BITS  (8U)
 #define DEPTH_MAX   (255U)
 
 // A swing of less than this either side of the centre is taken as none
-#define DEAD_ZONE (16U)
+#define DEAD_ZONE (MOD_CONFIG_DEAD_ZONE)
 
-// An amount is 10 bits and the swing 9; each is brought down to 8, so that
-// their product fits in 16
-#define AMOUNT_PER_LEVEL (4U)
-#define SWING_PER_LEVEL  (2U)
+// An amount is as wide as a reading and the swing a bit narrower (10 bits
+// and 9 on this board); each is brought down to 8, so that their product
+// fits in 16
+#define AMOUNT_PER_LEVEL (1U << (MOD_CONFIG_READING_BITS - DEPTH_BITS))
+#define SWING_PER_LEVEL  (1U << ((MOD_CONFIG_READING_BITS - 1U) - DEPTH_BITS))
 
 // Half of DEPTH_MAX, added before dividing by it to round to the nearest
 #define ROUNDING (127U)
@@ -53,7 +67,8 @@ void mod_depth(uint16_t amount, uint16_t signal, mod_depth_t *p_depth)
         {
             swing = 0U;
         }
-        // Up to 512 below the centre and 511 above, so 256 at the most
+        // One more below the centre than above it (512 and 511 on this
+        // board), so 256 at the most
         swing = at_most((uint16_t)(swing / SWING_PER_LEVEL), (uint16_t)DEPTH_MAX);
 
         // At most 255 * 255, which fits in 16 bits

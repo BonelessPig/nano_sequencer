@@ -11,7 +11,9 @@
  * The signal is a reading from 0 to 1023 that swings either side of its
  * centre, 512. At the centre it does nothing. So does a reading within 16
  * of the centre, which is what an input with nothing plugged into it gives,
- * noise and all. The amount is 0 to 1023, and 0 is off.
+ * noise and all. The amount is 0 to 1023, and 0 is off. Those are this
+ * board's numbers: the width of a reading and the dead zone are set in
+ * mod_config.h, and the centre is half the width's range.
  *
  * The two are multiplied into a depth, 0 to 255, with a direction: 255 is
  * the signal at one end of its swing with the amount at its top. What the
@@ -23,9 +25,11 @@
  */
 #include <stdbool.h>
 #include <stdint.h>
+#include "mod_config.h"
 #include "prng.h"
 
-#define MOD_SIGNAL_CENTRE (512U) // The reading at which the signal does nothing
+// The reading at which the signal does nothing: the middle of its range
+#define MOD_SIGNAL_CENTRE ((uint16_t)1U << (MOD_CONFIG_READING_BITS - 1U))
 
 /**
  * @brief How far a signal and an amount move something, and which way.

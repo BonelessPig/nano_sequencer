@@ -26,6 +26,7 @@ The same source is compiled for the MCU and for a PC.
   `midi_out` stands beside `seq` too: the app calls it after `seq_tick()` with plain values taken from the sequencer's outputs, and it includes nothing else from the core.
   `bank` stands beside `seq` as well, with `pickup` under it: the app runs it ahead of the sequencer and hands the sequencer the amounts it uses as plain values.
   Neither includes anything of the sequencer's, so that another board can take them as they are.
+- `mod_config.h` is not a module: it is the numbers this board chooses for its modulation, and the one header another board rewrites.
   `env` stands beside `seq` in the same way, called after it with the gate and the amplitude it gave, and includes nothing from the core at all.
 - Every pointer parameter is checked for null, and a null means do nothing and return the harmless value (false, 0).
   The header says so.

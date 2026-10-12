@@ -264,3 +264,11 @@ All eight were the owner's choice, from options put to them.
 | 162 | The slopes | **Straight lines**, to the peak and back to 0 V, worked out every tick and written to channel B every tick after channel A. |
 | 163 | Stopped, and in calibration mode | **A stop does not cut an envelope short**: it runs out as it would have. In calibration mode channel B stays at 0 V. |
 | 164 | A time of 0 | **Channel B follows the gate**: at the peak while the gate is open and at 0 V while it is closed, so a VCA on it works from power-on. It is the time in milliseconds that counts, which is 0 for the lowest thirty-odd counts of the pot. The owner's choice, over holding the peak and over staying at 0 V. |
+
+**The modulation config file.** Settled on 2026-10-11, with the owner, who may build another board around `mod` (145).
+
+| # | Decision | Outcome |
+|---|---|---|
+| 165 | Where the modulation's numbers are | **One header, `core/mod_config.h`, that a board rewrites.** It holds the reading's width in bits and the dead zone, from which `mod` works out the centre, the top and its scaling, and a range, a least and a most for the note and the gate length. Chosen over a table read at run time, which costs flash and RAM and does not suit the chance or the step position. The images are byte for byte what they were. |
+| 166 | Whether that is a configuration macro | **It is not.** The rule against them is about the three builds, which differ only in what is linked; these are named limits, the same in every build. |
+| 167 | What stays out | **`bank` and `cal` keep their own 1023**, and the amplitude its 255, for now. A board with another width changes those by hand until they join the file. |

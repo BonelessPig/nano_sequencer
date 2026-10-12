@@ -8,11 +8,14 @@ paths:
 
 Loaded with the files below, on top of `core/CLAUDE.md`, whose rules apply to all of `core/`.
 
-- `mod` knows a signal, an amount and the depth the two make, and nothing of what the depth is for: `seq.c` says, with `mod_shift()` and `mod_chance()`, and the ranges are constants at its top.
-  `mod` includes only `prng`, so another board can take it as it is.
+- `mod` knows a signal, an amount and the depth the two make, and nothing of what the depth is for: `seq.c` says, with `mod_shift()` and `mod_chance()`, and the ranges and limits it passes are in `mod_config.h`.
+  `mod` includes only `prng` and `mod_config.h`, so another board can take it as it is and write that one header for itself.
+- `mod_config.h` is constants only and includes nothing: the reading's width in bits and the dead zone, which `mod` works the centre, the top and its scaling out from, and a range, a least and a most for each thing `seq.c` shifts.
+  A new shift's numbers go there; `mod.c` refuses a width outside 9 to 15 bits at compile time.
+  A shift of `1U` by more than 7 is a rule 12.2 finding, so the macros made from the width shift a `(uint16_t)1U`.
 - The LFO and its amounts are a control like any other: in `seq_mod_t` inside `seq_inputs_t`, read when a step begins.
   An LFO that is not valid is taken to be at its centre.
-- The centre is 512 and a reading within 16 of it is the centre too.
+- The centre is 512 and a reading within 16 of it is the centre too, as `mod_config.h` has them.
   That is what makes an input with nothing plugged in move nothing, whatever the amounts are; keep it.
 - A chance is drawn only when it is not 0, and only for a step that holds a note.
   With no modulation the random numbers the engines draw are therefore what they were, and the engines' tests rely on it.

@@ -30,13 +30,6 @@
 // Where the random numbers start from at power-on; any value but 0 will do
 #define PRNG_SEED (0xACE1U)
 
-// How far the LFO moves things at its fullest: a note by this many places in
-// the scale, and a gate's length by this many pulses, kept to at least one
-#define MOD_NOTE_RANGE  (7U)
-#define MOD_NOTE_MIN    (1U)
-#define MOD_GATE_RANGE  (SEQ_PULSES_PER_STEP / 2U)
-#define MOD_GATE_MIN    (1U)
-
 // How loud a step is with nothing taken off it, and the most the LFO takes
 #define AMPLITUDE_MAX   (255U)
 
@@ -280,8 +273,9 @@ static uint8_t modulated_note(seq_state_t *p_state, const seq_inputs_t *p_in, ui
         else
         {
             mod_for(p_in, p_in->mod.transpose, &depth);
-            modulated = mod_shift(note, &depth, (uint8_t)MOD_NOTE_RANGE,
-                                  (uint8_t)MOD_NOTE_MIN, (uint8_t)NOTE_MAP_NOTE_MAX);
+            modulated = mod_shift(note, &depth, (uint8_t)MOD_CONFIG_NOTE_RANGE,
+                                  (uint8_t)MOD_CONFIG_NOTE_MIN,
+                                  (uint8_t)MOD_CONFIG_NOTE_MAX);
         }
     }
 
@@ -302,8 +296,8 @@ static uint8_t modulated_gate_length(const seq_inputs_t *p_in)
 
     mod_for(p_in, p_in->mod.gate_length, &depth);
 
-    return mod_shift(p_in->gate.length, &depth, (uint8_t)MOD_GATE_RANGE,
-                     (uint8_t)MOD_GATE_MIN, (uint8_t)SEQ_PULSES_PER_STEP);
+    return mod_shift(p_in->gate.length, &depth, (uint8_t)MOD_CONFIG_GATE_RANGE,
+                     (uint8_t)MOD_CONFIG_GATE_MIN, (uint8_t)MOD_CONFIG_GATE_MAX);
 }
 
 

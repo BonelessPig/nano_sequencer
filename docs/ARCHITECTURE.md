@@ -339,6 +339,7 @@ The level light shows the selected amount, and so where the pot has to go.
 ### Modulation
 
 `mod` multiplies the LFO's swing from its centre (512, with a dead zone of 16 either side) by an amount, giving a depth of 0 to 255 and a direction.
+The signal's width and dead zone, and the note's and the gate length's rows below, are set in `core/mod_config.h`, the one file another board built around `mod` would rewrite.
 Read as each step begins:
 
 | What | At a depth of 255 | Kept within | Below the centre |
