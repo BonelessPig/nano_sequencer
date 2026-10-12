@@ -96,6 +96,7 @@ make            # Build build/debug/output.hex, then print flash/RAM usage
 make size       # Print flash/RAM usage (builds first if needed)
 make flash      # Upload build/debug/output.hex to the board
 make test       # Build the firmware source for your PC and run the unit tests
+make test-quiet # The same, printing one line unless a test fails
 make coverage   # Run the tests instrumented; fails unless line and branch coverage is 100%
 make misra      # Run cppcheck with the MISRA addon
 make sim        # Run the firmware images on an emulated board and check what they do

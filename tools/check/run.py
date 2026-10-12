@@ -1,6 +1,9 @@
 """Runs every check that defines "done" and prints one line per stage.
 
-Usage: python tools/check/run.py <make program>
+Usage: python tools/check/run.py <make program> [stage ...]
+
+With no stage named, every stage runs. Naming stages by their labels runs only
+those, which is how `make test-quiet` runs the host tests alone.
 
 Each stage is a `make` target. Its output is captured: a stage that passes
 prints a single line, with one figure picked out of its output where there is
@@ -18,7 +21,7 @@ STAGES = [
     ("build debug", ["CONFIG=debug", "all"], r"^\s*\d+\s+\d+\s+\d+\s+\d+"),
     ("build release", ["CONFIG=release", "all"], r"^\s*\d+\s+\d+\s+\d+\s+\d+"),
     ("build midi", ["CONFIG=midi", "all"], r"^\s*\d+\s+\d+\s+\d+\s+\d+"),
-    ("test", ["test"], None),
+    ("test", ["test"], r"^\d+ checks, \d+ failed"),
     ("coverage", ["coverage"], r"^Firmware total"),
     ("misra", ["-k", "misra"], None),
     ("sim", ["sim"], r"\bpass \d+"),
@@ -35,6 +38,9 @@ def describe(label, output, pattern):
     if label.startswith("build"):
         text, data, bss = (int(field) for field in lines[-1].split()[:3])
         return f"{text + data} bytes flash, {data + bss} bytes static RAM"
+    if label == "test":
+        checks = sum(int(line.split()[0]) for line in lines)
+        return f"{len(lines)} programs, {checks} checks"
     if label == "sim":
         return f"{lines[-1].split()[-1]} scenarios passed"
     return lines[-1].strip()
@@ -67,15 +73,23 @@ def main():
     make = sys.argv[1]
     # A stage's output can hold characters the console cannot show
     sys.stdout.reconfigure(errors="replace")
+    wanted = sys.argv[2:]
+    known = [stage[0] for stage in STAGES]
+    unknown = [label for label in wanted if label not in known]
+    if unknown:
+        print(f"check: no such stage ({', '.join(unknown)})")
+        return 1
     failed = [
         label for label, arguments, pattern in STAGES
-        if not run_stage(make, label, arguments, pattern)
+        if (not wanted or label in wanted)
+        and not run_stage(make, label, arguments, pattern)
     ]
 
     if failed:
         print(f"check: FAILED ({', '.join(failed)})")
         return 1
-    print("check: all passed")
+    if not wanted:
+        print("check: all passed")
     return 0
 
 

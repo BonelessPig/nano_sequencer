@@ -10,6 +10,7 @@
 #   make size         Print the size report (builds first if needed)
 #   make flash        Build if needed, then upload to the board over serial
 #   make test         Build the code for this PC and run its unit tests
+#   make test-quiet   The same, printing one line unless a test fails
 #   make coverage     Run the tests instrumented and report line/branch coverage
 #   make misra        Run cppcheck with the MISRA addon over the source
 #   make sim          Run the firmware images on an emulated board
@@ -449,6 +450,12 @@ $(SIM_MODULES): $(SIM_DIR)/package-lock.json
 .PHONY: check
 check:
 	@$(PYTHON) tools/check/run.py $(MAKE)
+
+# `make test-quiet` is `make test` through the same script: one line if every
+# test passes, and the full output if one fails.
+.PHONY: test-quiet
+test-quiet:
+	@$(PYTHON) tools/check/run.py $(MAKE) test
 
 # Upload the .hex to the board through the bootloader. The first line stops with
 # a clear message if no port was given and none could be auto-detected.
