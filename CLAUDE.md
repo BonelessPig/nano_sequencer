@@ -51,7 +51,7 @@ Before calling a change done, every stage it could affect passes.
 `make check` runs them all and prints one line per stage, with the full output only of a stage that fails.
 Run it once, before the commit of a change to what the firmware does, not after every edit.
 To run only some stages, name them to the same script: `python tools/check/run.py make coverage sim` prints the same one line each.
-The names are `build debug`, `build release`, `build midi`, `test`, `coverage`, `misra` and `sim`; from Git Bash, wrap it in `cmd //c "..."` like `make`.
+The names are `build debug`, `build release`, `build midi`, `test`, `coverage`, `misra`, `sim` and `sizes`; from Git Bash, wrap it in `cmd //c "..."` like `make`.
 Use a stage's own target only when you need the output of a run that passes.
 Run less where less can have changed: a refactor that `cmp` shows left all three images identical needs only `make test-quiet` (`make test` with one line of output unless a test fails), and a change to docs alone needs nothing.
 Keeping token use and waiting down is a priority: do not re-run a stage nothing has touched since it last passed.
@@ -94,6 +94,8 @@ The owner runs it themselves and reports back; don't run it.
 - When a change alters what the board has or does that someone could see or work (a pin, a part, a control, a mode, a log line, an output), bring the live view (`make live`, `tools/sim/live/`) up to date in the same piece of work, along with anything it needs from `tools/sim/boards/`.
   The rules of both folders load with the first file read in `tools/sim/live/`.
   Run `make sim` before calling the change done; the page cannot be checked from here, so say what the owner should look at in the browser.
+- Split a file by topic before it passes its limit: about 25,000 characters for source, tests and tooling, 6,000 for a `CLAUDE.md` or a rules file.
+  The last line of `make check` names the files that are over (`tools/check/sizes.py` has the limits and the exceptions); say so when one appears there.
 - The owner wants the project minimal and lightweight, and as clean as possible against the standard: prefer actually resolving a finding over recording a deviation, and when there is a real trade-off, lay out the options with a recommendation and let them choose.
 
 ## Project facts

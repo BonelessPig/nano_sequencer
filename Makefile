@@ -17,6 +17,7 @@
 #   make live         Run one image on that board at real speed, shown in a browser
 #   make check        Run all of the above checks; one line each unless one fails
 #   make figures      Measure the sizes and counts the documents quote
+#   make file-sizes   List the files grown past the size the rules allow
 #   make clean       Delete the build/ directory
 #   make flash PORT=COM5   Override any variable below from the command line
 #
@@ -462,6 +463,13 @@ $(SIM_MODULES): $(SIM_DIR)/package-lock.json
 .PHONY: check
 check:
 	@$(PYTHON) tools/check/run.py $(MAKE)
+
+# `make file-sizes` lists the tracked source and rules files that have grown
+# past the size the rules allow, in one line. It is the last stage of `make
+# check` and never fails. tools/check/sizes.py has the limits.
+.PHONY: file-sizes
+file-sizes:
+	@$(PYTHON) tools/check/sizes.py
 
 # `make figures` measures what the documents quote (flash and RAM by source
 # file, the host test counts, coverage and the scenario counts) and writes it

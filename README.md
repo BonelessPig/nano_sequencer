@@ -120,6 +120,7 @@ make sim        # Run the firmware images on an emulated board and check what th
 make live       # Run one image on that board at real speed and watch it in a browser
 make check      # The three builds and all four checks above; one line each unless one fails
 make figures    # Measure sizes, test counts and coverage, and write docs/FIGURES.md
+make file-sizes # List the files grown past the size the rules allow
 make clean      # Remove the build/ directory
 ```
 

@@ -15,6 +15,9 @@ The builds and the host tests run one after another, since the builds share
 their objects. Coverage, the analysis and the emulated board then run side by
 side: each takes about as long as the other two and none writes where another
 reads. Their lines are still printed in the order of the list.
+
+The last stage, the file sizes, never fails: its line names the files that
+have grown past the size the rules allow, to be split by topic.
 """
 import concurrent.futures
 import re
@@ -31,6 +34,7 @@ STAGES = [
     ("coverage", ["coverage"], r"^Firmware total"),
     ("misra", ["-k", "misra"], None),
     ("sim", ["sim"], r"\bpass \d+"),
+    ("sizes", ["file-sizes"], r"limit"),
 ]
 
 # The stages that run side by side, after the others
