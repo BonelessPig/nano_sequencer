@@ -1,6 +1,6 @@
 # nano_sequencer — architecture
 
-What the firmware does today, how it is put together, and what is still open. The rules for the codebase are in [CLAUDE.md](../CLAUDE.md) and the `CLAUDE.md` in each source folder; the file-by-file layout, the hardware list and the build commands are in the [README](../README.md); the plan and the decisions taken are in [ROADMAP.md](ROADMAP.md). Function signatures, units and ranges are in the headers, and what each test program checks is in its source: neither is repeated here.
+What the firmware does today, how it is put together, and what is still open. The rules for the codebase are in [CLAUDE.md](../CLAUDE.md) and the `CLAUDE.md` in each source folder; the file-by-file layout, the hardware list and the build commands are in the [README](../README.md); the plan is in [ROADMAP.md](ROADMAP.md) and the decisions taken in [DECISIONS.md](DECISIONS.md). Function signatures, units and ranges are in the headers, and what each test program checks is in its source: neither is repeated here.
 
 **How far this has been checked.** Everything here has run on the host (`make test`) and on the emulated board (`make sim`). Only the first refactored firmware has been flashed to the real board; nothing since has, and most of the hardware it expects is not wired. The open items say what to check on the board, part by part. Timing figures marked as measured come from the emulated board; the rest are calculated.
 
@@ -213,7 +213,7 @@ One control, a length in clock pulses read when the step begins, so it scales wi
 | The pot | Trims the voltage: 64 mV below the nominal value to 63 above, 1 mV for every 8 counts |
 | The lowest switch of the last step | Switching it on stores the voltage as that point. The gate drops for 250 ms to show it |
 
-**The record** is twelve bytes: a version (1), the five entries as 16 bits each, low byte first, and a CRC-8 (polynomial 0x07, from 0). It is taken only if the version and the checksum are both right; otherwise the ideal table stays. There is one copy, so a power cut during a store loses the whole calibration (roadmap decision 53).
+**The record** is twelve bytes: a version (1), the five entries as 16 bits each, low byte first, and a CRC-8 (polynomial 0x07, from 0). It is taken only if the version and the checksum are both right; otherwise the ideal table stays. There is one copy, so a power cut during a store loses the whole calibration (DECISIONS.md, decision 53).
 
 ### The crash log
 
@@ -407,7 +407,7 @@ PC0 and PC1 are given a direction in `register_init.c` and never used, and PD3 i
 - **It records nothing unless the reset cause reaches the firmware.** With the stock old bootloader a watchdog reset never gets back to the firmware (item 15). Optiboot, from memory, clears the reset flags and hands the value on in a CPU register that this firmware does not read; if so, every start reads as cause 0 until the firmware takes the value from there or the board runs with no bootloader.
 - **Reading it takes the debug image**, which logs the newest record at start-up and leaves the EEPROM alone. The other seven are only in the EEPROM, from address 16. Nothing clears the log but erasing the EEPROM.
 - **To see it work**, use the test build of item 15: the log should read `Reset = 8` and `Crash 1 Place = 5 Count = 1`, with the count going up each time.
-- Reading the log at start-up holds the debug build's first log line back by 0.5 ms, and 2.6 ms more when there is a record to report. The pins are not affected (roadmap decision 111).
+- Reading the log at start-up holds the debug build's first log line back by 0.5 ms, and 2.6 ms more when there is a record to report. The pins are not affected (DECISIONS.md, decision 111).
 
 ### 3. The timer tick has not run on the board
 
@@ -479,7 +479,7 @@ The ninth 74HC165 is not wired, so the board as it stands reads all eight mode s
 - **The stage controls**, one at a time. Hold is the one to look at on a scope: one gate across the stage with no gap.
 - **The other engines.** The Klee engine is silent until a pattern switch is on and a stage has a value.
 
-Whether the provisional choices sound right is the other thing to find out (roadmap decisions 74 to 96), and whether the same "random" choices after every power-on matter in use.
+Whether the provisional choices sound right is the other thing to find out (DECISIONS.md, decisions 74 to 96), and whether the same "random" choices after every power-on matter in use.
 
 ### 14. The step lights have not run on the board
 
@@ -487,7 +487,7 @@ One thing is an assumption: that PB1 can be the 74HC165s' load line and the 74HC
 
 ### 15. The watchdog has not run on the board, and the bootloader matters
 
-- **Do not expect recovery with the stock old bootloader.** It leaves the watchdog running at 16 ms, so after a watchdog reset the board resets inside the bootloader until the power is cycled. Burn Optiboot first (roadmap decision 3), which also changes the upload speed in the Makefile.
+- **Do not expect recovery with the stock old bootloader.** It leaves the watchdog running at 16 ms, so after a watchdog reset the board resets inside the bootloader until the power is cycled. Burn Optiboot first (DECISIONS.md, decision 3), which also changes the upload speed in the Makefile.
 - **To see it work** there is no way from the panel to make the firmware hang. A test build that stops kicking while the run button is held would do it.
 - **The reset cause** may read 0 if the bootloader clears the flags first, and then no crash is recorded (item 2).
 

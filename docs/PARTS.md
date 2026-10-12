@@ -95,7 +95,7 @@ Four parts of this list are placeholders, because the circuits behind them have 
 
 ## Power
 
-The board runs from USB for now. A Eurorack supply is a possible later step, so these stages are to be designed to work from either (roadmap decision 116). What that means for the parts:
+The board runs from USB for now. A Eurorack supply is a possible later step, so these stages are to be designed to work from either (DECISIONS.md, decision 116). What that means for the parts:
 
 - **The CV buffer** gets a rail-to-rail op-amp that runs from a single 5 V rail (an MCP6002, say), which reaches 0 V there and would also do on a Eurorack board. A TL072 only works from ±12 V, so it is not the part to buy now.
 - **The gate and clock outputs** are 5 V from USB. That usually triggers other modules, though many expect more; a higher level is only possible from the Eurorack rails, so leave room for it in the output stage.
