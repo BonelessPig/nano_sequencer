@@ -26,7 +26,8 @@ Follow BARR-C:2018 plus the MISRA-style safety rules and line length limits list
 
 ## Folder rules
 
-Read a folder's `CLAUDE.md` before adding a file to it or changing one in it.
+A folder's `CLAUDE.md` loads by itself when a file in the folder or below it is read, so don't read it as well.
+Read one yourself only before creating a file in a folder you have not read from yet.
 
 - `core/CLAUDE.md`: what keeps the core pure.
 - `ports/CLAUDE.md`: port headers and status codes.
@@ -39,8 +40,7 @@ Read a folder's `CLAUDE.md` before adding a file to it or changing one in it.
 - `tools/sim/CLAUDE.md`: the emulated board.
 - `tools/sim/live/CLAUDE.md`: the live view.
 
-`core/` and `adapters/target/` are flat, so the lessons about one part of either (an engine, MIDI out, the watchdog, the pins) are in `.claude/rules/core-*.md` and `target-*.md`, each loaded by the files it names.
-The folder's `CLAUDE.md` lists them.
+`core/` and `adapters/target/` are flat, so the lessons about one part of either (an engine, MIDI out, the watchdog, the pins) are in `.claude/rules/core-*.md` and `target-*.md`, each loaded by the files it names.The folder's `CLAUDE.md` lists them.
 
 ## Done means
 
@@ -89,7 +89,7 @@ The owner runs it themselves and reports back; don't run it.
 - `docs/FIGURES.md` holds the sizes and the test and scenario counts, and `make figures` writes it.
   Run that once before the commit of a change to the firmware or its tests, never edit the file by hand, and copy any total that moved into the documents that quote it.
 - When a change alters what the board has or does that someone could see or work (a pin, a part, a control, a mode, a log line, an output), bring the live view (`make live`, `tools/sim/live/`) up to date in the same piece of work, along with anything it needs from `tools/sim/boards/`.
-  Read `tools/sim/CLAUDE.md` and `tools/sim/live/CLAUDE.md` first.
+  The rules of both folders load with the first file read in `tools/sim/live/`.
   Run `make sim` before calling the change done; the page cannot be checked from here, so say what the owner should look at in the browser.
 - The owner wants the project minimal and lightweight, and as clean as possible against the standard: prefer actually resolving a finding over recording a deviation, and when there is a real trade-off, lay out the options with a recommendation and let them choose.
 
