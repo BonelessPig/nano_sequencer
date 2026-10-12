@@ -207,9 +207,9 @@ There are three build configurations, chosen with `CONFIG=`. They differ only in
 
 | | Logging | MIDI out | Output | Flash | Static RAM |
 |---|---|---|---|---:|---:|
-| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | None | `build/debug/output.hex` | 9644 bytes | 782 bytes |
-| `make CONFIG=release` | None | None; the USART is never switched on | `build/release/output.hex` | 8360 bytes | 220 bytes |
-| `make CONFIG=midi` | None | Over USART0 at 31250 baud | `build/midi/output.hex` | 8512 bytes | 254 bytes |
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | None | `build/debug/output.hex` | 10786 bytes | 816 bytes |
+| `make CONFIG=release` | None | None; the USART is never switched on | `build/release/output.hex` | 9502 bytes | 254 bytes |
+| `make CONFIG=midi` | None | Over USART0 at 31250 baud | `build/midi/output.hex` | 9654 bytes | 288 bytes |
 
 `CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`). The tests, the coverage check and the static analysis always cover both loggers and both MIDI outputs.
 
