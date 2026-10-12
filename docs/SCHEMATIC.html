@@ -550,8 +550,38 @@ ATmega328P pin</title>
 </ul>
 
 </main>
+<script src="../tools/sim/boards/wiring.js"></script>
 <script>
 "use strict";
+// Where each signal is comes from tools/sim/boards/wiring.js, the file the
+// emulated board is wired from, so these drawings and `make sim` agree.
+if (typeof WIRING === "undefined") {
+    document.getElementById("nano").textContent =
+        "The chip drawings need tools/sim/boards/wiring.js, which this page " +
+        "loads from the repository it is in.";
+    throw new Error("wiring.js did not load");
+}
+const SIGNALS = Object.assign({}, WIRING.pins, WIRING.analog);
+
+// A signal's name on the MCU: PB1, or ADC6 for an analog input
+function mcuName(signal) {
+    const s = SIGNALS[signal];
+    return s.channel === undefined ? `P${s.port}${s.bit}` : `ADC${s.channel}`;
+}
+
+// A signal's row in the Nano's drawing
+function wired(signal) {
+    const s = SIGNALS[signal];
+    return ["", `${s.nano} · ${mcuName(signal)}`, s.net, s.kind];
+}
+
+// How the other drawings name a signal's pin: "D9 (PB1)", or with its bus
+// name as well, "D13 (PB5, SCK)"
+function at(signal, busName) {
+    const also = busName ? `, ${busName}` : "";
+    return `${SIGNALS[signal].nano} (${mcuName(signal)}${also})`;
+}
+
 // A chip drawn from above. left and right list the pins from the top down as
 // [number or "", name printed inside, what it goes to, colour class].
 function drawChip(id, chip) {
@@ -594,7 +624,7 @@ drawChip("nano", {
     title: "Arduino Nano (ATmega328P)", usb: true,
     label: "Arduino Nano outline with what each header pin goes to",
     left: [
-        ["", "D13 · PB5", "SCK: 74HC165 CLK, 74HC595 SRCLK, DAC SCK", "spi"],
+        wired("sck"),
         ["", "3V3", "not connected", "nc"],
         ["", "REF", "not connected", "nc"],
         ["", "A0 · PC0", "unused (set as an input)", "nc"],
@@ -603,29 +633,29 @@ drawChip("nano", {
         ["", "A3", "free", "nc"],
         ["", "A4", "free", "nc"],
         ["", "A5", "free", "nc"],
-        ["", "A6 · ADC6", "pot wiper", "ana"],
-        ["", "A7 · ADC7", "modulation input, from its stage", "ana"],
+        wired("pot"),
+        wired("modulation"),
         ["", "5V", "5 V to every chip and the pot", "pwr"],
         ["", "RST", "not connected", "nc"],
         ["", "GND", "common ground", "gnd"],
         ["", "VIN", "not connected", "nc"],
     ],
     right: [
-        ["", "D12 · PB4", "MISO: QH of chip 0, through 1 kΩ", "spi"],
-        ["", "D11 · PB3", "MOSI: DAC SDI, SER of the near 74HC595", "spi"],
-        ["", "D10 · PB2", "SS: DAC chip select", "spi"],
-        ["", "D9 · PB1", "74HC165 SH/LD and 74HC595 RCLK", "spi"],
-        ["", "D8 · PB0", "ICP1: clock input, from its input stage", "in"],
-        ["", "D7 · PD7", "run button, to ground", "sw"],
-        ["", "D6 · PD6", "OC0A: level light, through a resistor", "out"],
-        ["", "D5 · PD5", "clock output", "out"],
-        ["", "D4 · PD4", "gate output", "out"],
+        wired("miso"),
+        wired("mosi"),
+        wired("dacSelect"),
+        wired("load"),
+        wired("clockIn"),
+        wired("runButton"),
+        wired("levelLight"),
+        wired("clockOut"),
+        wired("gate"),
         ["", "D3 · PD3", "free", "nc"],
-        ["", "D2 · PD2", "INT0: reset input, from its input stage", "in"],
+        wired("resetIn"),
         ["", "GND", "common ground", "gnd"],
         ["", "RST", "not connected", "nc"],
         ["", "RX0 · PD0", "the board's USB serial chip", "nc"],
-        ["", "TX1 · PD1", "log (debug build), MIDI out (midi build)", "out"],
+        wired("transmit"),
     ],
 });
 
@@ -633,8 +663,8 @@ drawChip("hc165", {
     title: "74HC165, DIP-16, chip k of the chain (0 to 7)",
     label: "74HC165 pinout with what each pin of a step chip goes to",
     left: [
-        [1, "SH/LD", "D9 (PB1), shared by all ten", "spi"],
-        [2, "CLK", "D13 (PB5, SCK), shared by all ten", "spi"],
+        [1, "SH/LD", `${at("load")}, shared by all ten`, "spi"],
+        [2, "CLK", `${at("sck", "SCK")}, shared by all ten`, "spi"],
         [3, "E", "step 2k switch, bit 0 (lowest)", "sw"],
         [4, "F", "step 2k switch, bit 1", "sw"],
         [5, "G", "step 2k switch, bit 2", "sw"],
@@ -650,7 +680,7 @@ drawChip("hc165", {
         [12, "B", "step 2k+1 switch, bit 1", "sw"],
         [11, "A", "step 2k+1 switch, bit 0 (lowest)", "sw"],
         [10, "SER", "QH of chip k+1", "spi"],
-        [9, "QH", "SER of chip k−1; chip 0: 1 kΩ to D12", "spi"],
+        [9, "QH", `SER of chip k−1; chip 0: 1 kΩ to ${SIGNALS.miso.nano}`, "spi"],
     ],
 });
 
@@ -658,8 +688,8 @@ drawChip("hc165-mode", {
     title: "74HC165, DIP-16, chip 8: the mode switches",
     label: "74HC165 pinout with what each pin of the mode switch chip goes to",
     left: [
-        [1, "SH/LD", "D9 (PB1), shared by all ten", "spi"],
-        [2, "CLK", "D13 (PB5, SCK), shared by all ten", "spi"],
+        [1, "SH/LD", `${at("load")}, shared by all ten`, "spi"],
+        [2, "CLK", `${at("sck", "SCK")}, shared by all ten`, "spi"],
         [3, "E", "mode switch 4", "sw"],
         [4, "F", "mode switch 5", "sw"],
         [5, "G", "mode switch 6", "sw"],
@@ -702,15 +732,15 @@ function drawHc595(id, name, firstStep, serFrom, qhTo) {
             [15, "QA", led(0), "out"],
             [14, "SER", serFrom, "spi"],
             [13, "O̅E̅", "ground: the outputs always drive", "gnd"],
-            [12, "RCLK", "D9 (PB1), with the 74HC165s' SH/LD", "spi"],
-            [11, "SRCLK", "D13 (PB5, SCK)", "spi"],
+            [12, "RCLK", `${at("load")}, with the 74HC165s' SH/LD`, "spi"],
+            [11, "SRCLK", at("sck", "SCK"), "spi"],
             [10, "S̅R̅C̅L̅R̅", "5 V: never cleared", "pwr"],
             [9, "QH′", qhTo[0], qhTo[1]],
         ],
     });
 }
 
-drawHc595("hc595-near", "near", 0, "D11 (PB3, MOSI)", ["SER of the far chip", "spi"]);
+drawHc595("hc595-near", "near", 0, at("mosi", "MOSI"), ["SER of the far chip", "spi"]);
 drawHc595("hc595-far", "far", 8, "QH′ of the near chip", ["not connected", "nc"]);
 
 drawChip("mcp4822", {
@@ -718,9 +748,9 @@ drawChip("mcp4822", {
     label: "MCP4822 pinout with what each pin goes to",
     left: [
         [1, "VDD", "5 V, with 100 nF to ground at the pin", "pwr"],
-        [2, "CS", "D10 (PB2)", "spi"],
-        [3, "SCK", "D13 (PB5)", "spi"],
-        [4, "SDI", "D11 (PB3)", "spi"],
+        [2, "CS", at("dacSelect"), "spi"],
+        [3, "SCK", at("sck"), "spi"],
+        [4, "SDI", at("mosi"), "spi"],
     ],
     right: [
         [8, "VOUTA", "pitch CV, 0 to 4.095 V", "ana"],
