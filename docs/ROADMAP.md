@@ -21,6 +21,8 @@ Keep it to a screen, and bring it up to date at the end of each piece of work.
   Nothing about it is settled beyond that; put the options to the owner before any code, as stages 2 and 3 were.
   The stages after it, in order: an LFO of the sequencer's own, profiles with their button, and a status light.
 - **After the modulation: MIDI in**, the second piece of phase 10 (decision 117), and then phase 11.
+- **Undecided, beside the plan: the sequencer in Ableton Live.**
+  Four routes are compared in [ABLETON.md](ABLETON.md); none is chosen and nothing is built.
 - **Waiting on the board, not on firmware:** everything from phase 1 on is unrun on hardware.
   Section 8 lists what to check, and OPEN_ITEMS.md the order to check it in.
 - **Start each piece of work in a fresh session**, from this section and the decisions it names.
