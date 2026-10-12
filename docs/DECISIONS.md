@@ -18,7 +18,7 @@ Unless a group says otherwise, its decisions were left to recommendation, are **
 | 6 | Rests | **Note 0 is a rest**, leaving 15 pitches. |
 | 7 | Choosing a mode | **A ninth 74HC165** (8 more switches, no MCU pins). The raw input is 9 bytes (decisions 74 and 75). |
 | 8 | Pitch DAC | **MCP4822** (12-bit, SPI, internal 2.048 V reference). The MCP4725, PWM and R-2R all take their reference from the USB 5 V rail, where a 1 % supply change is about 48 cents at 4 V. A 16-bit part (DAC8562/8563, AD5683R/AD5693R) is the upgrade if steps finer than 1.2 cents are ever wanted: a new adapter behind the same port. |
-| 9 | Instructions for Claude | **Nested `CLAUDE.md` files per folder.** The C standard and the line length rule are also in the user-level file. |
+| 9 | Instructions for Claude | **Nested `CLAUDE.md` files per folder.** The C standard and the line length rule are also in the user-level file. `core/` and `adapters/target/` are flat folders, so the lessons about one part of either are in `.claude/rules/core-*.md` and `target-*.md`, each with a `paths:` list, and load only with the files they are about. |
 
 **Phase 1.** Each is one constant or a few lines to change.
 

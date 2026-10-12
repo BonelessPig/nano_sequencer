@@ -13,41 +13,8 @@ This is JavaScript test tooling, outside the C coding standard; the line length 
   `boards/midi_messages.js` reads MIDI bytes into messages, from the MIDI specification and not from the firmware, and names a note.
 - `scenarios/*.test.js`: what each firmware image must do, using Node's built-in test runner.
   No other dependencies; avr8js is pinned in `package-lock.json`.
-
-- `live/server.js` and `live/page.html`: `make live`, the board run at real speed and shown in a browser.
-  A viewer, not a check.
-
-## The live view
-
-- The server uses `createBoard()` as the scenarios do and adds nothing to the model.
-  Something new to show is exposed by the board first, then sent by the server.
-- The page holds no emulator and no board state of its own: a control is posted to the server and drawn when the `state` event comes back.
-- The server empties the board's records after every slice (`drain()`).
-  A record added to the board has to be added to that list, or a long run fills memory.
-- It is paced by wall time, so nothing measured through it counts; a timing question goes in a scenario.
-- No dependencies beyond Node's own modules, and it listens on 127.0.0.1 only.
-- To try the server out, start your own on another port (`node tools/sim/live/server.js 8171`) and post only to that.
-  The owner may have one running on the default port, 8165, with a session in it; never post to that port or stop what is listening there.
-  Check that your own server bound its port before sending it anything.
-- A pin or part changed on the board is changed in the server and the page in the same piece of work.
-- The page draws the panel as one that could be built: the steps in two rows of eight, the engine on one coded rotary switch, mode switches 7 to 3 as toggles under a legend.
-  A control drawn there is a part that exists, wired as the board has it; a part the firmware could not read as drawn goes in the roadmap's panel hardware options instead.
-- What explains the page goes in a table inside a `<details>`, closed until opened, not in a paragraph.
-- A watchdog reset is taken from the board's `resets`, never from the log, so the release image shows it too.
-  What the server works out (calibration mode, the transport, the step) is then worked out afresh as at power-on (`startAgain()`); anything new it predicts has to be put back there as well as in `powerUp()`.
-- The level light goes out as `level` in every `run` message, the part of the slice it was on for, from `takeLevel()`; it is not an event and is not in `drain()`'s list.
-  The selector and the LFO reading are panel controls, kept in `panel` and set again in `powerUp()`.
-- "Stop the tick" is asked of the board again every slice until the reset comes: a slice can end inside the tick interrupt, where `stopTick()` does nothing.
-  It can only make a crash at place 5, and the page says so.
-- The crash log shown is `crashLog()`, looked at after every slice and sent when it has changed.
-  It is not a record that grows, so it is not in `drain()`'s list; `resets` is.
-- The images offered are the board's `CONFIGS`, and what an image has is asked of the board (`hasLog`, `sendsMidi`), not told from its name.
-  An image with no log says so in the log pane, and its transport and step are worked out from the controls, as the release image's are.
-- MIDI out is shown from the board's `midi.messages`: an event for each message but the clocks, which get one event a slice however many there were.
-  What the server keeps of them (the clocks since the last Start, their tempo, the notes sounding) goes out whole as `midi` in the state and `now` in every `midi` event, so the page keeps nothing.
-  It is put back in `powerUp()` and left alone in `startAgain()` on purpose: the firmware's own Start begins the count again, and a note cut short by a watchdog reset is still sounding at the receiver.
-- A MIDI Start or Stop is believed for the transport as a `Transport = N` line is.
-  It must not start the step count again: on the internal clock it comes after the first step's clock pulse, which has been counted by then.
+- `live/`: `make live`, the board run at real speed and shown in a browser.
+  A viewer, not a check; its rules are in `live/CLAUDE.md`.
 
 ## Writing parts and scenarios
 
@@ -133,7 +100,6 @@ This is JavaScript test tooling, outside the C coding standard; the line length 
 - For a long run use `runForMs()` and work out when it should end.
   `runUntilClockOutPulses()` builds the list of pulses again at every instruction: 64 steps took 14 s that way and 2.5 s the other.
 - A peripheral the firmware starts using (a timer, SPI, the EEPROM) has to be instantiated in `lib/machine.js` first; avr8js does nothing for registers nobody models.
-- When a pin or part changes in `adapters/target/`, change the board and its scenarios in the same piece of work.
 
 ## Limits
 

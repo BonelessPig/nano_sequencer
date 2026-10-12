@@ -3,7 +3,7 @@
 The only code that knows about both the core and the ports.
 
 - `app_run_once()` is one pass of the main loop and never waits.
-  It asks the timebase how many ticks have passed; if none, it only polls the log, the MIDI output and the storage.
+  Every pass polls the log, the MIDI output and the storage (`log_poll()`, `midi_output_poll()`, `nv_poll()`), and a pass on which the timebase reports no tick does only that.
   Otherwise it runs one tick in three steps: apply the outputs the previous tick computed, gather inputs through the ports into one snapshot, call the core.
   Outputs go first so they change at the same point in every tick.
 - Within the apply step, the outputs come before the log: the pitch CV, then the gate, then the clock output, all written on every tick with what the core gave, whether or not it changed.
@@ -40,9 +40,7 @@ The only code that knows about both the core and the ports.
 - The MIDI output's room is read in the gather step on every tick.
   The room read on one tick is still good when that tick's bytes are written on the next, because the queue only drains in between.
   Keep the write ahead of the read within a tick, or that stops being true.
-- `midi_output_poll()` is called on every pass, beside `log_poll()` and `nv_poll()`.
 - A stored calibration point is saved in the apply step of the next tick, after the three outputs: the whole record is encoded and handed to `nv_write()`, which only starts it.
-  `nv_poll()` is called on every pass, beside `log_poll()`.
 - Start-up reads the reset cause and the calibration record once, after `platform_init()` has succeeded, and logs both in one line.
   A record that is not valid is not an error.
 - Start-up then sees to the crash log: it reads the forty bytes, gives the core the reset cause and the breadcrumb as it was left, starts the write of the one record the core changed, and logs the newest record if there is one.
@@ -52,12 +50,10 @@ The only code that knows about both the core and the ports.
   The `PLACE_*` numbers are stored in the EEPROM and printed: never renumber one, and give a new place a new number.
   A pass with no tick writes nothing.
 - Anything added to start-up delays the debug build's first log lines, since nothing is sent until the loop runs (DECISIONS.md, decision 111).
-- Nothing in the loop may block.
-  A port function that waits (`log_flush`) is for the path where the loop is not going to run.
+- A port function that waits (`log_flush`) is for the path where the loop is not going to run.
 - A port's status goes to the core as a valid flag, and to the log as a status code.
   The core never sees a `port_status_t`.
 - No register access and no MCU headers here.
   `app.c` is also linked into the `test_app` host program against the fakes.
 - `main.c` is init, then the endless loop.
   It is left out of `test_app` and of the `misra-host` run (the test has its own `main`), and is tested by `tests/test_main.c`, which includes it with `main` renamed.
-- Both files must stay at 100% of lines and branches.

@@ -115,7 +115,7 @@ Verified against the Claude Code documentation:
 - A subagent starts cold and spends its own tokens.
   The four research agents behind this document used about 554,000 between them; CLAUDE.md now keeps work in the main session.
 
-Done: the split into a short root file and one per folder (decision 9), a quiet `make check`, the "Next" section at the top of this file, and one kind of line ending (LF, enforced by `.gitattributes`).
+Done: the split into a short root file and one per folder, with the topics of `core/` and `adapters/target/` in path-scoped rules (decision 9), a quiet `make check`, the "Next" section at the top of this file, and one kind of line ending (LF, enforced by `.gitattributes`).
 
 Not done:
 
@@ -127,6 +127,7 @@ Not done:
 - **Settle what changes behaviour before the work starts.** Removing the sync switch meant reworking about forty host tests and thirteen scenarios.
 - **Deny reads of `build/**`, `*.hex`, `*.o` and `*.gcov`, and deny `make flash`**, in `.claude/settings.json`.
   Whether a read deny also blocks `cat` through the shell is not confirmed.
+- **Confirm in a session that the path-scoped rules load** when a file they name is read; it rests on the documentation so far.
 - **Skills for the multi-step recipes** (`add-register`, `host-test-adapter`, `new-engine`), if the folder files grow too long.
 
 ## 7. Phases

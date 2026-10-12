@@ -2,7 +2,6 @@
 
 This is bare-metal C firmware for a microcontroller step sequencer.
 These rules apply to every change.
-Each folder listed under "Folder rules" has its own `CLAUDE.md` with the rules and lessons specific to it.
 
 ## Architecture: ports and adapters with a pure core
 
@@ -31,13 +30,17 @@ Read a folder's `CLAUDE.md` before adding a file to it or changing one in it.
 
 - `core/CLAUDE.md`: what keeps the core pure.
 - `ports/CLAUDE.md`: port headers and status codes.
-- `adapters/target/CLAUDE.md`: registers, the two loggers and the two MIDI outputs, pins, compiler quirks.
+- `adapters/target/CLAUDE.md`: registers, drivers and devices, compiler quirks.
 - `adapters/host/CLAUDE.md`: the PC fakes.
 - `app/CLAUDE.md`: the tick and `main`.
 - `tests/CLAUDE.md`: how each kind of source file is tested, and coverage.
 - `tools/misra/CLAUDE.md`: how MISRA findings are handled and how the analysis is run.
   Read it before acting on any finding.
 - `tools/sim/CLAUDE.md`: the emulated board.
+- `tools/sim/live/CLAUDE.md`: the live view.
+
+`core/` and `adapters/target/` are flat, so the lessons about one part of either (an engine, MIDI out, the watchdog, the pins) are in `.claude/rules/core-*.md` and `target-*.md`, each loaded by the files it names.
+The folder's `CLAUDE.md` lists them.
 
 ## Done means
 
@@ -81,7 +84,7 @@ The owner runs it themselves and reports back; don't run it.
   ARCHITECTURE.md describes what the firmware does today and carries the size figures, test counts, MISRA status and the open items list; `docs/ROADMAP.md` carries the plan and `docs/DECISIONS.md` the decisions taken, by number.
   Don't repeat any of those here.
 - When a change alters what the board has or does that someone could see or work (a pin, a part, a control, a mode, a log line, an output), bring the live view (`make live`, `tools/sim/live/`) up to date in the same piece of work, along with anything it needs from `tools/sim/boards/`.
-  Read `tools/sim/CLAUDE.md` first.
+  Read `tools/sim/CLAUDE.md` and `tools/sim/live/CLAUDE.md` first.
   Run `make sim` before calling the change done; the page cannot be checked from here, so say what the owner should look at in the browser.
 - The owner wants the project minimal and lightweight, and as clean as possible against the standard: prefer actually resolving a finding over recording a deviation, and when there is a real trade-off, lay out the options with a recommendation and let them choose.
 

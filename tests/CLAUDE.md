@@ -53,9 +53,8 @@ Test code is outside the coding standard and may use the C library freely (`mems
 
 ## Coverage
 
-- `make coverage` must stay at 100% of lines and branches for every `.c` in `core/`, `app/` and `adapters/target/`.
+- The 100% rule is in the root `CLAUDE.md`.
   A firmware `.c` file that no test compiles fails the check.
-- If a branch truly cannot be reached from a test, tell me rather than excluding it.
 - Tests check what the code does, not just that it runs: assert on the values written, the order of calls and the exact text sent.
 
 ## What these tests cannot show

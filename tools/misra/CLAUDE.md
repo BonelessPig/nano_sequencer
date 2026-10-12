@@ -43,8 +43,8 @@ BARR-C plus the rules in `README.md` is the standard we write to. cppcheck only 
 
 ## Lessons
 
-- A lesson about one folder's code is in that folder's `CLAUDE.md` (`core/`, `adapters/target/`): rules 2.5, 8.7, 8.9 and 17.3 have come up so far.
-  Read it before fixing a finding there.
+- A lesson about one folder's code is in that folder's `CLAUDE.md` (`core/`, `adapters/target/`) or the topic rules it lists: rules 2.5, 8.7, 8.9 and 17.3 have come up so far.
+  Read them before fixing a finding there.
 - Two file-static objects with the same name in different files of one run are a rule 5.9 (advisory) finding.
   The host run sees `app/app.c` and `adapters/host/host_ports.c` together, so their statics need different names.
 - Zero findings is zero from this tool, not a claim of full compliance.
