@@ -96,17 +96,21 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 
 | Area | Programs | Tests |
 |---|---:|---:|
-| Core | 24 | 370 |
-| App loop | 1 | 83 |
+| Core | 29 | 370 |
+| App loop | 5 | 83 |
 | Target adapters | 21 | 153 |
 | `main.c` | 1 | 3 |
-| **Total** | **47** | **609** |
+| **Total** | **56** | **609** |
 
 | Program | Tests |
 |---|---:|
 | `test_address` | 23 |
 | `test_analog_reader` | 10 |
-| `test_app` | 83 |
+| `test_app` | 34 |
+| `test_app_cal` | 15 |
+| `test_app_controls` | 10 |
+| `test_app_crash` | 13 |
+| `test_app_midi` | 11 |
 | `test_bank` | 12 |
 | `test_breadcrumb` | 2 |
 | `test_cal` | 16 |
@@ -144,7 +148,12 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_reset_cause` | 4 |
 | `test_reset_input` | 7 |
 | `test_run_input` | 3 |
-| `test_seq` | 85 |
+| `test_seq` | 27 |
+| `test_seq_engines` | 11 |
+| `test_seq_gate` | 15 |
+| `test_seq_mod` | 5 |
+| `test_seq_pulses` | 8 |
+| `test_seq_transport` | 19 |
 | `test_serial_logger` | 22 |
 | `test_shift_reg_reader` | 10 |
 | `test_spi` | 9 |

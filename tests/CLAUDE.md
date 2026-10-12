@@ -8,8 +8,14 @@ Test code is outside the coding standard and may use the C library freely (`mems
 - **Core:** one program per core module (`test_seq.c`, `test_clock.c`, `test_address.c` and so on), each linked with `core/*.c` alone.
   No ports, no adapters.
   A new one goes in `CORE_TESTS` in the Makefile.
-  A module is tested fully by its own program; `test_seq.c` then checks that the sequencer uses it, not every case again.
-- **App loop:** `test_app.c` links the real `app/app.c` and core against the fakes in `adapters/host/`.
+  A module is tested fully by its own program; the sequencer's tests then check that it uses the module, not every case again.
+- **The sequencer** has six programs, by topic, so a change needs only the one it concerns read: `test_seq.c` (steps, tempo, order, reset, null pointers), `test_seq_gate.c` (gate, clock output, pitch CV), `test_seq_transport.c` (run button, external clock), `test_seq_engines.c` (choice of engine, ties, step lights), `test_seq_pulses.c` (the MIDI clock pulses) and `test_seq_mod.c` (the LFO).
+  The inputs they start from and the helpers that tick the sequencer are in `seq_fixture.h`.
+- **App loop:** five programs link the real `app/app.c` and core against the fakes in `adapters/host/`: `test_app.c` (the ports called on each tick, outputs, failed reads), `test_app_cal.c` (stored calibration, calibration mode), `test_app_crash.c` (crash log, breadcrumb), `test_app_controls.c` (run button, clock and reset inputs, selector and pot, level light) and `test_app_midi.c`.
+  Their shared helpers are in `app_fixture.h`; a new program goes in `APP_TESTS` in the Makefile.
+- A helper in a fixture header is `static inline`, so a program that does not use it builds without a warning.
+  One that only a single program uses stays in that program.
+- Do not let one of these grow past about 25,000 characters; start another by topic.
 - **Target adapters and `main.c`:** one program per source file, which `#include`s the `.c` file it tests.
 
 ## Host-testing a target adapter
@@ -40,7 +46,7 @@ Test code is outside the coding standard and may use the C library freely (`mems
 - A press of the run button is 20 ticks of the button held, and it counts on the twentieth.
   The debounce takes its first reading as it stands and the transport starts as if the button were held, so run at least one tick with the button up before a press, or it is not one.
 - A pattern starts on the internal clock, and an edge takes it over.
-  For one that waits on the external clock from its first tick, `test_seq.c` sets the transport's latch in the state straight after `seq_init()` (`wait_for_external()`), which is what an edge while stopped leaves; `test_app.c` has to get there with a stop, an edge and a start.
+  For one that waits on the external clock from its first tick, the sequencer's tests set the transport's latch in the state straight after `seq_init()` (`wait_for_external()` in `seq_fixture.h`), which is what an edge while stopped leaves; the app's tests have to get there with a stop, an edge and a start.
 - An external edge is one tick with the edge flag set.
   Clear the flag again before the next tick, as the port does.
 - In `test_app`, giving a selector position an amount takes the pot down to 0 and up again with a scan after each (`set_amount()`, 20 ticks).

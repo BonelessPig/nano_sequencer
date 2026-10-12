@@ -282,11 +282,19 @@ ifdef COVERAGE
     HOST_CFLAGS += --coverage -O0
 endif
 
-TEST_APP = $(HOST_DIR)/test_app$(EXE)
+# Tests for the application loop, split by topic. tests/test_<name>.c builds
+# into the program test_<name>; add new ones to this list.
+APP_TESTS = test_app test_app_cal test_app_crash test_app_controls \
+            test_app_midi
+APP_TEST_SRCS := $(patsubst %,tests/%.c,$(APP_TESTS))
+TEST_APP := $(patsubst %,$(HOST_DIR)/%$(EXE),$(APP_TESTS))
 
-# Tests for the core alone, one program per core module. tests/test_<name>.c
-# is linked with every core source; add new ones to this list.
-CORE_TESTS = test_seq test_clock test_panel test_address test_note_map \
+# Tests for the core alone, one program per core module, and the sequencer's
+# split by topic. tests/test_<name>.c is linked with every core source; add
+# new ones to this list.
+CORE_TESTS = test_seq test_seq_gate test_seq_transport test_seq_engines \
+             test_seq_pulses test_seq_mod \
+             test_clock test_panel test_address test_note_map \
              test_engine_plain test_engine_stage test_engine_klee \
              test_engine_chance test_engine_cartesian test_engine_euclid \
              test_prng test_gate test_pitch_cal test_cal_record \
@@ -337,9 +345,9 @@ $(TEST_CORE): $(HOST_DIR)/%$(EXE): tests/%.c $(CORE_SRCS) $(HOST_HDRS)
 # Tests for the application loop: the real app.c and core, linked against the
 # fake ports in adapters/host instead of the MCU ones. main.c is left out; the
 # test program supplies main.
-$(TEST_APP): tests/test_app.c app/app.c $(CORE_SRCS) $(HOST_SRCS) $(HOST_HDRS)
+$(TEST_APP): $(HOST_DIR)/%$(EXE): tests/%.c app/app.c $(CORE_SRCS) $(HOST_SRCS) $(HOST_HDRS)
 	@$(call mkdir_p,$(HOST_DIR))
-	$(HOST_CC) $(HOST_CFLAGS) -o $@ tests/test_app.c app/app.c $(CORE_SRCS) $(HOST_SRCS)
+	$(HOST_CC) $(HOST_CFLAGS) -o $@ $< app/app.c $(CORE_SRCS) $(HOST_SRCS)
 
 # Coverage: rebuild the tests instrumented, run them, and report which lines
 # and branches of the source they exercised. Starts from an empty folder each
@@ -368,9 +376,9 @@ coverage:
 #                    without null_logger.c and midi_output.c
 #   misra-release  the same without serial_logger.c and midi_output.c
 #   misra-midi     the same without serial_logger.c and null_midi_output.c
-#   misra-host     core, ports, app/app.c, adapters/host, tests/test_app.c
-# The host run mirrors the test_app program. It leaves out app/main.c because
-# the test supplies its own main, and it includes the test file only so
+#   misra-host     core, ports, app/app.c, adapters/host, tests/test_app*.c
+# The host run mirrors the test_app programs. It leaves out app/main.c because
+# the tests supply their own main, and it includes the test files only so
 # cppcheck can see that the host fakes' control functions are called from
 # another file. Test code is not held to the coding standard, so findings
 # located in tests/ are not reported (MISRA_HOST_SCOPE).
@@ -400,7 +408,8 @@ misra-debug misra-release misra-midi:
 	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_SKIP_FLAGS) core ports app adapters/target
 
 misra-host:
-	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_HOST_SCOPE) core ports app/app.c adapters/host tests/test_app.c
+	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_HOST_SCOPE) \
+	    core ports app/app.c adapters/host $(APP_TEST_SRCS)
 
 # ---- Emulation --------------------------------------------------------------
 #

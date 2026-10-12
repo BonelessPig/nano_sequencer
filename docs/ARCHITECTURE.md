@@ -23,7 +23,7 @@ Timing figures marked as measured come from the emulated board; the rest are cal
 | Inputs | 16 steps × 4 bits, 8 mode switches and an 8-way selector on ten 74HC165s (SPI), a pot (ADC 6) and a modulation input (ADC 7), all read every 8 ms. Clock input (PB0), reset input (PD2) and run button (PD7), read every tick |
 | Outputs | Pitch CV from an MCP4822 DAC (SPI), 1 V to the octave; gate (PD4); clock (PD5); 16 step lights on two 74HC595s (SPI); a level light (PD6, PWM). A serial log in the debug build, MIDI out in the midi build |
 | Tempo | 30 to 285 BPM, a step being a sixteenth note (500 ms down to 52.6 ms) |
-| Tests | 609 host tests in 47 programs: 370 for the core, 83 for the app loop, 153 for the target adapters, 3 for `main.c` |
+| Tests | 609 host tests in 56 programs: 370 for the core, 83 for the app loop, 153 for the target adapters, 3 for `main.c` |
 | Coverage | 100% of lines (1669) and branches (758) in `core/`, `app/` and `adapters/target/` |
 | Emulated board | 193 scenarios across the three images |
 | MISRA | Zero findings from cppcheck's addon over four runs; one inline suppression (see "Static analysis") |
@@ -426,10 +426,10 @@ Each output's level is set before it is made an output, so no line glitches on t
 
 ## Host tests — `adapters/host/` and `tests/`
 
-`make test` builds 47 programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
+`make test` builds 56 programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
 There are two kinds:
 
-- **25 link the code they test.** One per core module, and `test_app`, which links the real `app.c` and all of `core/` against `adapters/host/host_ports.c`.
+- **34 link the code they test.** One per core module, with the sequencer's split by topic into six (`test_seq` and `test_seq_*`, sharing `tests/seq_fixture.h`), and five for the app loop (`test_app` and `test_app_*`, sharing `tests/app_fixture.h`), which link the real `app.c` and all of `core/` against `adapters/host/host_ports.c`.
   The fake ports script what the inputs return, record log calls in order, keep the level of each output, hold 64 bytes of storage that survive a re-init, and keep every MIDI byte written.
   Time is scripted, so the tests check on which tick each thing happens.
 - **22 `#include` the one source file they test**, against `tests/fake_atmega328p_regs.h`, which stands in for every register header.
@@ -500,7 +500,7 @@ The scale tables are constant data that this toolchain also copies to RAM.
 
 ## Static analysis
 
-`make misra` runs cppcheck with its MISRA addon four times, each over the files linked together for one build: the debug, release and midi firmware, and the `test_app` host program.
+`make misra` runs cppcheck with its MISRA addon four times, each over the files linked together for one build: the debug, release and midi firmware, and the `test_app` host programs.
 All four report zero findings; the count before the refactor was 165 ([misra-baseline.md](misra-baseline.md)).
 
 There is one inline suppression, a false positive: rule 8.7 (advisory) on the timer interrupt handler in `timebase.c`.
