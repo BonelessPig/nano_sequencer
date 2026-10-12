@@ -384,6 +384,9 @@ the board yet, and the modulation input's stage is not designed.</p>
 <tr><td>D6</td><td>PD6 (OC0A)</td><td>Level light, an LED</td>
     <td>From the pin through a resistor to the LED and ground. Value to be chosen for the
         LED, at a few milliamps</td></tr>
+<tr><td>A0</td><td>ADC0 (PC0)</td><td>The LFO rate pot</td>
+    <td>Like the pot: its ends to 5 V and ground, its wiper to the pin. Right down, the
+        sequencer's own LFO is off</td></tr>
 <tr><td>A7</td><td>ADC7</td><td>Modulation input jack (an LFO)</td>
     <td>Through an input stage that is not designed. It has to put the LFO's centre, and an
         empty jack, at half of 5 V</td></tr>
@@ -629,7 +632,7 @@ drawChip("nano", {
         wired("sck"),
         ["", "3V3", "not connected", "nc"],
         ["", "REF", "not connected", "nc"],
-        ["", "A0 · PC0", "unused (set as an input)", "nc"],
+        wired("rate"),
         ["", "A1 · PC1", "unused (set as an output)", "nc"],
         ["", "A2", "free", "nc"],
         ["", "A3", "free", "nc"],

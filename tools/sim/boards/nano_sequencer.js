@@ -48,6 +48,8 @@ const TEMPO_ADC_CHANNEL = WIRING.analog.pot.channel;
 // The modulation input: an LFO, through its input stage
 const MOD_ADC_CHANNEL = WIRING.analog.modulation.channel;
 const MOD_CENTRE_READING = 512; // What it reads with nothing plugged in
+// The rate pot of the sequencer's own LFO, which is off with it right down
+const RATE_ADC_CHANNEL = WIRING.analog.rate.channel;
 const ADC_REFERENCE_VOLTS = 5;
 const ADC_STEPS = 1024;
 // Which pin each wire is on comes from wiring.js, which the schematic page
@@ -505,6 +507,16 @@ function createBoard(config, options = {}) {
          */
         setLfoReading(reading) {
             machine.adc.channelValues[MOD_ADC_CHANNEL] =
+                ((reading + 0.5) * ADC_REFERENCE_VOLTS) / ADC_STEPS;
+        },
+
+        /**
+         * Sets the rate pot so the firmware reads exactly this value, 0
+         * to 1023. It is at 0 on a new board, where the sequencer's own
+         * LFO is off.
+         */
+        setRateReading(reading) {
+            machine.adc.channelValues[RATE_ADC_CHANNEL] =
                 ((reading + 0.5) * ADC_REFERENCE_VOLTS) / ADC_STEPS;
         },
 

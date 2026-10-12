@@ -89,6 +89,19 @@ void host_set_mod(uint16_t raw, port_status_t status);
 uint16_t host_mod_read_count(void);
 
 /**
+ * @brief Sets what rate_input_read() returns. After host_reset() it is 0,
+ *        at which the sequencer's own LFO is off.
+ * @param raw     Reading to hand out, 0 to 1023.
+ * @param status  Status to return. The reading is only written when it is STATUS_OK.
+ */
+void host_set_rate(uint16_t raw, port_status_t status);
+
+/**
+ * @brief Number of times rate_input_read() has been called since host_reset().
+ */
+uint16_t host_rate_read_count(void);
+
+/**
  * @brief Sets the status cv_output_write() returns. The voltage is only
  *        taken when it is STATUS_OK.
  */

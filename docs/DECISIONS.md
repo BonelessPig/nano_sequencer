@@ -277,3 +277,16 @@ All eight were the owner's choice, from options put to them.
 | 169 | The size of a semitone | **The calibration table's**: the pitch goes part of the way to the value the table gives the pitch two semitones off, so the swing is right wherever the output stage is not. Nothing is below the lowest pitch, so a note within two semitones of it goes down no further than to it. |
 | 170 | What it moves | **The value given, never the note.** The step, its log line and the next tick all start from the note's own pitch. A new kind of move in `mod` (`mod_scale()`), since a CV value does not fit the byte `mod_shift()` moves. |
 | 171 | Rests, a stop, calibration mode | **It goes on through a rest and a stop**, as a VCO with no VCA on it would be heard to, and an envelope's tail (163) keeps its vibrato. In calibration mode there is none. Before the first note it is about the lowest pitch. |
+
+**Modulation, stage 5: an LFO of the sequencer's own.** Settled on 2026-10-12, ahead of any code.
+172 to 175 were the owner's choice, from options put to them; 176 to 178 were left to recommendation. The rate pot on PC0, 0 Hz being off and the sum with the external LFO were settled in 146.
+
+| # | Decision | Outcome |
+|---|---|---|
+| 172 | The shape | **A sine.** Chosen over a triangle, which needs no table, and over several shapes on switches. |
+| 173 | The rate | **Free, in Hz, on a curve**: the pot's reading over 4, squared, over 48, in 65536ths of a cycle a tick. Off below a reading of 28, then a cycle in 65.5 s, 1.3 Hz a quarter of the way up, 5.2 Hz half way and 20.7 Hz at the top. Chosen over a rate tied to the tempo, and over a straight line. |
+| 174 | The sum | **The two swings added, and the sum kept within 0 to 1023.** With nothing plugged in the sequencer's own LFO is all there is; with both, the ends clip. Chosen over halving each, and over the external one taking over. |
+| 175 | The cycle | **Free-running**: a stop, a start and a reset do not touch it. Chosen over beginning again on a start, and over beginning again on every note. |
+| 176 | How the sine is made | **A quarter-wave table of 17 points, a straight line between them**, 17 bytes of RAM and flash, within about half a percent of a sine. The swing is the whole of the signal's, 511 either way; the amounts say how much of it each thing gets. |
+| 177 | Off | **At its centre, and the cycle put back to its start**, so that turned up again it begins from the centre going up. A rate pot that cannot be read leaves the last rate. It does not run in calibration mode. |
+| 178 | When the rate pot is read | **In the 8 ms scan, in place of that tick's read of the modulation input**, which amends 167: the external LFO is read on seven ticks in eight and held for the eighth. Every tick then has the conversions it had before, and no timing bound moved. Chosen over a third conversion in the scan, with which the first tick after power-on ran past its millisecond on the emulated board, and over a tick of its own for the rate pot, which put MIDI bytes up to a quarter of a millisecond later on that tick. |

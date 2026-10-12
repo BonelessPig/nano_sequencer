@@ -25,6 +25,8 @@
  *                  { selector: 0 to 7 }             What the pot sets.
  *                  { lfo: 0 to 1023 }               The modulation input,
  *                                               512 its centre.
+ *                  { rate: 0 to 1023 }              The rate pot of the
+ *                                               board's own LFO.
  *                  { run: 'press' }             One press of the run button.
  *                  { pulse: 'clock' | 'reset' } One pulse on that input jack.
  *                  { clockOn: true | false }    The clock source plugged
@@ -120,6 +122,7 @@ const STEP_UNKNOWN = -1;         // No step can be named, so none is lit
 const MAX_TEMPO_READING = 1023;
 const MAX_SELECTOR = 7;
 const MAX_LFO_READING = 1023;
+const MAX_RATE_READING = 1023;
 const LFO_CENTRE_READING = 512; // An LFO at its centre, or none plugged in
 const MAX_BODY_BYTES = 1024;
 const START_NOTES = [1, 8, 13, 8, 4, 8, 11, 0, 1, 8, 13, 8, 6, 9, 13, 0];
@@ -155,6 +158,7 @@ const panel = {
     tempo: START_TEMPO_READING,
     selector: 0,
     lfo: LFO_CENTRE_READING,
+    rate: 0,
     clockOn: false,
     clockMs: START_CLOCK_MS,
     clockPattern: CLOCK_PATTERNS[0], // Steady
@@ -208,6 +212,7 @@ function powerUp(config, eeprom) {
     board.setTempoReading(panel.tempo);
     board.setSelector(panel.selector);
     board.setLfoReading(panel.lfo);
+    board.setRateReading(panel.rate);
     // Whatever is plugged into the clock input carries on; the run button
     // is up, and the firmware starts on its own clock
     hasExternalEdge = false;
@@ -857,6 +862,9 @@ function applyCommand(command) {
     } else if (isWholeNumberUpTo(command.lfo, MAX_LFO_READING)) {
         panel.lfo = command.lfo;
         board.setLfoReading(panel.lfo);
+    } else if (isWholeNumberUpTo(command.rate, MAX_RATE_READING)) {
+        panel.rate = command.rate;
+        board.setRateReading(panel.rate);
     } else if (command.run === 'press') {
         pressRun();
     } else if ((command.pulse === 'clock') || (command.pulse === 'reset')) {

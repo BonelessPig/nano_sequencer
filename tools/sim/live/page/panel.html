@@ -215,6 +215,9 @@
                     <input type="range" id="lfo" min="0" max="1023" step="1">
                     <span class="num" id="lfo-reading"></span>
                     <button id="lfo-centre">Centre</button></div>
+                <div><label for="rate">LFO rate (A0)</label>
+                    <input type="range" id="rate" min="0" max="1023" step="1">
+                    <span class="num" id="rate-reading"></span></div>
             </div>
             <span><span class="led" id="level-led"></span> Level light (D6)
                 <span class="num dim" id="level-reading"></span></span>
@@ -236,6 +239,15 @@
                         sounding, up to two semitones either way,
                         followed every millisecond and not once a
                         step.</td></tr>
+                <tr><th>LFO rate</th>
+                    <td>A second pot, for an LFO of the board's own: a
+                        sine, off with the pot right down, then from a
+                        cycle a minute to about 20 Hz at the top, with
+                        the slow rates taking most of the travel. Its
+                        swing is added to whatever is at the LFO input,
+                        and the sum goes no further than either end.
+                        It runs free: a stop or a start does not begin
+                        its cycle again.</td></tr>
                 <tr><th>Pot</th>
                     <td>After the selector moves, the pot changes nothing
                         until it has been turned to meet the amount that

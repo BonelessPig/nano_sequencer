@@ -21,7 +21,8 @@ Loaded with the files below, on top of `tests/CLAUDE.md`, whose rules apply to a
 - In `test_app`, giving a selector position an amount takes the pot down to 0 and up again with a scan after each (`set_amount()`, 20 ticks).
   The tempo is not disturbed by it, since the pot is not on the tempo's position.
   Allow a scan (8 ticks) for any change of the panel or the pot to be seen.
-  The LFO is read on every tick: a change is in the core on the next tick and at an output the tick after.
+  The LFO is read on every tick but a scan's: a change is in the core within two ticks and at an output the tick after, so allow three.
+  The rate pot is read in the scan, and reads 0 after `host_reset()`, where the sequencer's own LFO is off.
 - The random numbers begin 135, 35, 70, 220, 176, 221, 238, 248 from the sequencer's seed.
   The plain engine draws none, so with it a step chance from the LFO takes them in that order.
 - In `test_app`, MIDI bytes are written one tick after the core works them out, like every output, and clocks keep coming while the pattern is stopped.

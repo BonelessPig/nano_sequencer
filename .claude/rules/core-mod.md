@@ -10,6 +10,8 @@ Loaded with the files below, on top of `core/CLAUDE.md`, whose rules apply to al
 
 - `mod` knows a signal, an amount and the depth the two make, and nothing of what the depth is for: `seq.c` says, with `mod_shift()` and `mod_chance()`, and the ranges are constants at its top.
   `mod` includes only `prng`, so another board can take it as it is.
+- The LFO `seq` is handed is already the sum of the modulation input and the sequencer's own (`lfo_tick()`, which the app calls first), and is always valid from the app; `seq` and `mod` know nothing of that.
+  `lfo.c` makes a signal as `mod.h` describes one, 10 bits about 512: if the signal's width becomes a board's choice, `lfo.c` has to follow it.
 - The LFO and its amounts are a control like any other: in `seq_mod_t` inside `seq_inputs_t`, read when a step begins, but for the vibrato.
   An LFO that is not valid is taken to be at its centre.
 - The centre is 512 and a reading within 16 of it is the centre too.
