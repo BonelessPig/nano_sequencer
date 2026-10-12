@@ -234,11 +234,8 @@
                         eight amounts the pot sets. Position 0 is the
                         tempo. Positions 1 to 5 each hold how much of the
                         LFO goes to one thing; 0 is off. Position 6 is the
-                        envelope's time. Position 7 is the vibrato: how
-                        far the LFO bends the pitch of the note that is
-                        sounding, up to two semitones either way,
-                        followed every millisecond and not once a
-                        step.</td></tr>
+                        envelope's time. Position 7 is how much of the
+                        LFO goes to the vibrato.</td></tr>
                 <tr><th>LFO rate</th>
                     <td>A second pot, for an LFO of the board's own: a
                         sine, off with the pot right down, then from a
@@ -259,9 +256,10 @@
                         shows where the pot has to go to meet it.</td></tr>
                 <tr><th>LFO input</th>
                     <td>The reading the chip takes from the modulation
-                        input's stage, read as each step begins. At its
-                        centre, 512, which is also what it reads with
-                        nothing plugged in, it moves nothing.</td></tr>
+                        input's stage, used as each step begins, and all
+                        the time by the vibrato. At its centre, 512, which
+                        is also what it reads with nothing plugged in, it
+                        moves nothing.</td></tr>
                 <tr><th>1 Note</th>
                     <td>Moves each note by up to seven places in the scale,
                         up while the LFO is above its centre and down while
@@ -299,6 +297,13 @@
                         to about a second, whatever the gate length. The
                         pot is finer at the short end: half way is a
                         quarter of a second.</td></tr>
+                <tr><th>7 Vibrato</th>
+                    <td>Bends the pitch CV of the note that is sounding,
+                        up to two semitones either way: up while the LFO
+                        is above its centre and down while below. It
+                        follows the LFO every millisecond, not once a
+                        step. The note itself is not moved, and MIDI out
+                        sends no pitch bend.</td></tr>
             </table></div>
         </details>
         <div class="row spaced">

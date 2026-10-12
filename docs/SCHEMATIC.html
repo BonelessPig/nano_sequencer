@@ -395,16 +395,16 @@ the board yet, and the modulation input's stage is not designed.</p>
 
 <ul>
     <li><b>Selector.</b> Position 0 is the tempo. Positions 1 to 5 are how much of the
-        LFO moves the note, the gate length, the chance of a step dropping out and which
-        step is played.
-        Positions 5 to 7 hold an amount and do nothing with it yet. With chip 9 not wired
+        LFO moves the note, the gate length, the chance of a step dropping out, which
+        step is played and how loud a note is. Position 6 is the envelope's time, and
+        position 7 how much of the LFO bends the pitch (vibrato). With chip 9 not wired
         the firmware reads position 0, so the pot is the tempo.</li>
     <li><b>The pot.</b> After the selector moves, the pot changes nothing until it has been
         turned to meet the amount that position holds.</li>
     <li><b>Level light.</b> As bright as the amount the selector is on, by pulse width, 977
         times a second. Dark at 0.</li>
-    <li><b>Modulation input.</b> Read every 8 ms and used as each step begins. At half of
-        5 V it moves nothing.</li>
+    <li><b>Modulation input.</b> Read on seven ticks in eight, used as each step begins,
+        and on every tick by the vibrato. At half of 5 V it moves nothing.</li>
 </ul>
 
 <h2>Clock and reset inputs and run button</h2>

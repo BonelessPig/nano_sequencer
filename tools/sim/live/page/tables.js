@@ -293,9 +293,12 @@ const SELECTOR_NAMES = [
     '4 Step position', '5 Amplitude',
     '6 Envelope time', '7 Vibrato',
 ];
-// What the selector's rotary switch has at each position that does
-// something; the rest get their number, as the engine's do
-const SELECTOR_KNOB_NAMES = ['tempo', 'note', 'gate length', 'step chance'];
+// What the selector's rotary switch has at each position, short enough to
+// stand beside the knob: the one at the far right has the least room
+const SELECTOR_KNOB_NAMES = [
+    'tempo', 'note', 'gate length', 'step chance',
+    'step position', 'amplitude', 'env time', 'vibrato',
+];
 const READING_PER_BPM = 4;
 const READING_PER_RATIO = 147;
 const RATIOS = [
