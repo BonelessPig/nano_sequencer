@@ -1,6 +1,6 @@
 # nano_sequencer — architecture
 
-What the firmware does today, how it is put together, and what is still open. The rules for the codebase are in [CLAUDE.md](../CLAUDE.md) and the `CLAUDE.md` in each source folder; the file-by-file layout, the hardware list and the build commands are in the [README](../README.md); the plan is in [ROADMAP.md](ROADMAP.md) and the decisions taken in [DECISIONS.md](DECISIONS.md). Function signatures, units and ranges are in the headers, and what each test program checks is in its source: neither is repeated here.
+What the firmware does today, how it is put together, and what is still open. The rules for the codebase are in [CLAUDE.md](../CLAUDE.md) and the `CLAUDE.md` in each source folder; the folder layout, the hardware list and the build commands are in the [README](../README.md); the plan is in [ROADMAP.md](ROADMAP.md) and the decisions taken in [DECISIONS.md](DECISIONS.md). Function signatures, units and ranges are in the headers, and what each test program checks is in its source: neither is repeated here.
 
 **How far this has been checked.** Everything here has run on the host (`make test`) and on the emulated board (`make sim`). Only the first refactored firmware has been flashed to the real board; nothing since has, and most of the hardware it expects is not wired. The open items say what to check on the board, part by part. Timing figures marked as measured come from the emulated board; the rest are calculated.
 
