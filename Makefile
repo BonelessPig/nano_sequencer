@@ -290,7 +290,7 @@ APP_TEST_SRCS := $(patsubst %,tests/%.c,$(APP_TESTS))
 TEST_APP := $(patsubst %,$(HOST_DIR)/%$(EXE),$(APP_TESTS))
 
 # Tests for the core alone, one program per core module, and the sequencer's
-# split by topic. tests/test_<name>.c is linked with every core source; add
+# and MIDI out's split by topic. tests/test_<name>.c is linked with every core source; add
 # new ones to this list.
 CORE_TESTS = test_seq test_seq_gate test_seq_transport test_seq_engines \
              test_seq_pulses test_seq_mod \
@@ -299,7 +299,7 @@ CORE_TESTS = test_seq test_seq_gate test_seq_transport test_seq_engines \
              test_engine_chance test_engine_cartesian test_engine_euclid \
              test_prng test_gate test_pitch_cal test_cal_record \
              test_cal test_debounce test_transport test_crc8 test_errlog \
-             test_midi_out test_pickup test_bank test_mod
+             test_midi_out test_midi_out_notes test_pickup test_bank test_mod
 TEST_CORE := $(patsubst %,$(HOST_DIR)/%$(EXE),$(CORE_TESTS))
 
 # Tests that #include the source file they test (one each for the target

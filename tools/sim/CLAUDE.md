@@ -36,7 +36,7 @@ This is JavaScript test tooling, outside the C coding standard; the line length 
   The same measurements work on the debug image, where they are far steadier than the log (0.003 ms against 0.25 ms).
 - An output with nothing modelled on it gets a pin recorder on the board, not a listener in the scenario.
   It records the level at the instant the port register is written.
-- A scenario goes in the file for its topic, inside that file's loop over the three images if it should hold for every one: `transport.test.js`, `calibration.test.js`, `engines.test.js` (the mode switches or an engine), `watchdog.test.js`, `modulation.test.js`, and `midi.test.js` for the midi image alone.
+- A scenario goes in the file for its topic, inside that file's loop over the three images if it should hold for every one: `transport.test.js`, `calibration.test.js`, `engines.test.js` (the mode switches or an engine), `watchdog.test.js`, `modulation.test.js`, and `midi.test.js` or `midi_clock.test.js` for the midi image alone.
 - The board sorts the log: `serial.lines` holds the step lines, which scenarios count and time, and `serial.notices` every other line (start-up, calibration, errors).
   A new kind of line goes to the notices unless it begins `Step `.
 - There is one wire from the USART and the board knows from its config what is on it.
@@ -51,6 +51,7 @@ This is JavaScript test tooling, outside the C coding standard; the line length 
 - A scenario that shows the firmware doing something it should not is written to pass on what it does today, named `KNOWN GAP`, with a comment saying which assertion to turn round when the firmware is put right.
 - For a long run use `runForMs()` and work out when it should end.
   `runUntilClockOutPulses()` builds the list of pulses again at every instruction: 64 steps took 14 s that way and 2.5 s the other.
+- Do not let a scenario file grow past about 25,000 characters; start another by topic, with what the two share in a file beside them that is not named `*.test.js`, as `midi_fixture.js` is.
 - A peripheral the firmware starts using (a timer, SPI, the EEPROM) has to be instantiated in `lib/machine.js` first; avr8js does nothing for registers nobody models.
 
 ## Topic rules
@@ -62,7 +63,7 @@ Read the file yourself before writing a new file that belongs to its topic.
 - `sim-transport.md`: the clock, the jacks, the run button and the level light (`transport.test.js`, `clock_source.js`, `clock_patterns.js`, `switch.js`, `edge_flag.js`, `duty_meter.js`).
 - `sim-engines.md`: the engines and the step lights (`engines.test.js`, `hc595.js`).
 - `sim-watchdog.md`: the watchdog and the crash log (`watchdog.test.js`, `crash_record.js`).
-- `sim-midi.md`: MIDI out (`midi.test.js`, `midi_messages.js`).
+- `sim-midi.md`: MIDI out (`midi.test.js`, `midi_clock.test.js`, `midi_fixture.js`, `midi_messages.js`).
 - `sim-modulation.md`: modulation (`modulation.test.js`).
 
 ## Limits

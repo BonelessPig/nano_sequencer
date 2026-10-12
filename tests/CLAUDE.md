@@ -11,6 +11,7 @@ Test code is outside the coding standard and may use the C library freely (`mems
   A module is tested fully by its own program; the sequencer's tests then check that it uses the module, not every case again.
 - **The sequencer** has six programs, by topic, so a change needs only the one it concerns read: `test_seq.c` (steps, tempo, order, reset, null pointers), `test_seq_gate.c` (gate, clock output, pitch CV), `test_seq_transport.c` (run button, external clock), `test_seq_engines.c` (choice of engine, ties, step lights), `test_seq_pulses.c` (the MIDI clock pulses) and `test_seq_mod.c` (the LFO).
   The inputs they start from and the helpers that tick the sequencer are in `seq_fixture.h`.
+- **MIDI out** has two: `test_midi_out.c` (Start, Stop, the clock, null pointers) and `test_midi_out_notes.c` (notes and ties), sharing `midi_out_fixture.h`.
 - **App loop:** five programs link the real `app/app.c` and core against the fakes in `adapters/host/`: `test_app.c` (the ports called on each tick, outputs, failed reads), `test_app_cal.c` (stored calibration, calibration mode), `test_app_crash.c` (crash log, breadcrumb), `test_app_controls.c` (run button, clock and reset inputs, selector and pot, level light) and `test_app_midi.c`.
   Their shared helpers are in `app_fixture.h`; a new program goes in `APP_TESTS` in the Makefile.
 - A helper in a fixture header is `static inline`, so a program that does not use it builds without a warning.

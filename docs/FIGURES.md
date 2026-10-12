@@ -96,11 +96,11 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 
 | Area | Programs | Tests |
 |---|---:|---:|
-| Core | 29 | 370 |
+| Core | 30 | 370 |
 | App loop | 5 | 83 |
 | Target adapters | 21 | 153 |
 | `main.c` | 1 | 3 |
-| **Total** | **56** | **609** |
+| **Total** | **57** | **609** |
 
 | Program | Tests |
 |---|---:|
@@ -134,7 +134,8 @@ Static RAM is initialised data, zeroed data and the one byte kept through a rese
 | `test_init` | 4 |
 | `test_level_output` | 5 |
 | `test_main` | 3 |
-| `test_midi_out` | 41 |
+| `test_midi_out` | 21 |
+| `test_midi_out_notes` | 20 |
 | `test_midi_output` | 15 |
 | `test_mod` | 12 |
 | `test_note_map` | 12 |
@@ -172,7 +173,8 @@ Firmware total: lines 1669/1669 (100.0%), branches 758/758 (100.0%), in `core/`,
 | `calibration.test.js` | 30 |
 | `debug.test.js` | 10 |
 | `engines.test.js` | 41 |
-| `midi.test.js` | 17 |
+| `midi.test.js` | 10 |
+| `midi_clock.test.js` | 7 |
 | `modulation.test.js` | 12 |
 | `release.test.js` | 14 |
 | `transport.test.js` | 48 |

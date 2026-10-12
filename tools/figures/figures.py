@@ -149,12 +149,12 @@ def image_table(flash, ram):
 
 def test_area(name):
     """Returns which part of the firmware a test program covers."""
-    # The app loop's tests and the sequencer's are split by topic
+    # The app loop's tests, the sequencer's and MIDI out's are split by topic
     if name == "app" or name.startswith("app_"):
         return "App loop"
     if name == "main":
         return "`main.c`"
-    if os.path.exists(f"core/{name}.c") or name.startswith("seq_"):
+    if os.path.exists(f"core/{name}.c") or name.startswith(("seq_", "midi_out_")):
         return "Core"
     return "Target adapters"
 
