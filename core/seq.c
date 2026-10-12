@@ -37,6 +37,10 @@
 #define MOD_GATE_RANGE  (SEQ_PULSES_PER_STEP / 2U)
 #define MOD_GATE_MIN    (1U)
 
+// And the pitch of a note that is sounding, by this many semitones either
+// way. With the highest pitch added it has to fit in a byte
+#define MOD_VIBRATO_RANGE (2U)
+
 // How loud a step is with nothing taken off it, and the most the LFO takes
 #define AMPLITUDE_MAX   (255U)
 
@@ -363,12 +367,59 @@ static bool begin_step(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outpu
             p_out->b_rest = !note_map_semitone(&p_in->note_map, note, &p_out->semitone);
             if (!p_out->b_rest)
             {
+                p_state->semitone = p_out->semitone;
                 p_state->cv = pitch_cal_cv(&p_in->pitch_cal, p_out->semitone);
             }
         }
     }
 
     return played.b_tie;
+}
+
+
+
+/**
+ * @brief  Gives the pitch CV value as the LFO leaves it on this tick: that
+ *         of the last note played, moved towards the pitch
+ *         MOD_VIBRATO_RANGE semitones above it, or below it, by as much of
+ *         the way as the depth says. Nothing is below the lowest pitch, so a
+ *         note nearer to it than that is moved down no further than to it.
+ * @param  p_state  Sequencer state, with the last note played.
+ * @param  p_in     Inputs for this tick.
+ * @return The CV value, 0 to PITCH_CAL_CV_MAX.
+ */
+static uint16_t vibrato_cv(const seq_state_t *p_state, const seq_inputs_t *p_in)
+{
+    mod_depth_t depth = { 0U, false };
+    uint16_t    cv    = p_state->cv;
+
+    mod_for(p_in, p_in->mod.vibrato, &depth);
+    if (depth.depth > 0U)
+    {
+        // The pitch at the far end of the swing, by the same table as the
+        // note's own, so that the swing is as wide as the output makes it
+        uint8_t  far_semitone = (uint8_t)(p_state->semitone + MOD_VIBRATO_RANGE);
+        uint16_t far_cv;
+
+        if (depth.b_negative)
+        {
+            far_semitone = (p_state->semitone > MOD_VIBRATO_RANGE)
+                           ? (uint8_t)(p_state->semitone - MOD_VIBRATO_RANGE) : 0U;
+        }
+        far_cv = pitch_cal_cv(&p_in->pitch_cal, far_semitone);
+
+        // A table need not rise, so either end may be the higher
+        if (far_cv >= cv)
+        {
+            cv = (uint16_t)(cv + mod_scale((uint16_t)(far_cv - cv), &depth));
+        }
+        else
+        {
+            cv = (uint16_t)(cv - mod_scale((uint16_t)(cv - far_cv), &depth));
+        }
+    }
+
+    return cv;
 }
 
 
@@ -503,7 +554,8 @@ void seq_init(seq_state_t *p_state)
     {
         p_state->last_tempo_raw = 0U;
         p_state->cv             = 0U;
-        p_state->engine         = (uint8_t)ENGINE_PLAIN;
+        p_state->semitone       = 0U;
+        p_state->engine        = (uint8_t)ENGINE_PLAIN;
         prng_init(&p_state->prng, (uint16_t)PRNG_SEED);
         transport_init(&p_state->transport);
         start(p_state, TRANSPORT_INTERNAL);
@@ -557,7 +609,7 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
             run(p_state, p_in, transport.mode, elapsed_ticks, p_out);
         }
 
-        p_out->cv                  = p_state->cv;
+        p_out->cv                  = vibrato_cv(p_state, p_in);
         p_out->transport           = transport.mode;
         p_out->b_transport_changed = transport.b_changed;
     }

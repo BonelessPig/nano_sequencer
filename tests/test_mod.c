@@ -248,6 +248,44 @@ static void test_a_chance_with_no_generator_never_comes_up(void)
 
 
 
+static void test_a_scale_is_the_part_of_a_span_the_depth_comes_to(void)
+{
+    mod_depth_t depth;
+
+    // All of it at the most depth, whichever way the signal swings
+    depth = depth_of(255U, false);
+    TEST_ASSERT_EQUAL(167, mod_scale(167U, &depth));
+    TEST_ASSERT_EQUAL(65535, mod_scale(65535U, &depth));
+    depth = depth_of(255U, true);
+    TEST_ASSERT_EQUAL(167, mod_scale(167U, &depth));
+
+    // In proportion below that, to the nearest: 83.8, 501.96, and a span
+    // whose product with the depth is well past 16 bits
+    depth = depth_of(128U, false);
+    TEST_ASSERT_EQUAL(84, mod_scale(167U, &depth));
+    TEST_ASSERT_EQUAL(502, mod_scale(1000U, &depth));
+    TEST_ASSERT_EQUAL(32896, mod_scale(65535U, &depth));
+
+    // The least depth: half a count is the first that rounds up
+    depth = depth_of(1U, false);
+    TEST_ASSERT_EQUAL(0, mod_scale(127U, &depth));
+    TEST_ASSERT_EQUAL(1, mod_scale(128U, &depth));
+}
+
+
+
+static void test_a_scale_of_nothing_is_nothing(void)
+{
+    mod_depth_t depth = depth_of(0U, false);
+
+    TEST_ASSERT_EQUAL(0, mod_scale(65535U, &depth));
+    depth = depth_of(255U, false);
+    TEST_ASSERT_EQUAL(0, mod_scale(0U, &depth));
+    TEST_ASSERT_EQUAL(0, mod_scale(167U, NULL));
+}
+
+
+
 static void test_a_null_depth_is_ignored(void)
 {
     mod_depth(TOP, TOP, NULL); // Must not crash
@@ -268,6 +306,8 @@ int main(void)
     RUN_TEST(test_a_chance_takes_the_top_draws);
     RUN_TEST(test_no_chance_draws_nothing);
     RUN_TEST(test_a_chance_with_no_generator_never_comes_up);
+    RUN_TEST(test_a_scale_is_the_part_of_a_span_the_depth_comes_to);
+    RUN_TEST(test_a_scale_of_nothing_is_nothing);
     RUN_TEST(test_a_null_depth_is_ignored);
     return TEST_RESULT();
 }

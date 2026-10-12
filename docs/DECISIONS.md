@@ -264,3 +264,16 @@ All eight were the owner's choice, from options put to them.
 | 162 | The slopes | **Straight lines**, to the peak and back to 0 V, worked out every tick and written to channel B every tick after channel A. |
 | 163 | Stopped, and in calibration mode | **A stop does not cut an envelope short**: it runs out as it would have. In calibration mode channel B stays at 0 V. |
 | 164 | A time of 0 | **Channel B follows the gate**: at the peak while the gate is open and at 0 V while it is closed, so a VCA on it works from power-on. It is the time in milliseconds that counts, which is 0 for the lowest thirty-odd counts of the pot. The owner's choice, over holding the peak and over staying at 0 V. |
+
+**Modulation, stage 4: vibrato.** Settled on 2026-10-12, ahead of any code.
+165 to 168 were the owner's choice, from options put to them; 169 to 171 were left to recommendation.
+
+| # | Decision | Outcome |
+|---|---|---|
+| 165 | How far | **Two semitones either way at full depth.** A constant at the top of `seq.c`, kept with the other ranges so that it moves with them into the board's modulation configuration. Chosen over one semitone, and over an octave. |
+| 166 | Which way | **Both**: up while the LFO is above its centre and down while it is below, like the note and the gate length (140, 141). Chosen over up only and over down only. |
+| 167 | When the LFO is looked at | **Every tick.** The LFO alone leaves the 8 ms scan and is read on every tick, after it, which is about 0.1 ms more of every tick; the other five moves still take it as a step begins (143, 161). Chosen over a line drawn in the core between readings 8 ms apart, and over 8 ms stairs. |
+| 168 | MIDI | **The CV only.** The MIDI note is the note as set and no pitch bend is sent. Chosen over pitch bend, which costs flash and only matches a receiver set to the same range. |
+| 169 | The size of a semitone | **The calibration table's**: the pitch goes part of the way to the value the table gives the pitch two semitones off, so the swing is right wherever the output stage is not. Nothing is below the lowest pitch, so a note within two semitones of it goes down no further than to it. |
+| 170 | What it moves | **The value given, never the note.** The step, its log line and the next tick all start from the note's own pitch. A new kind of move in `mod` (`mod_scale()`), since a CV value does not fit the byte `mod_shift()` moves. |
+| 171 | Rests, a stop, calibration mode | **It goes on through a rest and a stop**, as a VCO with no VCA on it would be heard to, and an envelope's tail (163) keeps its vibrato. In calibration mode there is none. Before the first note it is about the lowest pitch. |

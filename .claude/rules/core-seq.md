@@ -14,7 +14,8 @@ Loaded with the files below, on top of `core/CLAUDE.md`, whose rules apply to al
   Outputs that describe a step are given on the tick it begins and are zero otherwise.
 - Musical lengths are counted in clock pulses, never ticks, so they scale with the tempo.
   When a step begins late, what it starts is counted from when it was due (`step_pulses` after the step's 24 are taken off), not from the tick that noticed.
-- The pitch CV value changes only when a note begins, on the tick its gate opens, and holds through everything else (rests, unreadable steps, reset, a finished one-shot, a stop and a start).
+- The note's pitch CV value (`cv` in the state) changes only when a note begins, on the tick its gate opens, and holds through everything else (rests, unreadable steps, reset, a finished one-shot, a stop and a start).
+  The value given is that one as the vibrato leaves it on that tick, which is the same value unless the LFO and its amount say otherwise.
   The core gives it as a number from 0 to 4095 and does not know what that is in volts.
 - Every step that falls due calls `gate_begin()`, note or not: that is what ends a tied gate at a rest or at the end of a one-shot pattern.
   Look at the gate's level only after it.

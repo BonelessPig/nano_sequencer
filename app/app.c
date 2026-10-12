@@ -60,6 +60,7 @@
 #define SLOT_POSITION    (4U) // How far it moves the step that is played
 #define SLOT_AMPLITUDE   (5U) // How far it brings a note's loudness down
 #define SLOT_ENV_TIME    (6U) // The envelope's attack and decay time; no LFO
+#define SLOT_VIBRATO     (7U) // How far the LFO moves a sounding note's pitch
 
 // The pitch CV is nominally 1 V to the octave from 0 V at the lowest pitch.
 // That is the ideal calibration table, used until a measured one is stored,
@@ -212,10 +213,10 @@ static void apply_outputs(void)
 
 
 /**
- * @brief  Reads the panel and the LFO into the snapshot and the pot
- *         beside it; the panel read brings the mode switches and the
- *         selector with it. A failed read clears that input's valid flag
- *         and leaves its data as it was.
+ * @brief  Reads the panel into the snapshot and the pot beside it; the
+ *         panel read brings the mode switches and the selector with it. A
+ *         failed read clears that input's valid flag and leaves its data as
+ *         it was.
  */
 static void scan_inputs(void)
 {
@@ -224,17 +225,16 @@ static void scan_inputs(void)
 
     g_tempo_read_status = pot_input_read(&g_pot_raw);
     g_b_pot_valid       = (STATUS_OK == g_tempo_read_status);
-
-    g_inputs.mod.b_lfo_valid = (STATUS_OK == mod_input_read(&g_inputs.mod.lfo));
 }
 
 
 
 /**
  * @brief  Brings the input snapshot up to date for this tick: records the
- *         elapsed time, reads the transport inputs and the room the MIDI
- *         output has, which are read on every tick, and re-reads the panel
- *         and the pot if a scan is due.
+ *         elapsed time, reads the transport inputs, the LFO and the room
+ *         the MIDI output has, which are read on every tick, and re-reads
+ *         the panel and the pot if a scan is due. An LFO read that fails
+ *         clears its valid flag and leaves the reading as it was.
  * @param  elapsed_ticks  Ticks since the previous tick, 1 to 255.
  */
 static void gather_inputs(uint8_t elapsed_ticks)
@@ -254,6 +254,9 @@ static void gather_inputs(uint8_t elapsed_ticks)
     {
         g_ticks_until_scan = (uint8_t)(g_ticks_until_scan - elapsed_ticks);
     }
+
+    // After the scan, so that the panel is read where it was in the tick
+    g_inputs.mod.b_lfo_valid = (STATUS_OK == mod_input_read(&g_inputs.mod.lfo));
 }
 
 
@@ -305,7 +308,8 @@ static void run_bank(void)
     g_inputs.mod.chance      = bank_amount(&g_bank, (uint8_t)SLOT_CHANCE);
     g_inputs.mod.position    = bank_amount(&g_bank, (uint8_t)SLOT_POSITION);
     g_inputs.mod.amplitude   = bank_amount(&g_bank, (uint8_t)SLOT_AMPLITUDE);
-    g_level                = bank_level(&g_bank);
+    g_inputs.mod.vibrato     = bank_amount(&g_bank, (uint8_t)SLOT_VIBRATO);
+    g_level               = bank_level(&g_bank);
 }
 
 
@@ -418,6 +422,7 @@ static void reset_tick_state(void)
     g_inputs.mod.chance      = 0U;
     g_inputs.mod.position    = 0U;
     g_inputs.mod.amplitude   = 0U;
+    g_inputs.mod.vibrato     = 0U;
     set_fixed_controls();
 
     g_outputs.b_step_started = false;

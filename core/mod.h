@@ -80,4 +80,15 @@ uint8_t mod_shift(uint8_t value, const mod_depth_t *p_depth, uint8_t range,
  */
 bool mod_chance(const mod_depth_t *p_depth, prng_state_t *p_prng);
 
+/**
+ * @brief  Gives the part of a span that a depth comes to: all of it at a
+ *         depth of 255 and in proportion below that, rounded to the nearest
+ *         whole number. Which way the signal swings is left to the caller.
+ *         Reads *p_depth and has no other effect.
+ * @param  span     The span, in whatever the caller counts in, 0 to 65535.
+ * @param  p_depth  The depth, from mod_depth().
+ * @return The part, 0 to span. 0 if p_depth is null.
+ */
+uint16_t mod_scale(uint16_t span, const mod_depth_t *p_depth);
+
 #endif /* MOD_H */

@@ -322,8 +322,145 @@ static void test_the_lfo_below_its_centre_brings_the_amplitude_down(void)
 
 
 
+static void test_the_lfo_moves_the_pitch_of_a_note_on_every_tick(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_mod_inputs();
+    seq_outputs_t out;
+
+    // Every step plays semitone 4, which the table puts at 333; two
+    // semitones up is 500 and two down 167. At its centre nothing moves
+    seq_init(&state);
+    in.mod.vibrato = AMOUNT_TOP;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_step_started);
+    TEST_ASSERT_EQUAL(333, out.cv);
+
+    // Between steps the LFO is followed tick by tick: to the top, half way
+    // up (84 of the 167), and to the bottom
+    in.mod.lfo = LFO_TOP;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT(!out.b_step_started);
+    TEST_ASSERT_EQUAL(500, out.cv);
+    in.mod.lfo = LFO_HALF_UP;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(417, out.cv);
+    in.mod.lfo = 0U;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(167, out.cv);
+
+    // The note itself is not moved: the next step is the pitch it was
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(4, out.semitone);
+    TEST_ASSERT_EQUAL(167, out.cv);
+
+    // With no amount, and when the LFO cannot be read: as the note set it
+    in.mod.vibrato = 0U;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(333, out.cv);
+    in.mod.vibrato     = AMOUNT_TOP;
+    in.mod.b_lfo_valid = false;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(333, out.cv);
+}
+
+
+
+static void test_the_vibrato_goes_no_lower_than_the_lowest_pitch(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_mod_inputs();
+    seq_outputs_t out;
+
+    // Step 0 plays semitone 1, at 83, and step 1 semitone 0, at 0
+    in.raw_steps[0] = 0x21U;
+    in.mod.vibrato  = AMOUNT_TOP;
+    in.mod.lfo      = 0U;
+    seq_init(&state);
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(1, out.semitone);
+    TEST_ASSERT_EQUAL(0, out.cv);
+    in.mod.lfo = LFO_TOP;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(250, out.cv);
+
+    in.mod.lfo = 0U;
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(0, out.semitone);
+    TEST_ASSERT_EQUAL(0, out.cv);
+    in.mod.lfo = LFO_TOP;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(167, out.cv);
+}
+
+
+
+static void test_the_vibrato_goes_on_through_a_rest_and_a_stop(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_mod_inputs();
+    seq_outputs_t out;
+
+    // Before the first note it is about the lowest pitch
+    in.mod.vibrato = AMOUNT_TOP;
+    in.mod.lfo     = LFO_TOP;
+    (void)memset(in.raw_steps, 0, PANEL_STEP_BYTE_COUNT);
+    seq_init(&state);
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT(out.b_rest);
+    TEST_ASSERT_EQUAL(167, out.cv);
+
+    // Step 1 plays semitone 4, and step 2 is a rest
+    in.raw_steps[0] = 0x05U;
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT_EQUAL(500, out.cv);
+    (void)ticks_to_next_step(&state, &in, &out);
+    TEST_ASSERT(out.b_rest);
+    TEST_ASSERT_EQUAL(500, out.cv);
+    in.mod.lfo = 0U;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(167, out.cv);
+
+    // Stopped, it still follows the LFO
+    in.b_run_button = false;
+    seq_tick(&state, &in, &out);
+    press_run(&state, &in, &out);
+    TEST_ASSERT_EQUAL(TRANSPORT_STOPPED, out.transport);
+    in.mod.lfo = LFO_HALF_UP;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(417, out.cv);
+}
+
+
+
+static void test_the_vibrato_follows_a_table_that_falls(void)
+{
+    seq_state_t   state;
+    seq_inputs_t  in = make_mod_inputs();
+    seq_outputs_t out;
+
+    // A lowest octave that goes down: semitone 4 is at 667 and 6 at 500
+    in.pitch_cal.cv[0] = 1000U;
+    in.pitch_cal.cv[1] = 0U;
+    in.mod.vibrato     = AMOUNT_TOP;
+    in.mod.lfo         = LFO_TOP;
+    seq_init(&state);
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(4, out.semitone);
+    TEST_ASSERT_EQUAL(500, out.cv);
+    in.mod.lfo = 0U;
+    seq_tick(&state, &in, &out);
+    TEST_ASSERT_EQUAL(833, out.cv);
+}
+
+
+
 int main(void)
 {
+    RUN_TEST(test_the_lfo_moves_the_pitch_of_a_note_on_every_tick);
+    RUN_TEST(test_the_vibrato_goes_no_lower_than_the_lowest_pitch);
+    RUN_TEST(test_the_vibrato_goes_on_through_a_rest_and_a_stop);
+    RUN_TEST(test_the_vibrato_follows_a_table_that_falls);
     RUN_TEST(test_the_lfo_below_its_centre_brings_the_amplitude_down);
     RUN_TEST(test_the_lfo_moves_the_step_played_and_not_the_pattern);
     RUN_TEST(test_the_lfo_turns_the_klee_register_and_its_lights);

@@ -181,11 +181,13 @@ static void test_the_pot_sets_the_tempo_only_while_the_selector_is_on_it(void)
 
 static void test_the_lfo_and_the_note_amount_reach_the_sequencer(void)
 {
-    // Step 0 as it is set. The LFO is read with the panel, every scan
+    // Step 0 as it is set. The LFO is read on every tick, the panel on the
+    // first of them only
     start_app();
     run_ticks(2U);
     expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
-    TEST_ASSERT_EQUAL(host_step_read_count(), host_mod_read_count());
+    TEST_ASSERT_EQUAL(1, host_step_read_count());
+    TEST_ASSERT_EQUAL(2, host_mod_read_count());
 
     // Position 1 is the note. Full amount and the LFO at its top is seven
     // places up, which takes step 1's 14 to the top note
@@ -261,6 +263,35 @@ static void test_position_4_is_the_step_played(void)
 
 
 
+static void test_position_7_is_the_vibrato(void)
+{
+    // Step 0 is semitone 14, at 1167 mV, and two semitones up is 1333
+    start_app();
+    run_ticks(2U);
+    TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
+
+    // Full amount: the LFO is followed from one tick to the next, the
+    // output a tick behind it, and the note logged is not moved
+    set_amount(7U, 1023U);
+    host_set_mod(1023U, STATUS_OK);
+    run_ticks(2U);
+    TEST_ASSERT_EQUAL(1333, host_cv_millivolts());
+    host_set_mod(0U, STATUS_OK);
+    run_ticks(2U);
+    TEST_ASSERT_EQUAL(1000, host_cv_millivolts());
+    host_set_mod(512U, STATUS_OK);
+    run_ticks(2U);
+    TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
+    TEST_ASSERT_EQUAL(1, host_event_count());
+
+    // An LFO that cannot be read moves nothing
+    host_set_mod(1023U, ERR_TIMEOUT);
+    run_ticks(2U);
+    TEST_ASSERT_EQUAL(1167, host_cv_millivolts());
+}
+
+
+
 static void test_the_level_light_shows_the_amount_the_selector_is_on(void)
 {
     // Written on every tick, a tick behind: nothing has been worked out
@@ -328,6 +359,7 @@ int main(void)
     RUN_TEST(test_the_lfo_and_the_note_amount_reach_the_sequencer);
     RUN_TEST(test_positions_2_and_3_are_the_gate_length_and_the_chance);
     RUN_TEST(test_position_4_is_the_step_played);
+    RUN_TEST(test_position_7_is_the_vibrato);
     RUN_TEST(test_the_level_light_shows_the_amount_the_selector_is_on);
     RUN_TEST(test_the_level_light_is_dark_in_calibration_mode);
     RUN_TEST(test_calibration_mode_leaves_the_transport_alone);

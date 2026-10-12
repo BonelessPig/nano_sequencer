@@ -22,6 +22,8 @@ const POSITION_CHANCE = 3;
 const POSITION_STEP = 4;
 const POSITION_AMPLITUDE = 5;
 const POSITION_ENV_TIME = 6;
+const POSITION_VIBRATO = 7;
+const VIBRATO_MS = 3;            // The LFO is read every tick and written the next
 const ENV_TOP = 4095;            // The envelope CV at its highest, in millivolts
 const READING_16_MS = 128;       // Over 4, squared, over 64: a slope of 16 ms
 const SLOPE_MS = 16;
@@ -278,6 +280,38 @@ for (const config of CONFIGS) {
 
             assert.equal(played.gateRises, 3, `gates with the LFO at ${reading}`);
             assert.deepEqual(played.pitches, expected, `pitches with the LFO at ${reading}`);
+        }
+    });
+
+    test(`${config}: the LFO moves a sounding note's pitch by the amount at position 7`, () => {
+        const board = playingBoard(config);
+        const pitchNow = () => board.cvWrites[board.cvWrites.length - 1].millivolts;
+
+        // No amount yet: the LFO at its top moves nothing
+        assertAllEqual(playWithLfo(board, TOP, 2).pitches, noteMillivolts(NOTE), 'no amount');
+
+        // With all of it the pitch is two semitones up at the top, two down
+        // at the bottom and 84 mV of the 167 up half way, and it is there
+        // within a few ticks of the LFO, not at the next step
+        setAmount(board, POSITION_VIBRATO, TOP);
+        for (const [reading, millivolts] of [[TOP, noteMillivolts(NOTE + 2)],
+            [0, noteMillivolts(NOTE - 2)], [LFO_HALF_UP, noteMillivolts(NOTE) + 84],
+            [LFO_CENTRE, noteMillivolts(NOTE)]]) {
+            board.setLfoReading(reading);
+            board.runForMs(VIBRATO_MS);
+            assert.equal(pitchNow(), millivolts, `pitch with the LFO at ${reading}`);
+        }
+
+        // Every gate rises on the pitch as moved, and the note is the one
+        // set: the midi image sends it as it was
+        const played = playWithLfo(board, TOP, 3);
+
+        assert.equal(played.gateRises, 3);
+        assertAllEqual(played.pitches, noteMillivolts(NOTE + 2), 'held at the top');
+        if (board.sendsMidi) {
+            const notes = board.midi.messages.filter((message) => message.type === 'noteOn');
+
+            assert.equal(notes[notes.length - 1].note, MIDI_LOWEST_NOTE + NOTE - 1);
         }
     });
 }
