@@ -95,7 +95,7 @@ The owner runs it themselves and reports back; don't run it.
   The rules of both folders load with the first file read in `tools/sim/live/`.
   Run `make sim` before calling the change done; the page cannot be checked from here, so say what the owner should look at in the browser.
 - Split a file by topic before it passes its limit: about 25,000 characters for source, tests and tooling, 6,000 for a `CLAUDE.md` or a rules file.
-  The last line of `make check` names the files that are over (`tools/check/sizes.py` has the limits and the exceptions); say so when one appears there.
+  The `sizes` line of `make check` names the files that are over (`tools/check/sizes.py` has the limits and the exceptions); say so when one appears there.
 - The owner wants the project minimal and lightweight, and as clean as possible against the standard: prefer actually resolving a finding over recording a deviation, and when there is a real trade-off, lay out the options with a recommendation and let them choose.
 
 ## Project facts

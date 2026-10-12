@@ -6,11 +6,11 @@ BARR-C plus the rules in `README.md` is the standard we write to. cppcheck only 
 ## Running it
 
 - `make -k misra` runs all four analysis runs (`misra-debug`, `misra-release`, `misra-midi`, `misra-host`) and exits 0 only with zero findings.
-  The exact cppcheck command lines are in the Makefile.
+  The exact cppcheck command lines are in `tools/checks.mk`.
 - Pipe the output through `python tools/misra/summarize.py` for counts by folder, category and rule.
 - **cppcheck treats its inputs as one program.** The target and host adapters define the same port functions, and so do the two target loggers and the two target MIDI outputs, so there is one run per program that is actually linked.
   The first three are the debug, release and midi firmware, each leaving out the logger and the MIDI output its build does not link.
-  The host run mirrors the `test_app` programs: it leaves out `app/main.c` (each test has its own `main`) and includes `tests/test_app*.c` (`APP_TEST_SRCS` in the Makefile) so cppcheck can see the host fakes being called.
+  The host run mirrors the `test_app` programs: it leaves out `app/main.c` (each test has its own `main`) and includes `tests/test_app*.c` (`APP_TEST_SRCS` in `tests/tests.mk`) so cppcheck can see the host fakes being called.
 - Test code is outside the coding standard, so findings located in `tests/` are not reported.
   That is the one approved path-wide suppression.
 - `misra.json` points the addon at the MISRA headlines file in this folder, so findings come out with readable rule text and a category.

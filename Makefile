@@ -34,6 +34,10 @@
 #   make -n           Print the commands that would run, without running them
 #   make -B           Rebuild everything regardless of timestamps
 #   make clean        If the build ever behaves oddly, start from scratch
+#
+# The host tests and coverage are in tests/tests.mk, and the analysis, the
+# emulated board, `make check` and `make figures` in tools/checks.mk. Both
+# are included at the bottom of this file and use what it defines.
 
 # ---- Platform differences ---------------------------------------------------
 #
@@ -138,13 +142,6 @@ OBJCOPY = avr-objcopy
 SIZE    = avr-size
 AVRDUDE = avrdude
 
-# cppcheck is only needed for `make misra`, not for building or flashing. Its
-# MISRA addon is a Python script, so python must be on PATH as well.
-CPPCHECK = cppcheck
-
-# `make coverage` needs gcov, which comes with the PC's gcc, and python to
-# turn its output into a table. (PYTHON is set per platform, above.)
-GCOV = gcov
 
 # ---- Files ------------------------------------------------------------------
 
@@ -228,7 +225,7 @@ REGS_LD = adapters/target/atmega328p_regs.ld
 # A leading @ on a command stops make from echoing it.
 
 # These names are commands, not files, so always run them when asked.
-.PHONY: all size flash clean misra test coverage
+.PHONY: all size flash clean images
 
 # Default target (what plain `make` runs): build the .hex, then report size.
 all: $(TARGET).hex size
@@ -257,236 +254,12 @@ $(BUILD_DIR)/obj/%.o: %.c
 size: $(TARGET).elf
 	$(SIZE) $<
 
-# ---- Host tests -------------------------------------------------------------
-#
-# `make test` compiles the hardware-free code with the PC's compiler (HOST_CC,
-# not avr-gcc) and runs it. Nothing here touches the board or the firmware
-# build; the programs land in build/host/. A test program exits non-zero if any
-# check fails, which makes `make test` fail.
-#   -std=c99 -pedantic    The core must be plain C99 with no compiler extensions
-#   -Werror               Any warning fails the build
-HOST_DIR    = $(BUILD_DIR)/host
-HOST_CFLAGS = -std=c99 -pedantic -g -Wall -Wextra -Wconversion -Wshadow -Werror \
-              -Icore -Iports -Iapp -Iadapters/host -Itests
-
-CORE_SRCS := $(wildcard core/*.c)
-HOST_SRCS := $(wildcard adapters/host/*.c)
-# Any header change rebuilds the tests; simpler than tracking each one
-HOST_HDRS := $(wildcard core/*.h ports/*.h app/*.h adapters/host/*.h tests/*.h)
-
-# `make coverage` runs this same section again with COVERAGE=1, which builds
-# the programs with gcc's coverage instrumentation into their own folder.
-#   --coverage   Count how often each line and branch runs
-#   -O0          No optimization, so the counts match the source line for line
-ifdef COVERAGE
-    HOST_DIR     = $(BUILD_DIR)/coverage
-    HOST_CFLAGS += --coverage -O0
-endif
-
-# Tests for the application loop, split by topic. tests/test_<name>.c builds
-# into the program test_<name>; add new ones to this list.
-APP_TESTS = test_app test_app_cal test_app_crash test_app_controls \
-            test_app_midi
-APP_TEST_SRCS := $(patsubst %,tests/%.c,$(APP_TESTS))
-TEST_APP := $(patsubst %,$(HOST_DIR)/%$(EXE),$(APP_TESTS))
-
-# Tests for the core alone, one program per core module, and the sequencer's
-# and MIDI out's split by topic. tests/test_<name>.c is linked with every core source; add
-# new ones to this list.
-CORE_TESTS = test_seq test_seq_gate test_seq_transport test_seq_engines \
-             test_seq_pulses test_seq_mod \
-             test_clock test_panel test_address test_note_map \
-             test_engine_plain test_engine_stage test_engine_klee \
-             test_engine_chance test_engine_cartesian test_engine_euclid \
-             test_prng test_gate test_pitch_cal test_cal_record \
-             test_cal test_debounce test_transport test_crc8 test_errlog \
-             test_midi_out test_midi_out_notes test_pickup test_bank test_mod
-TEST_CORE := $(patsubst %,$(HOST_DIR)/%$(EXE),$(CORE_TESTS))
-
-# Tests that #include the source file they test (one each for the target
-# adapters and main.c) rather than linking it. tests/test_<name>.c builds into
-# the program test_<name>; add new ones to this list.
-INCLUDING_TESTS = test_serial_logger test_null_logger test_register_init \
-                  test_analog_reader test_shift_reg_reader test_init \
-                  test_timebase test_spi test_gate_output test_clock_output \
-                  test_cv_output test_eeprom test_reset_cause test_main \
-                  test_clock_input test_reset_input test_run_input \
-                  test_watchdog test_breadcrumb \
-                  test_midi_output test_null_midi_output \
-                  test_level_output
-TEST_INCLUDING := $(patsubst %,$(HOST_DIR)/%$(EXE),$(INCLUDING_TESTS))
-
-TEST_PROGRAMS = $(TEST_CORE) $(TEST_APP) $(TEST_INCLUDING)
-
-# One recipe line that runs one test program; the blank line is what separates
-# the lines when $(foreach) below strings several of these together.
-define run_test
-	$(call run,$1)
-
-endef
-
-test: $(TEST_PROGRAMS)
-	$(foreach program,$(TEST_PROGRAMS),$(call run_test,$(program)))
-
-# Tests for the target adapters and main.c. Each test includes the .c file it
-# tests directly, with the MCU register header swapped for
-# tests/fake_atmega328p_regs.h, so it can drive the fake registers and see what
-# the code does with them. Functions the tested file calls but does not define
-# are stubs in the test. These need the adapters' folder on the include path
-# and the same F_CPU the firmware is built with.
-$(TEST_INCLUDING): $(HOST_DIR)/%$(EXE): tests/%.c app/main.c $(HOST_HDRS) $(wildcard adapters/target/*.c adapters/target/*.h)
-	@$(call mkdir_p,$(HOST_DIR))
-	$(HOST_CC) $(HOST_CFLAGS) -Iadapters/target -DF_CPU=$(F_CPU) -o $@ $<
-
-# Unit tests for the core alone: no ports, no adapters.
-$(TEST_CORE): $(HOST_DIR)/%$(EXE): tests/%.c $(CORE_SRCS) $(HOST_HDRS)
-	@$(call mkdir_p,$(HOST_DIR))
-	$(HOST_CC) $(HOST_CFLAGS) -o $@ $< $(CORE_SRCS)
-
-# Tests for the application loop: the real app.c and core, linked against the
-# fake ports in adapters/host instead of the MCU ones. main.c is left out; the
-# test program supplies main.
-$(TEST_APP): $(HOST_DIR)/%$(EXE): tests/%.c app/app.c $(CORE_SRCS) $(HOST_SRCS) $(HOST_HDRS)
-	@$(call mkdir_p,$(HOST_DIR))
-	$(HOST_CC) $(HOST_CFLAGS) -o $@ $< app/app.c $(CORE_SRCS) $(HOST_SRCS)
-
-# Coverage: rebuild the tests instrumented, run them, and report which lines
-# and branches of the source they exercised. Starts from an empty folder each
-# time so counts from an earlier run cannot leak in. The report fails unless
-# every firmware source file is at 100% of lines and branches; see the top of
-# tools/coverage/report.py for exactly what is counted.
-coverage:
-	@$(call rm_rf,$(BUILD_DIR)/coverage)
-	$(MAKE) test COVERAGE=1
-	$(PYTHON) tools/coverage/report.py $(GCOV) $(BUILD_DIR)/coverage
-
-# Static analysis: cppcheck plus its MISRA addon (see tools/misra/CLAUDE.md for how
-# findings are handled). tools/misra/misra.json points the addon at the rule headlines
-# file, which is not in the repo; if it is missing, run
-# tools/misra/fetch_misra_headlines.sh first. Exits non-zero if anything is found.
-#
-# The analysis runs four times, once per program that is actually linked,
-# because cppcheck treats everything it is given as one program. The target and
-# host adapters each define the same port functions, as do the two target
-# loggers and the two target MIDI outputs (only one of each is ever linked),
-# and analysing them together would report every such function as defined
-# twice.
-#
-# Each run analyses the same files that are linked together for that build:
-#   misra-debug    core, ports, all of app (including main.c), adapters/target
-#                    without null_logger.c and midi_output.c
-#   misra-release  the same without serial_logger.c and midi_output.c
-#   misra-midi     the same without serial_logger.c and null_midi_output.c
-#   misra-host     core, ports, app/app.c, adapters/host, tests/test_app*.c
-# The host run mirrors the test_app programs. It leaves out app/main.c because
-# the tests supply their own main, and it includes the test files only so
-# cppcheck can see that the host fakes' control functions are called from
-# another file. Test code is not held to the coding standard, so findings
-# located in tests/ are not reported (MISRA_HOST_SCOPE).
-#   make misra         All runs; stops at the first one that reports findings
-#   make -k misra      All runs even if an earlier one reports findings
-#   -i <file>       Leave that file out of the run
-#   MISRA_INCLUDES  Where cppcheck looks for the project's own headers
-#   -DF_CPU=...     Same define the compiler gets; without it the headers hit
-#                     their #error and cppcheck skips the code
-MISRA_INCLUDES   = -I core -I ports
-MISRA_FLAGS      = --addon=tools/misra/misra.json --std=c99 \
-                   --enable=warning,style,performance,portability \
-                   --inline-suppr --error-exitcode=1 -DF_CPU=$(F_CPU)
-MISRA_HOST_SCOPE = -I app -I adapters/host -I tests "--suppress=*:tests/*"
-
-.PHONY: misra-debug misra-release misra-midi misra-host
-misra: misra-debug misra-release misra-midi misra-host
-
-# The three firmware runs share a recipe. MISRA_SKIP names the files of
-# adapters/target that the run's build does not link.
-misra-debug:   MISRA_SKIP = null_logger midi_output
-misra-release: MISRA_SKIP = serial_logger midi_output
-misra-midi:    MISRA_SKIP = serial_logger null_midi_output
-MISRA_SKIP_FLAGS = $(patsubst %,-i adapters/target/%.c,$(MISRA_SKIP))
-
-misra-debug misra-release misra-midi:
-	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_SKIP_FLAGS) core ports app adapters/target
-
-misra-host:
-	$(CPPCHECK) $(MISRA_FLAGS) $(MISRA_INCLUDES) $(MISRA_HOST_SCOPE) \
-	    core ports app/app.c adapters/host $(APP_TEST_SRCS)
-
-# ---- Emulation --------------------------------------------------------------
-#
-# `make sim` runs the firmware images, exactly as they would be flashed, on an
-# emulated ATmega328P (the avr8js library, under Node) with the board's
-# external parts modelled in tools/sim/: the 74HC165 chain, the MCP4822 DAC,
-# the tempo pot and a serial capture, and with the chip's EEPROM to store to.
-# The scenarios in tools/sim/scenarios/ assert on what the firmware logs, the
-# pulses it sends, what it stores and how long a step takes, counted in CPU
-# cycles. Nothing here touches the board.
-#
-# The first run downloads avr8js into tools/sim/node_modules (needs a network
-# connection once); after that it only reinstalls if package-lock.json changes.
-NODE ?= node
-NPM  ?= npm
-SIM_DIR     = tools/sim
-SIM_MODULES = $(SIM_DIR)/node_modules/.package-lock.json
-
-.PHONY: sim
-sim: $(SIM_MODULES)
+# All three images, for the targets that need every one of them whatever
+# CONFIG is.
+images:
 	$(MAKE) CONFIG=debug $(BUILD_DIR)/debug/output.hex
 	$(MAKE) CONFIG=release $(BUILD_DIR)/release/output.hex
 	$(MAKE) CONFIG=midi $(BUILD_DIR)/midi/output.hex
-	$(NODE) --test --test-reporter=spec "$(SIM_DIR)/scenarios/*.test.js"
-
-# `make live` runs one image on the same emulated board at the pace of a real
-# chip and serves a page to watch it and work its panel from: open the address
-# it prints in a browser, and stop it with Ctrl+C. It checks nothing, so it is
-# not part of `make check`. LIVE_PORT picks the port: make live LIVE_PORT=9000
-LIVE_PORT ?= 8165
-
-.PHONY: live
-live: $(SIM_MODULES)
-	$(MAKE) CONFIG=debug $(BUILD_DIR)/debug/output.hex
-	$(MAKE) CONFIG=release $(BUILD_DIR)/release/output.hex
-	$(MAKE) CONFIG=midi $(BUILD_DIR)/midi/output.hex
-	$(NODE) $(SIM_DIR)/live/server.js $(LIVE_PORT)
-
-$(SIM_MODULES): $(SIM_DIR)/package-lock.json
-	$(NPM) --prefix $(SIM_DIR) ci
-
-# ---- Everything at once -----------------------------------------------------
-#
-# `make check` runs every check that a change must pass: the firmware builds,
-# the host tests, coverage, the MISRA analysis and the emulated board. It
-# prints one line per stage, and the full output only of a stage that fails.
-# All stages run even if an earlier one fails; it exits non-zero if any did.
-# tools/check/run.py has the list of stages. Run a stage's own target (for
-# example `make coverage`) to see its full output when it passes.
-.PHONY: check
-check:
-	@$(PYTHON) tools/check/run.py $(MAKE)
-
-# `make file-sizes` lists the tracked source and rules files that have grown
-# past the size the rules allow, in one line. It is the last stage of `make
-# check` and never fails. tools/check/sizes.py has the limits.
-.PHONY: file-sizes
-file-sizes:
-	@$(PYTHON) tools/check/sizes.py
-
-# `make figures` measures what the documents quote (flash and RAM by source
-# file, the host test counts, coverage and the scenario counts) and writes it
-# to docs/FIGURES.md. It runs the coverage build and the emulated board, so it
-# takes about as long as those two. tools/figures/figures.py has the details.
-.PHONY: figures
-figures: $(SIM_MODULES)
-	$(MAKE) CONFIG=debug all
-	$(MAKE) CONFIG=release all
-	$(MAKE) CONFIG=midi all
-	@$(PYTHON) tools/figures/figures.py "$(MAKE)" "$(NODE)" docs/FIGURES.md
-
-# `make test-quiet` is `make test` through the same script: one line if every
-# test passes, and the full output if one fails.
-.PHONY: test-quiet
-test-quiet:
-	@$(PYTHON) tools/check/run.py $(MAKE) test
 
 # Upload the .hex to the board through the bootloader. The first line stops with
 # a clear message if no port was given and none could be auto-detected.
@@ -501,6 +274,11 @@ flash: $(TARGET).hex
 
 clean:
 	@$(call rm_rf,$(BUILD_DIR))
+
+# ---- Tests and checks -----------------------------------------------------
+
+include tests/tests.mk
+include tools/checks.mk
 
 # Pull in the compiler-generated .d files. Each one is a small makefile fragment
 # like "build/obj/main.o: src/main.c src/app/init.h ...", which is what makes a

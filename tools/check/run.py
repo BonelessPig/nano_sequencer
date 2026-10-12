@@ -16,7 +16,7 @@ their objects. Coverage, the analysis and the emulated board then run side by
 side: each takes about as long as the other two and none writes where another
 reads. Their lines are still printed in the order of the list.
 
-The last stage, the file sizes, never fails: its line names the files that
+The file sizes stage never fails: its line names the files that
 have grown past the size the rules allow, to be split by topic.
 """
 import concurrent.futures

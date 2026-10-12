@@ -478,6 +478,8 @@ Where the release image gives no log, the step and transport shown are the serve
 
 ## Build — `Makefile`
 
+The `Makefile` builds and flashes the firmware, and includes `tests/tests.mk` for the host tests and coverage and `tools/checks.mk` for the analysis, the emulated board, `make check` and `make figures`.
+
 Every `.c` under `app/`, `core/` and `adapters/target/` is compiled once into `build/obj/`, the same way for every configuration.
 A configuration only chooses which logger and which MIDI output are linked.
 The chip has one USART, so an image has the log or MIDI out, not both.

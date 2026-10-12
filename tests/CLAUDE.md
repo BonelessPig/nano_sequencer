@@ -7,13 +7,13 @@ Test code is outside the coding standard and may use the C library freely (`mems
 
 - **Core:** one program per core module (`test_seq.c`, `test_clock.c`, `test_address.c` and so on), each linked with `core/*.c` alone.
   No ports, no adapters.
-  A new one goes in `CORE_TESTS` in the Makefile.
+  A new `tests/test_<name>.c` is found by its name and needs no list (`tests/tests.mk`).
   A module is tested fully by its own program; the sequencer's tests then check that it uses the module, not every case again.
 - **The sequencer** has six programs, by topic, so a change needs only the one it concerns read: `test_seq.c` (steps, tempo, order, reset, null pointers), `test_seq_gate.c` (gate, clock output, pitch CV), `test_seq_transport.c` (run button, external clock), `test_seq_engines.c` (choice of engine, ties, step lights), `test_seq_pulses.c` (the MIDI clock pulses) and `test_seq_mod.c` (the LFO).
   The inputs they start from and the helpers that tick the sequencer are in `seq_fixture.h`.
 - **MIDI out** has two: `test_midi_out.c` (Start, Stop, the clock, null pointers) and `test_midi_out_notes.c` (notes and ties), sharing `midi_out_fixture.h`.
 - **App loop:** five programs link the real `app/app.c` and core against the fakes in `adapters/host/`: `test_app.c` (the ports called on each tick, outputs, failed reads), `test_app_cal.c` (stored calibration, calibration mode), `test_app_crash.c` (crash log, breadcrumb), `test_app_controls.c` (run button, clock and reset inputs, selector and pot, level light) and `test_app_midi.c`.
-  Their shared helpers are in `app_fixture.h`; a new program goes in `APP_TESTS` in the Makefile.
+  Their shared helpers are in `app_fixture.h`; a new one is named `test_app_<topic>.c` and is found by that name.
 - A helper in a fixture header is `static inline`, so a program that does not use it builds without a warning.
   One that only a single program uses stays in that program.
 - Do not let one of these grow past about 25,000 characters; start another by topic.
@@ -25,7 +25,7 @@ Test code is outside the coding standard and may use the C library freely (`mems
   It uses the same include guards as every real register header, so the adapter's own `#include` of them does nothing.
   Then `#include` the adapter's `.c` file.
 - `test_serial_logger.c` is the pattern.
-- A new one needs its registers added to the fake header (and to its `fake_regs_reset()`), a `test_<name>.c`, and its name in `INCLUDING_TESTS` in the Makefile.
+- A new one needs its registers added to the fake header (and to its `fake_regs_reset()`), a `test_<name>.c`, and its name in `INCLUDING_TESTS` in `tests/tests.mk`.
 - Functions the file calls but does not define are stubs in the test.
   For a device adapter that means its driver: `test_shift_reg_reader.c` stubs `spi_transfer()` and has the stub clock the fake's 74HC165 model, `test_cv_output.c` has its stub record each byte and whether chip select was low, and the driver's own register use is tested in `test_spi.c`.
 - An interrupt handler is tested by calling it: the fake header gives it an ordinary function name (`fake_timer2_compa_isr`).

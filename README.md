@@ -44,6 +44,7 @@ tools/sim/          # Emulated board (make sim, make live)
 tools/misra/        # cppcheck MISRA addon config and helper scripts
 tools/coverage/     # Coverage report script
 tools/check/        # Runs every check and summarizes (make check)
+tools/checks.mk     # The Makefile's targets for the checks; tests/tests.mk has the tests'
 docs/               # Architecture, open items, roadmap, schematic, parts list
 ```
 

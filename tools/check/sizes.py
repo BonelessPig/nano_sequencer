@@ -27,7 +27,6 @@ UNLIMITED_FOLDERS = ("docs/",)
 # Files over their limit that are to stay as they are, and why
 ALLOWED = {
     "tests/fake_atmega328p_regs.h": "one register map, read by name",
-    "Makefile": "one build description, read a target at a time",
 }
 
 
