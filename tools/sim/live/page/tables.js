@@ -34,6 +34,7 @@ const POT_RADIUS = 15;
 const POT_DOT_RADIUS = 20;
 const POT_SWEEP_DEG = 270;
 const POT_DRAG_PX = 200;
+const POT_FINE_DRAG = 5;    // How many times as far a drag goes with Shift held
 const ENGINE_PLAIN = 0;
 const ENGINE_STAGE = 1;
 const ENGINE_KLEE = 2;
@@ -263,6 +264,19 @@ const ENVELOPE_PROBE_SAMPLES = 32;
 const SCOPE_ROWS = 4;
 const SCOPE_LABEL_PX = 16;
 const SCOPE_GAP_PX = 4;
+// The axes of the trace and the scope, shown when asked for: how faint and
+// how dashed their lines are, how often there is one down a band that is
+// the trace's window wide, and down one that is a wave. A level's name is
+// over its line, or this far under it where the line is this far up the band
+const AXIS_ALPHA = 0.45;
+const AXIS_DASH = [2, 3];
+const AXIS_TICK_MS = 1000;
+const SCOPE_TICK_MS = 5;
+const AXIS_LABEL_UNDER = 0.8;
+const AXIS_LABEL_DROP_PX = 11;
+// What is named up a band of the scope, as [part of the way up, name]
+const SCOPE_WAVE_LEVELS = [[0, '-1'], [0.5, '0'], [1, '+1']];
+const SCOPE_ENVELOPE_LEVELS = [[0, '0'], [1, '1']];
 // What the tempo pot's reading means, as the firmware takes it: a tempo on
 // the internal clock, and one of seven ratios to the external clock
 const BPM_MIN = 30;

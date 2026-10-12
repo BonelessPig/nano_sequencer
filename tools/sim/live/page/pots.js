@@ -68,7 +68,10 @@ function turnKnob(id, position, name) {
 // holds the value: the page reads and sets it as before, a label still
 // finds it, and with the pot clicked it has the focus, so the arrow keys
 // turn it. Dragging up or down turns the pot, and raises the slider's own
-// `input` events on the way and `change` when let go
+// `input` events on the way and `change` when let go. With Shift held a
+// drag turns it a fifth as far, and a double click puts a pot that the page
+// gave a value back to it; one whose value is the board's has nothing to
+// go back to
 const pots = [];    // Each { input, pointer, shown }: the value last drawn
 
 // How far round a pot's pointer is for its slider's value, clockwise from up
@@ -89,10 +92,10 @@ function potEndDot(side) {
 }
 
 // Sets a slider as a drag has it, and says so as the slider would
-function dragPot(input, from, y) {
+function dragPot(input, from, y, isFine) {
     const min = Number(input.min);
     const max = Number(input.max);
-    const moved = ((from.y - y) / POT_DRAG_PX) * (max - min);
+    const moved = ((from.y - y) / (POT_DRAG_PX * (isFine ? POT_FINE_DRAG : 1))) * (max - min);
     const next = String(Math.round(Math.max(min, Math.min(max, from.value + moved))));
 
     if (next !== input.value) {
@@ -113,6 +116,15 @@ function buildPot(input) {
         + ` y2="${POT_MIDDLE - POT_RADIUS + 3}"/></svg>`;
     input.replaceWith(pot);
     pot.append(input);
+    pot.title = `Drag up or down, or use the arrow keys; hold Shift to go slowly${
+        input.hasAttribute('value') ? '; double-click to put it back' : ''}`;
+    pot.addEventListener('dblclick', () => {
+        if (input.hasAttribute('value') && (input.value !== input.defaultValue)) {
+            input.value = input.defaultValue;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    });
     pot.addEventListener('pointerdown', (event) => {
         event.preventDefault();
         input.focus();
@@ -121,7 +133,7 @@ function buildPot(input) {
     });
     pot.addEventListener('pointermove', (event) => {
         if (from !== null) {
-            dragPot(input, from, event.clientY);
+            dragPot(input, from, event.clientY, event.shiftKey);
         }
     });
     for (const end of ['pointerup', 'pointercancel']) {

@@ -265,7 +265,15 @@ const offOrPercent = (part) => ((part === 0) ? 'off' : `${Math.round(part * 100)
 // The gear's knobs, worded, and put on the gear if it is on
 function applyGear() {
     const tune = Number(el('vco-tune').value);
+    const wave = el('vco-wave').value;
+    const isTable = WAVETABLES[wave] !== undefined;
+    // The pots that do nothing on the wave chosen, which are dimmed
+    const unused = { 'vco-tune': wave === VCO_NOISE, chorus: wave === VCO_NOISE,
+        'vco-position': !isTable, 'env-position': !isTable };
 
+    for (const [id, isUnused] of Object.entries(unused)) {
+        el(id).closest('.pots > div').classList.toggle('unused', isUnused);
+    }
     el('vco-tune-reading').textContent = `${(tune > 0) ? '+' : ''}${tune} semitones`;
     el('vco-position-reading').textContent = positionReading();
     el('chorus-reading').textContent = offOrPercent(chorusAmount());
@@ -274,6 +282,8 @@ function applyGear() {
     el('env-position-reading').textContent = offOrPercent(sweepAmount());
     el('volume-reading').textContent = `${el('volume').value}%`;
     el('gear-power').textContent = `Gear: ${(gear === null) ? 'off' : 'on'}`;
+    el('gear-power').setAttribute('aria-pressed', String(gear !== null));
+    el('gear-hint').hidden = gear !== null;
     if (gear !== null) {
         applyWave();
         gear.volume.gain.value = Number(el('volume').value) / VOLUME_STEPS;
@@ -341,25 +351,46 @@ function readProbes() {
     }
 }
 
-// The VCO's frequency over the trace's window, in a band whose height is a
-// whole number of octaves, so a semitone is the same rise wherever it is.
-// Returns the band's label
-function drawPitch(context, colour, top, height, width) {
+// The band the VCO's frequency is drawn in, as { low, high } in octaves
+// over VCO_BASE_HZ: a whole number of octaves high, so a semitone is the
+// same rise wherever it is. Null on white noise, which has no frequency
+function pitchRange() {
     // Trimmed here, not left to drawSignal(), which gets a copy; and before
     // the noise is let off, or the points would pile up while it plays
     trim(gear.pitchPoints);
     if (el('vco-wave').value === VCO_NOISE) {
-        return 'VCO frequency: white noise has none';
+        return null;
     }
     const octaves = gear.pitchPoints.map((point) => point[1]);
     const low = Math.floor(Math.min(...octaves));
-    const high = Math.max(low + 1, Math.ceil(Math.max(...octaves)));
 
-    drawSignal(context, gear.pitchPoints.map(([ms, value]) => [ms, value - low]),
-        colour, top, height, high - low, width);
-    return `VCO frequency, ${(VCO_BASE_HZ * (2 ** low)).toFixed(0)} to `
-        + `${(VCO_BASE_HZ * (2 ** high)).toFixed(0)} Hz, `
-        + `${TRACE_WINDOW_MS / MS_PER_S} s`;
+    return { low, high: Math.max(low + 1, Math.ceil(Math.max(...octaves))) };
+}
+
+const octaveHertz = (octaves) => (VCO_BASE_HZ * (2 ** octaves)).toFixed(0);
+
+// The scope's axes. A wave's band: its zero and its two peaks, and a line
+// every SCOPE_TICK_MS. The frequency's: a line at each octave, named in
+// hertz. The envelope's: its 0 and 1. Those two have the trace's seconds
+function drawScopeAxes(context, colour, top, bandHeight, width, spanMs, range) {
+    const ticks = [];
+    const octaves = [];
+
+    for (let ms = SCOPE_TICK_MS; ms < spanMs; ms += SCOPE_TICK_MS) {
+        ticks.push([ms / spanMs, `${ms} ms`]);
+    }
+    for (const band of [0, 3]) {
+        drawAxes(context, colour, top(band), bandHeight, width, SCOPE_WAVE_LEVELS, ticks);
+    }
+    if (range !== null) {
+        for (let octave = range.low; octave <= range.high; octave++) {
+            octaves.push([(octave - range.low) / (range.high - range.low),
+                `${octaveHertz(octave)} Hz`]);
+        }
+        drawAxes(context, colour, top(1), bandHeight, width, octaves, secondsBack());
+    }
+    drawAxes(context, colour, top(2), bandHeight, width, SCOPE_ENVELOPE_LEVELS,
+        secondsBack());
 }
 
 // Four bands: the VCO's output and the audio output as waves a few
@@ -374,20 +405,33 @@ function drawScope(time) {
 
     context.fillStyle = colour('--dim');
     if (gear === null) {
-        label('The gear is off', 0);
+        label('The gear is off: turn it on to hear the board and see it here', 0);
     } else {
         const spanMs = (SCOPE_SAMPLES * MS_PER_S) / gear.context.sampleRate;
-        let start = 0;
+        const seconds = TRACE_WINDOW_MS / MS_PER_S;
 
         readProbes();
         followGear(time);
-        start = triggerAt(gear.vcoProbe.samples, SCOPE_PROBE_SAMPLES - SCOPE_SAMPLES);
+
+        const start = triggerAt(gear.vcoProbe.samples, SCOPE_PROBE_SAMPLES - SCOPE_SAMPLES);
+        const range = pitchRange();
+
         label(`VCO out, ${spanMs.toFixed(0)} ms`, 0);
-        label(drawPitch(context, colour('--cv'), top(1), bandHeight, width), 1);
-        label(`Envelope into the VCA's CV, ${TRACE_WINDOW_MS / MS_PER_S} s`, 2);
+        label((range === null) ? 'VCO frequency: white noise has none'
+            : `VCO frequency, ${octaveHertz(range.low)} to ${octaveHertz(range.high)} Hz, `
+                + `${seconds} s`, 1);
+        label(`Envelope into the VCA's CV, ${seconds} s`, 2);
         label(`Audio out, after the VCA, ${spanMs.toFixed(0)} ms`, 3);
+        if (el('scope-axes').checked) {
+            drawScopeAxes(context, colour, top, bandHeight, width, spanMs, range);
+        }
         drawWave(context, gear.vcoProbe.samples, start, colour('--cv'),
             top(0), bandHeight, width);
+        if (range !== null) {
+            drawSignal(context,
+                gear.pitchPoints.map(([ms, value]) => [ms, value - range.low]),
+                colour('--cv'), top(1), bandHeight, range.high - range.low, width);
+        }
         drawSignal(context, gear.envelopePoints, colour('--gate'),
             top(2), bandHeight, 1, width);
         drawWave(context, gear.outProbe.samples, start, colour('--on'),

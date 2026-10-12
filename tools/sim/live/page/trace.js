@@ -50,6 +50,53 @@ function drawEdges(context, times, colour, top, height, width) {
     context.stroke();
 }
 
+// The lines down a band that is the trace's window wide: one at each tick
+// of time back from the present, each as [part of the way across, label]
+function secondsBack() {
+    const times = [];
+
+    for (let ms = AXIS_TICK_MS; ms < TRACE_WINDOW_MS; ms += AXIS_TICK_MS) {
+        times.push([1 - (ms / TRACE_WINDOW_MS), `-${ms / MS_PER_S} s`]);
+    }
+    return times;
+}
+
+// A band's axes, drawn faint and dashed before its signal: a line across
+// at each of `levels`, named at the right, and a line down at each of
+// `times`, named at the band's foot. Each is [part, label], the part 0 to
+// 1 up the band or across it
+function drawAxes(context, colour, top, height, width, levels, times) {
+    const y = (part) => top + (height * (1 - part));
+
+    context.save();
+    context.strokeStyle = colour('--dim');
+    context.fillStyle = colour('--dim');
+    context.globalAlpha = AXIS_ALPHA;
+    context.lineWidth = 1;
+    context.setLineDash(AXIS_DASH);
+    context.beginPath();
+    for (const [part] of levels) {
+        context.moveTo(0, y(part));
+        context.lineTo(width, y(part));
+    }
+    for (const [part] of times) {
+        context.moveTo(width * part, top);
+        context.lineTo(width * part, top + height);
+    }
+    context.stroke();
+    context.globalAlpha = 1;
+    for (const [part, label] of times) {
+        context.fillText(label, (width * part) + 3, top + height - 2);
+    }
+    context.textAlign = 'right';
+    for (const [part, label] of levels) {
+        // Over its line, but under it at the top of the band
+        context.fillText(label, width - 4,
+            y(part) + ((part > AXIS_LABEL_UNDER) ? AXIS_LABEL_DROP_PX : -3));
+    }
+    context.restore();
+}
+
 // Makes a canvas ready for a frame: sized to its box at the screen's own
 // pixels, cleared, with the line and the lettering every drawing here uses.
 // `colour` gives one of the style's colours by name, read from the style
@@ -95,6 +142,16 @@ function drawTrace() {
     context.fillText('Clock out', 4, (height * rows.clock) + labelDrop);
     context.fillText('Clock in', 4, (height * rows.clockIn) + labelDrop);
     context.fillText('Reset in', 4, (height * rows.resetIn) + labelDrop);
+    if (el('trace-axes').checked) {
+        const volts = [];
+
+        for (let mv = 0; mv <= cvFullScale; mv += CV_SCALE_STEP_MV) {
+            volts.push([mv / cvFullScale, `${mv / 1000} V`]);
+        }
+        drawAxes(context, colour, 16, cvHeight - 16, width, volts, []);
+        // The seconds go down through every row, named under the last
+        drawAxes(context, colour, 16, height - 16, width, [], secondsBack());
+    }
     drawSignal(context, trace.cv, colour('--cv'), 16, cvHeight - 16, cvFullScale, width);
     drawSignal(context, trace.gate, colour('--gate'),
         height * rows.gate, pinHeight, 1, width);
