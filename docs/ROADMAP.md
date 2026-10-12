@@ -18,9 +18,9 @@ Keep it to a screen, and bring it up to date at the end of each piece of work.
 
 - **Next piece of work: modulation, stage 2, step position.** The LFO offsets the step played, by the amount at selector position 4.
   It touches addressing in every engine.
+  Decisions 147 to 154 say what it does, engine by engine; nothing about it is left to settle.
   Decision 146 has the order of the stages after it: the DAC's channel B as a level and envelope output, vibrato, an LFO of the sequencer's own, profiles with their button, and a status light.
 - **After the modulation: MIDI in**, the second piece of phase 10 (decision 117), and then phase 11.
-- **To settle before starting stage 2:** whether the offset is in steps of the pattern or places in the range, and what it does in the engines that do not step through sixteen places (stage, Klee, Cartesian).
 - **Waiting on the board, not on firmware:** everything from phase 1 on is unrun on hardware.
   Section 8 lists what to check, and OPEN_ITEMS.md the order to check it in.
 - **Start each piece of work in a fresh session**, from this section and the decisions it names.
@@ -36,7 +36,7 @@ Keep it to a screen, and bring it up to date at the end of each piece of work.
 
 ## 2. Decisions
 
-The 146 decisions taken so far are in [DECISIONS.md](DECISIONS.md), by number.
+The 154 decisions taken so far are in [DECISIONS.md](DECISIONS.md), by number.
 A "decision N" anywhere in this document is one of those.
 Read the ones a piece of work names, not the whole file.
 
