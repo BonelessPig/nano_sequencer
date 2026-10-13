@@ -82,5 +82,5 @@ function readCrashLog(log) {
 
 module.exports = {
     crashRecord, readCrashLog, NO_CRASH_RECORD,
-    CRASH_LOG_ADDRESS, CRASH_RECORD_BYTES, CRASH_RECORD_COUNT, CRASH_LOG_BYTES,
+    CRASH_LOG_ADDRESS, CRASH_RECORD_BYTES, CRASH_LOG_BYTES,
 };

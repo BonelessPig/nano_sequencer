@@ -4,6 +4,10 @@
 const assert = require('node:assert/strict');
 const { createBoard } = require('../boards/nano_sequencer');
 const { parseMidi } = require('../boards/midi_messages');
+const {
+    READING_150_BPM, STEP_MS, HALF_STEP_MS, TICK_MS, MILLIVOLTS_PER_OCTAVE,
+    SEMITONES_PER_OCTAVE,
+} = require('./fixture');
 
 const CPU_HZ = 16000000;
 const MIDI_BAUD = 31250;
@@ -17,31 +21,23 @@ const BYTE_MS = 0.32;
 // 0.033 ms measured, and it moves with anything that changes a tick's length
 const BYTE_GAP_SPARE_MS = 0.06;
 const START = 0xFA;
-const STOP = 0xFC;
 const CLOCK = 0xF8;
 const NOTE_ON_CHANNEL_1 = 0x90;
-const NOTE_OFF_CHANNEL_1 = 0x80;
 const VELOCITY = 100;
 const LOWEST_NOTE = 24;          // C1: note value 1 on the panel, 0 V
 const CLOCKS_PER_STEP = 6;       // A step is a sixteenth note
 const STEPS_PER_QUARTER = 4;
 const CLOCKS_PER_QUARTER = 24;
-const MILLIVOLTS_PER_OCTAVE = 1000;
-const SEMITONES_PER_OCTAVE = 12;
 const UBRR_31250_DOUBLE_SPEED = 63;
 const DOUBLE_SPEED_SAMPLES = 8;  // Clock cycles of the divider to a bit
-const READING_150_BPM = 480;     // Internal clock: exactly 100 ms a step
 const READING_ONE_TO_ONE = 500;  // External clock: a step to an edge
 const READING_MULTIPLY_4 = 1023; // Four steps to an edge
-const STEP_MS = 100;
-const HALF_STEP_MS = 50;         // The gate length and the clock's high time
 const SETTLE_MS = 5;             // For what a tick queued to have been sent
 const CLOCK_MS = STEP_MS / CLOCKS_PER_STEP; // 16.667 ms at 150 BPM
 // Pulses are counted on the 1 ms tick, so a clock due every 16.667 ms goes
 // on the 16th or 17th tick after the last, and can wait behind the bytes of
 // a note or for a tick that also reads the panel: 16.00 to 17.24 measured
 const CLOCK_JITTER_MAX_MS = 0.7;
-const TICK_MS = 1;
 const RUN_LIMIT_MS = 10000;
 const DEBOUNCE_MS = 20;
 // How long after its gate edge a note's message begins. It is queued in the
@@ -191,9 +187,9 @@ function clockPeriodsMs(board, clocks) {
 }
 
 module.exports = {
-    CPU_HZ, MIDI_BAUD, BITS_PER_BYTE, BYTE_CYCLES, BYTE_MS, BYTE_GAP_SPARE_MS,
-    START, STOP, CLOCK, NOTE_ON_CHANNEL_1, NOTE_OFF_CHANNEL_1, VELOCITY,
-    LOWEST_NOTE, CLOCKS_PER_STEP, STEPS_PER_QUARTER, CLOCKS_PER_QUARTER,
+    MIDI_BAUD, BITS_PER_BYTE, BYTE_CYCLES, BYTE_MS, BYTE_GAP_SPARE_MS,
+    START, CLOCK, NOTE_ON_CHANNEL_1, VELOCITY,
+    CLOCKS_PER_STEP, STEPS_PER_QUARTER, CLOCKS_PER_QUARTER,
     MILLIVOLTS_PER_OCTAVE, SEMITONES_PER_OCTAVE, UBRR_31250_DOUBLE_SPEED,
     DOUBLE_SPEED_SAMPLES, READING_150_BPM, READING_ONE_TO_ONE,
     READING_MULTIPLY_4, STEP_MS, HALF_STEP_MS, SETTLE_MS, CLOCK_MS,

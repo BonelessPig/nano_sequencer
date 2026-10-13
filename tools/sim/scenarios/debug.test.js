@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
+const { READING_150_BPM, assertNear } = require('./fixture');
 
 const PANEL = [1, 4, 7, 10, 13, 0, 3, 6, 9, 12, 15, 2, 5, 8, 11, 14];
 const CLOCKS_PER_READ = 80;     // 16 steps of 4 bits, 8 mode switches, the selector
@@ -14,7 +15,6 @@ const SCAN_PERIOD_MS = 8;      // The panel and pot are read every 8 ticks
 // On a tick that also queues a log line the read starts about 0.11 ms later
 const SCAN_JITTER_MAX_MS = 0.2;
 const FASTEST_READING = 1023;  // 285 BPM, about 52.6 ms a step
-const READING_150_BPM = 480;   // Exactly 100 ms a step
 const STEP_MS_150_BPM = 100;
 const READING_30_BPM = 0;      // The slowest tempo: 500 ms a step
 const STEP_MS_30_BPM = 500;
@@ -38,11 +38,6 @@ function debugBoard(tempoReading) {
     board.setNotes(PANEL);
     board.setTempoReading(tempoReading);
     return board;
-}
-
-function assertNear(actual, expected, tolerance, what) {
-    assert.ok(Math.abs(actual - expected) <= tolerance,
-        `${what}: ${actual} ms, expected ${expected} within ${tolerance}`);
 }
 
 // The firmware plays the chromatic scale from the lowest pitch: a note value

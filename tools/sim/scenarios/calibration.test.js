@@ -6,35 +6,30 @@
 // checked as well.
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
+const {
+    createBoard, CONFIGS, STEP_COUNT,
+} = require('../boards/nano_sequencer');
 const { calRecord } = require('../boards/cal_record');
+const {
+    READING_150_BPM, TICK_MS, EDGE_JITTER_MAX_MS, SEMITONES_PER_OCTAVE, ERASED,
+    assertNear,
+} = require('./fixture');
 
-const CONFIGS = ['debug', 'release', 'midi'];
 const PANEL = [1, 4, 7, 10, 13, 0, 3, 6, 9, 12, 15, 2, 5, 8, 11, 14];
-const READING_150_BPM = 480;     // Exactly 100 ms a step
 const RUN_LIMIT_MS = 5000;
 const RECORD_BYTES = 12;
-const ERASED = 0xFF;
 const IDEAL_TABLE = [0, 1000, 2000, 3000, 4000];
 // Every octave a little out, each by a different amount
 const STORED_TABLE = [10, 1100, 2000, 3050, 4000];
-const SEMITONES_PER_OCTAVE = 12;
 const TRIM_CENTRE_READING = 512; // The pot position that trims nothing
 const TRIM_13_UP_READING = 616;  // 8 counts of the reading to one millivolt
-const TICK_MS = 1;
 const SETTLE_MS = 20;            // More than two panel scans
 const CONFIRM_MS = 250;          // The gate is low this long after a store
-const EDGE_JITTER_MAX_MS = 0.02;
 // From reset to the timer being started, and the first tick's work done:
 // 0.52 ms was measured on the debug image
 const START_UP_MAX_MS = 0.6;
 const POWER_ON_RESET = 0x01;
 const EXTERNAL_RESET = 0x02;
-
-function assertNear(actual, expected, tolerance, what) {
-    assert.ok(Math.abs(actual - expected) <= tolerance,
-        `${what}: ${actual} ms, expected ${expected} within ${tolerance}`);
-}
 
 // What the firmware should send the DAC for a note value through a table:
 // the chromatic scale from the lowest pitch, on the straight line between

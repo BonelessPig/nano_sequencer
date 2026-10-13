@@ -5,6 +5,10 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
+const {
+    READING_150_BPM, STEP_MS, HALF_STEP_MS, TICK_MS, EDGE_JITTER_MAX_MS,
+    noteMillivolts, assertNear,
+} = require('./fixture');
 
 const CLOCKS_PER_READ = 80;     // 16 steps of 4 bits, 8 mode switches, the selector
 const CLOCKS_PER_LED_WRITE = 16; // The step lights, sent ahead of each read
@@ -33,32 +37,12 @@ const SPI_HZ = 1000000;
 const RUN_LIMIT_MS = 5000;
 const PANEL = [1, 4, 7, 10, 13, 0, 3, 6, 9, 12, 15, 2, 5, 8, 11, 14];
 const REST_STEP = 5;            // The one step of PANEL with no note
-const READING_150_BPM = 480;    // Exactly 100 ms a step
-const STEP_MS = 100;
-const HALF_STEP_MS = 50;        // The gate length and the clock's high time
-const TICK_MS = 1;
-// Outputs are set first thing in a tick, so their edges land on the tick to
-// within the time the idle loop takes to notice it
-const EDGE_JITTER_MAX_MS = 0.02;
 // How long after reset the firmware may take to start its timer
 const START_UP_MAX_MS = 0.2;
-const MILLIVOLTS_PER_OCTAVE = 1000;
-const SEMITONES_PER_OCTAVE = 12;
 // The DAC takes its frame this long before the gate is written, at most
 const CV_LEAD_MAX_MS = 0.01;
 // The envelope's frame follows the pitch's, the gate and the clock output
 const ENV_AFTER_CV_MAX_MS = 0.1;
-
-// The firmware plays the chromatic scale at 1 V to the octave: a note value
-// is one semitone above the one before, and note value 1 is 0 V
-function noteMillivolts(noteValue) {
-    return Math.round(((noteValue - 1) * MILLIVOLTS_PER_OCTAVE) / SEMITONES_PER_OCTAVE);
-}
-
-function assertNear(actual, expected, tolerance, what) {
-    assert.ok(Math.abs(actual - expected) <= tolerance,
-        `${what}: ${actual} ms, expected ${expected} within ${tolerance}`);
-}
 
 // One pass of PANEL at 150 BPM and a little of the next
 function playedBoard() {

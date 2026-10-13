@@ -6,18 +6,15 @@
 // well, and the midi image's MIDI in midi.test.js.
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { createBoard } = require('../boards/nano_sequencer');
+const { createBoard, CONFIGS } = require('../boards/nano_sequencer');
+const {
+    READING_150_BPM, STEP_MS, HALF_STEP_MS, EDGE_JITTER_MAX_MS, noteMillivolts,
+    assertNear,
+} = require('./fixture');
 
-const CONFIGS = ['debug', 'release', 'midi'];
 const MODE_PLAIN = 0;
 const MODE_STAGE = 1;
-const READING_150_BPM = 480; // Exactly 100 ms a step
-const STEP_MS = 100;
-const HALF_STEP_MS = 50;
 const RUN_LIMIT_MS = 5000;
-const EDGE_JITTER_MAX_MS = 0.02;
-const MILLIVOLTS_PER_OCTAVE = 1000;
-const SEMITONES_PER_OCTAVE = 12;
 
 // A stage's control: its gate mode in the high two switches, its length in
 // steps, less one, in the low two
@@ -48,15 +45,6 @@ const STAGE_GATES = [
     { step: 10, widthMs: HALF_STEP_MS, stage: 6 },
     { step: 11, widthMs: HALF_STEP_MS, stage: 7 },
 ];
-
-function assertNear(actual, expected, tolerance, what) {
-    assert.ok(Math.abs(actual - expected) <= tolerance,
-        `${what}: ${actual} ms, expected ${expected} within ${tolerance}`);
-}
-
-function noteMillivolts(noteValue) {
-    return Math.round(((noteValue - 1) * MILLIVOLTS_PER_OCTAVE) / SEMITONES_PER_OCTAVE);
-}
 
 function boardWith(config, modeSwitches) {
     const board = createBoard(config);

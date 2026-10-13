@@ -33,3 +33,6 @@ Loaded with the files below, on top of `tools/sim/CLAUDE.md`, whose rules apply 
 - For a long run use `runForMs()` and work out when it should end.
   `runUntilClockOutPulses()` builds the list of pulses again at every instruction: 64 steps took 14 s that way and 2.5 s the other.
 - Do not let a scenario file grow past about 25,000 characters; start another by topic, with what the two share in a file beside them that is not named `*.test.js`, as `midi_fixture.js` is.
+- What every scenario file shares is in `scenarios/fixture.js`: the figures (`READING_150_BPM`, `STEP_MS`, `EDGE_JITTER_MAX_MS` and the like), `noteMillivolts()`, `assertNear()`, `assertAllEqual()` and `nowMs()`.
+  Require them from there, not declare them again, and loop over the board's `CONFIGS`.
+  A figure or helper that differs from file to file (`PANEL`, `RUN_LIMIT_MS`, `SCAN_MS`, `playingBoard()`) stays in its file.

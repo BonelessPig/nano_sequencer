@@ -503,11 +503,6 @@ function createBoard(config, options = {}) {
             machine.runUntil(() => serial.notices.length >= count, limitMs);
         },
 
-        /** Sets the tempo pot wiper voltage, 0 to 5 V. */
-        setTempoVolts(volts) {
-            machine.adc.channelValues[TEMPO_ADC_CHANNEL] = volts;
-        },
-
         /**
          * Sets the tempo pot so the firmware reads exactly this value,
          * 0 to 1023 (the middle of that reading's voltage band).

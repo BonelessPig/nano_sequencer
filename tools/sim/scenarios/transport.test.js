@@ -11,23 +11,22 @@
 // latches them.
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { createBoard, STEP_COUNT } = require('../boards/nano_sequencer');
+const {
+    createBoard, CONFIGS, STEP_COUNT,
+} = require('../boards/nano_sequencer');
+const {
+    READING_150_BPM, STEP_MS, TICK_MS, EDGE_JITTER_MAX_MS, noteMillivolts,
+    assertNear, nowMs,
+} = require('./fixture');
 
-const CONFIGS = ['debug', 'release', 'midi'];
 // Sixteen notes, no rests, and the first few all different
 const PANEL = [3, 6, 9, 12, 15, 2, 5, 8, 11, 14, 1, 4, 7, 10, 13, 2];
-const READING_150_BPM = 480;     // Internal clock: exactly 100 ms a step
 const READING_ONE_TO_ONE = 500;  // External clock: a step to an edge
 const READING_DIVIDE_4 = 0;      // A step to every four edges
 const READING_MULTIPLY_4 = 1023; // Four steps to an edge
-const STEP_MS = 100;
-const TICK_MS = 1;
 const RUN_LIMIT_MS = 5000;
-const EDGE_JITTER_MAX_MS = 0.02;
 const DEBOUNCE_MS = 20;          // A control must hold this long to count
 const FIRST_GATE_MS = 10;        // Half of the 20 ms a first step is taken to be
-const MILLIVOLTS_PER_OCTAVE = 1000;
-const SEMITONES_PER_OCTAVE = 12;
 const TCCR1B = 0x81;             // Data addresses of the registers checked
 const TIMSK1 = 0x6F;
 const EICRA = 0x69;
@@ -39,15 +38,6 @@ const TCCR0B = 0x45;
 const PORTD = 0x2B;
 const CLOCK_IN_PIN = 0x01;       // PB0
 const PORT_D_INPUTS = 0x8C;      // PD2 (reset), PD3 (unused), PD7 (run)
-
-function assertNear(actual, expected, tolerance, what) {
-    assert.ok(Math.abs(actual - expected) <= tolerance,
-        `${what}: ${actual} ms, expected ${expected} within ${tolerance}`);
-}
-
-function noteMillivolts(noteValue) {
-    return Math.round(((noteValue - 1) * MILLIVOLTS_PER_OCTAVE) / SEMITONES_PER_OCTAVE);
-}
 
 // A board on the internal clock as it powers on, or with external true one
 // on the external clock that is waiting for its first edge
@@ -72,10 +62,6 @@ function stepsPlayed(board) {
 
 function riseMs(board, recorder) {
     return recorder.rises().map((cycle) => board.machine.cyclesToMs(cycle));
-}
-
-function nowMs(board) {
-    return board.machine.cyclesToMs(board.machine.cpu.cycles);
 }
 
 for (const config of CONFIGS) {

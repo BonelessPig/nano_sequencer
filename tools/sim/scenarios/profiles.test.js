@@ -7,17 +7,17 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { calRecord } = require('../boards/cal_record');
-const { createBoard } = require('../boards/nano_sequencer');
+const { createBoard, CONFIGS } = require('../boards/nano_sequencer');
 const {
     profileRecord, profileAddress, eepromWithProfiles,
     PROFILE_ADDRESS, PROFILE_RECORD_BYTES, PROFILES_END,
 } = require('../boards/profile_record');
+const {
+    READING_150_BPM, STEP_MS, ERASED, noteMillivolts, assertAllEqual,
+} = require('./fixture');
 
-const CONFIGS = ['debug', 'release', 'midi'];
 const NOTE = 5;                  // On every step
 const PANEL = new Array(16).fill(NOTE);
-const READING_150_BPM = 480;     // Exactly 100 ms a step
-const STEP_MS = 100;
 const PULSE_MS = STEP_MS / 24;   // A clock pulse: gate lengths are counted in them
 const TOP = 1023;                // Of the pot and of the LFO
 const LFO_HALF_UP = 768;
@@ -31,9 +31,6 @@ const SAVE_MS = 1200;            // Holds of over one second, five and ten
 const CLEAR_MS = 5200;
 const CLEAR_ALL_MS = 10200;
 const WRITE_MS = 80;             // More than the 16 bytes of a record take
-const ERASED = 0xFF;
-const MILLIVOLTS_PER_OCTAVE = 1000;
-const SEMITONES_PER_OCTAVE = 12;
 const ACTION_RECALL = 1;         // As the log gives them
 const ACTION_SAVE = 2;
 const ACTION_CLEAR = 3;
@@ -41,10 +38,6 @@ const ACTION_CLEAR_ALL = 4;
 // The note amount alone, and the gate amount alone, as a profile's seven
 const NOTE_AMOUNTS = [TOP, 0, 0, 0, 0, 0, 0];
 const GATE_AMOUNTS = [0, TOP, 0, 0, 0, 0, 0];
-
-function noteMillivolts(noteValue) {
-    return Math.round(((noteValue - 1) * MILLIVOLTS_PER_OCTAVE) / SEMITONES_PER_OCTAVE);
-}
 
 // A board powered up with the selector and the LFO already where they are
 // given, playing the same note on every step at 150 BPM
@@ -91,11 +84,6 @@ function play(board, steps) {
             .map((cycle) => board.cvWriteBefore(cycle).millivolts),
         gates: board.gatePulsesMs().filter((pulse) => pulse.riseMs > fromMs),
     };
-}
-
-function assertAllEqual(values, expected, what) {
-    assert.ok(values.length > 0, `${what}: nothing to check`);
-    assert.deepEqual(values, new Array(values.length).fill(expected), what);
 }
 
 function assertGatesOf(gates, pulses, what) {

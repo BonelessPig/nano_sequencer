@@ -16,31 +16,24 @@
 // was not cleared by the startup code.
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { createBoard } = require('../boards/nano_sequencer');
+const { createBoard, CONFIGS } = require('../boards/nano_sequencer');
 const {
     crashRecord, NO_CRASH_RECORD, CRASH_LOG_ADDRESS, CRASH_RECORD_BYTES, CRASH_LOG_BYTES,
 } = require('../boards/crash_record');
+const {
+    READING_150_BPM, STEP_MS, ERASED, noteMillivolts, nowMs,
+} = require('./fixture');
 
-const CONFIGS = ['debug', 'release', 'midi'];
 // Sixteen notes, no rests, and the first few all different
 const PANEL = [3, 6, 9, 12, 15, 2, 5, 8, 11, 14, 1, 4, 7, 10, 13, 2];
-const READING_150_BPM = 480; // Exactly 100 ms a step
-const STEP_MS = 100;
 const RUN_LIMIT_MS = 5000;
 const WDTCSR = 0x60;         // Data address of the watchdog's control register
 const WATCHDOG_RESET_AT_250_MS = 0x0C; // Reset enable, prescaler for 256 ms
 const WATCHDOG_MS = 256;
-const MILLIVOLTS_PER_OCTAVE = 1000;
-const SEMITONES_PER_OCTAVE = 12;
 const WATCHDOG_RESET = 8;        // The reset flag, and the cause in a record
 const PLACE_BETWEEN_TICKS = 5;   // The firmware's number for an idle loop
-const ERASED = 0xFF;
 // Longer than the five bytes of a record take to write, at 3.6 ms each
 const RECORD_WRITE_MS = 25;
-
-function noteMillivolts(noteValue) {
-    return Math.round(((noteValue - 1) * MILLIVOLTS_PER_OCTAVE) / SEMITONES_PER_OCTAVE);
-}
 
 function playingBoard(config, options) {
     const board = createBoard(config, options);
@@ -159,12 +152,11 @@ for (const config of CONFIGS) {
 
     test(`${config}: a tick that stops is caught, and the pattern starts again`, () => {
         const board = playingBoard(config);
-        const nowMs = () => board.machine.cyclesToMs(board.machine.cpu.cycles);
 
         // Steps 0, 1 and 2 begin; then no more interrupts, so no more ticks
         board.machine.runUntil(() => board.gate.rises().length >= 3, RUN_LIMIT_MS);
         board.stopTick();
-        const stoppedMs = nowMs();
+        const stoppedMs = nowMs(board);
 
         board.machine.runUntil(() => board.gate.rises().length >= 5, RUN_LIMIT_MS);
 
@@ -173,8 +165,10 @@ for (const config of CONFIGS) {
         const rises = board.gate.rises().map((cycle) => board.machine.cyclesToMs(cycle));
 
         assert.deepEqual(stepsPlayed(board), [0, 1, 2, 0, 1]);
-        assert.ok(rises[3] - stoppedMs >= WATCHDOG_MS - 2, `reset after ${rises[3] - stoppedMs} ms`);
-        assert.ok(rises[3] - stoppedMs <= WATCHDOG_MS + 5, `reset after ${rises[3] - stoppedMs} ms`);
+        const resetMs = rises[3] - stoppedMs;
+
+        assert.ok(resetMs >= WATCHDOG_MS - 2, `reset after ${resetMs} ms`);
+        assert.ok(resetMs <= WATCHDOG_MS + 5, `reset after ${resetMs} ms`);
         // Step 0's gate is a little late on the debug image, which has the
         // crash to report as it starts, so that its first pass, with the
         // first input scan in it, runs into the second tick: 0.36 ms

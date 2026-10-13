@@ -5,13 +5,13 @@
 // the DAC holds as each gate rises, and timed from the pins.
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { createBoard } = require('../boards/nano_sequencer');
+const { createBoard, CONFIGS } = require('../boards/nano_sequencer');
+const {
+    READING_150_BPM, STEP_MS, noteMillivolts, assertAllEqual,
+} = require('./fixture');
 
-const CONFIGS = ['debug', 'release', 'midi'];
 const NOTE = 5;                  // On every step
 const PANEL = new Array(16).fill(NOTE);
-const READING_150_BPM = 480;     // Exactly 100 ms a step
-const STEP_MS = 100;
 const PULSE_MS = STEP_MS / 24;   // A clock pulse: gate lengths are counted in them
 const TOP = 1023;                // Of the pot and of the LFO
 const LFO_CENTRE = 512;
@@ -36,13 +36,7 @@ const STEP_COUNT = 16;
 // last two share the top note
 const COUNTING_PANEL = PANEL.map((note, step) => Math.min(step + 1, 15));
 const SCAN_MS = 20;              // More than two input scans
-const MILLIVOLTS_PER_OCTAVE = 1000;
-const SEMITONES_PER_OCTAVE = 12;
 const MIDI_LOWEST_NOTE = 24;     // The MIDI note of 0 V
-
-function noteMillivolts(noteValue) {
-    return Math.round(((noteValue - 1) * MILLIVOLTS_PER_OCTAVE) / SEMITONES_PER_OCTAVE);
-}
 
 function playingBoard(config) {
     const board = createBoard(config);
@@ -84,11 +78,6 @@ function playWithLfo(board, reading, steps) {
         gateEdges: board.gate.edges.filter((edge) => edge.cycle > from).length,
         clockRises: board.clockOut.rises().filter((cycle) => cycle > from).length,
     };
-}
-
-function assertAllEqual(values, expected, what) {
-    assert.ok(values.length > 0, `${what}: nothing to check`);
-    assert.deepEqual(values, new Array(values.length).fill(expected), what);
 }
 
 for (const config of CONFIGS) {
