@@ -23,8 +23,8 @@ const STEP_MS_30_BPM = 500;
 const LOG_START_JITTER_MAX_MS = 0.5;
 // The first step's line is later than that: the start-up line is ahead of
 // it in the queue and, since start-up began reading the crash log, is still
-// being sent when the step is logged, and the profile the selector is at is
-// read ahead of the line. The line waits up to this much longer, a byte
+// being sent when the step is logged, and the status light is seen to
+// ahead of the line. The line waits up to this much longer, a byte
 // of the start-up line (0.09 ms) at a time: 1.15 ms was measured
 const FIRST_LINE_HELD_MAX_MS = 1.3;
 // And begins within this long of reset

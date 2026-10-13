@@ -14,18 +14,18 @@ Timing figures marked as measured come from the emulated board; the rest are cal
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano, old bootloader), 16 MHz |
-| Flash | 13712 bytes debug, 12264 release, 12416 midi, of 30720 below the bootloader |
-| Static RAM | 966 bytes debug, 316 release, 350 midi (`avr-size` reports less: open item 5) |
+| Flash | 14332 bytes debug, 12886 release, 13038 midi, of 30720 below the bootloader |
+| Static RAM | 977 bytes debug, 329 release, 363 midi (`avr-size` reports less: open item 5) |
 | EEPROM | 180 of 1024 bytes: the calibration record (12, from address 0), the crash log (40, from address 16) and the eight profiles (128, from address 64) |
 | Interrupts | One: Timer/Counter2 compare match, 1000 times a second, which adds one to a counter. The clock and reset inputs use interrupt flags, polled, with their interrupts off |
 | Main loop | Never blocks. One sequencer tick a millisecond; every output is applied at the next tick boundary |
 | Watchdog | About 250 ms, kicked once a tick. After a watchdog reset the firmware records in the EEPROM which part of the loop it had reached |
 | Inputs | 16 steps × 4 bits, 8 mode switches, an 8-way selector and the profile button on ten 74HC165s (SPI), a pot (ADC 6) and the LFO rate pot (ADC 0), all read every 8 ms. Clock input (PB0), reset input (PD2) and run button (PD7), read every tick, and a modulation input (ADC 7), read on every tick but those |
-| Outputs | Pitch CV from an MCP4822 DAC (SPI), 1 V to the octave; gate (PD4); clock (PD5); 16 step lights on two 74HC595s (SPI); a level light (PD6, PWM). A serial log in the debug build, MIDI out in the midi build |
+| Outputs | Pitch CV from an MCP4822 DAC (SPI), 1 V to the octave; gate (PD4); clock (PD5); 16 step lights on two 74HC595s (SPI); a level light (PD6, PWM); a status light (PD3). A serial log in the debug build, MIDI out in the midi build |
 | Tempo | 30 to 285 BPM, a step being a sixteenth note (500 ms down to 52.6 ms) |
-| Tests | 727 host tests in 63 programs: 459 for the core, 108 for the app loop, 157 for the target adapters, 3 for `main.c` |
+| Tests | 758 host tests in 66 programs: 472 for the core, 123 for the app loop, 160 for the target adapters, 3 for `main.c` |
 | Coverage | 100% of lines (1669) and branches (758) in `core/`, `app/` and `adapters/target/` |
-| Emulated board | 233 scenarios across the three images |
+| Emulated board | 251 scenarios across the three images |
 | MISRA | Zero findings from cppcheck's addon over four runs; one inline suppression (see "Static analysis") |
 
 The sizes and counts are copied from [FIGURES.md](FIGURES.md), which `make figures` writes.
@@ -97,7 +97,7 @@ Each pass of `app_run_once()` asks the timebase how many 1 ms ticks have gone by
 With none, it polls the log, the MIDI output and the EEPROM and returns, a few microseconds a pass.
 With one or more it runs one tick first, handing the count to the core so that a late pass loses no time.
 
-1. **Apply outputs** from the previous tick: the pitch CV, then the gate, then the clock output, on every tick and ahead of everything else; then the envelope CV, the step lights, the level light and any MIDI bytes; then what the profile button asked for; then the log lines (a transport change, the step that began, errors).
+1. **Apply outputs** from the previous tick: the pitch CV, then the gate, then the clock output, on every tick and ahead of everything else; then the envelope CV, the step lights, the level light and any MIDI bytes; then the status light and what the profile button asked for; then the log lines (a transport change, the step that began, errors).
 2. **Gather inputs.** Every tick: the clock and reset edges, the run button and the room in the MIDI output.
    Every eighth tick: the ten panel bytes, the pot and the rate pot.
    Every other tick: the modulation input.
@@ -105,7 +105,7 @@ With one or more it runs one tick first, handing the count to the core so that a
    Between scans the core is given the last snapshot again.
    A read's status is kept beside the snapshot so that a failure can be logged with its code, once per step.
 3. **Run the core.** `bank_tick()` lets the pot set the amount the selector is on; the app copies the tempo and the six modulation amounts into the sequencer's inputs.
-   `profile_tick()` follows the profile button and says what it asked for, which the next tick's apply step does.
+   `profile_tick()` follows the profile button and says what it asked for, which the next tick's apply step does, and `blink_tick()` gives the status light for that step to write.
    `lfo_tick()` moves the sequencer's own LFO on and adds it to the modulation input, and the sum is the sequencer's LFO.
    `seq_tick()` works out whether a step begins and the level of every output after this tick.
    `midi_out_tick()` turns that into at most as many MIDI bytes as there was room for.
@@ -162,9 +162,10 @@ An external edge is noticed at the next tick and acted on at the one after, so s
 | `env` | What is the envelope's level this tick? |
 | `lfo` | What is the modulating signal this tick: the sequencer's own LFO added to the one from outside? |
 | `profile`, `profile_record` | What is the profile button asking for? Are these stored bytes a profile? |
+| `blink` | Is the status light lit this tick? |
 
 `seq` owns the clock, transport, engines, gate, note mapping, modulation and pitch calibration.
-`bank`, `cal`, `cal_record`, `errlog`, `midi_out`, `env`, `lfo`, `profile` and `profile_record` stand beside it: the app calls them itself and they include nothing of the sequencer's.
+`bank`, `cal`, `cal_record`, `errlog`, `midi_out`, `env`, `lfo`, `profile`, `profile_record` and `blink` stand beside it: the app calls them itself and they include nothing of the sequencer's.
 
 ### The clock
 
@@ -356,7 +357,7 @@ There are eight, numbered as the selector's positions are, so the selector says 
 
 - `profile` debounces the button (20 ms) and counts the hold in ticks; nothing happens until the button is let go.
   It also asks for one recall by itself, on the first tick the panel has been read: that is the load at power-on, of whichever profile the selector stands at.
-  The amounts are in use from the second tick. The first step has begun by then, but no LFO has been read by then either, so nothing is moved differently for it.
+  The amounts are in use from the tenth tick, the eight before it each reading one byte for the status light (below). The first step has begun by then, but its LFO was read before any amount could be there, so nothing is moved differently for it.
 - After a recall the pot is detached, as after a move of the selector (`bank_set()`), and has to meet the recalled amount before it sets it again.
 - `profile_record` is the stored form, laid out as the calibration record is: a version byte, the seven amounts as two bytes each with the low byte first, and a CRC-8 of those fifteen bytes.
   Sixteen bytes, which is the most one write to the storage takes, so a save is one write and takes about 55 ms to reach the EEPROM, a byte each pass of the loop.
@@ -366,7 +367,29 @@ There are eight, numbered as the selector's positions are, so the selector says 
   A save that finds it busy is logged as failed and not tried again.
 - In calibration mode the button does nothing, and nothing here touches the calibration record or the crash log.
 - `app/app_profile.c` holds the app's side of this, split from `app.c` by topic.
-- There is no light for it yet (decision 146, the stage to come); the debug log's `Profile 3 = 2` line is the only sign, its second number 1 for recalled, 2 for saved, 3 for cleared and 4 for all cleared.
+- The debug log has a `Profile 3 = 2` line for each thing done, its second number 1 for recalled, 2 for saved, 3 for cleared and 4 for all cleared. The status light says the same on every image.
+
+### Status light
+
+One light on PD3, high for lit, for the profiles.
+
+| The light | Means |
+|---|---|
+| Lit, steadily | The profile the selector is at holds something |
+| Dark, steadily | It holds nothing |
+| One flicker while the button is held | The hold has passed 1 s (letting go now saves), 5 s (clears) or 10 s (clears all) |
+| Flickers after the button is let go | One for a recall, two for a save, three for a clear, four for a clear of all eight: the numbers the log gives them |
+| One long blink | A recall found nothing or could not be read, or a save could not be started |
+
+- A flicker is the light turned the other way for 80 ms, dark if it is lit and lit if it is dark, and then 80 ms as it was; the long blink is 500 ms of each. One begun while another runs takes its place.
+- A save and a clear change the steady level under their own flickers, so the first flicker of a save into an empty profile begins dark, as the light was, and the last ends lit.
+- `blink` is the light and knows nothing of profiles: it is given the steady level, a number of flickers to begin, a refusal, and how far a hold has got (`profile_hold_stage()`), and flickers once each time that rises.
+- Which profiles hold anything is kept as a bit each. It is learned at power-on from the first byte of each record, which a clear makes blank, one profile a tick for the eight ticks ahead of the power-on recall, and kept up by every save and clear.
+  A record with a first byte and a bad checksum therefore shows lit, and a recall of it gives the long blink.
+  Reading and checking whole records there was tried: a tenth of a millisecond a tick, on the ticks the first step's MIDI bytes are leaving in.
+- The power-on recall says nothing, whether it found a profile or not.
+- In calibration mode the light stays dark.
+- It is worked out with the button in the core step and written in the apply step of the next tick, on every tick (`status_output_write()`).
 
 ### Modulation
 
@@ -469,7 +492,7 @@ Pitches run from 0 to 45 semitones, which is 3.75 V of the DAC's 4.095.
 | PC1 | A1 | output | Nothing (open item 1) |
 | PD0, PD1 | D0, D1 | as at reset | The USART, when a logger or the MIDI output enables it |
 | PD2 | D2 (INT0) | input, pull-up | Reset input: a falling edge is latched by the INT0 flag |
-| PD3 | D3 | input, pull-up | Free |
+| PD3 | D3 | output, idle low | Status light, high for lit |
 | PD4 | D4 | output, idle low | Gate output |
 | PD5 | D5 | output, idle low | Clock output |
 | PD6 | D6 (OC0A) | output, idle low | Level light, by pulse width from Timer/Counter0 |
@@ -501,6 +524,7 @@ Each output's level is set before it is made an output, so no line glitches on t
 - **Clock and reset inputs.** A pulse can be far shorter than a tick, so each uses a flag the MCU latches on an edge (ICF1, INTF0) and holds until a one is written to it.
   The flags are polled once a tick with their interrupts off, which matters: neither vector has a handler.
   The edge is the falling one because the planned input stage is a transistor that pulls the pin low while the jack is high.
+- **Status light (`status_output.c`).** An ordinary pin, PD3, written like the gate.
 - **Level light (`level_output.c`).** Timer/Counter0 in fast PWM at 977 Hz.
   Fast PWM cannot hold the pin low, so for a level of 0 the compare output is taken off the pin.
 - **EEPROM (`eeprom.c`).** `nv_read()` is immediate.
@@ -524,13 +548,13 @@ Each output's level is set before it is made an output, so no line glitches on t
 
 ## Host tests — `adapters/host/` and `tests/`
 
-`make test` builds 63 programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
+`make test` builds 66 programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
 There are two kinds:
 
-- **41 link the code they test.** One per core module, with the sequencer's split by topic into six (`test_seq` and `test_seq_*`, sharing `tests/seq_fixture.h`) and MIDI out's into two (`test_midi_out` and `test_midi_out_notes`, sharing `tests/midi_out_fixture.h`), and seven for the app loop (`test_app` and `test_app_*`, sharing `tests/app_fixture.h`), which link the real `app.c` and `app_profile.c` and all of `core/` against `adapters/host/host_ports.c`.
+- **43 link the code they test.** One per core module, with the sequencer's split by topic into six (`test_seq` and `test_seq_*`, sharing `tests/seq_fixture.h`) and MIDI out's into two (`test_midi_out` and `test_midi_out_notes`, sharing `tests/midi_out_fixture.h`), and eight for the app loop (`test_app` and `test_app_*`, sharing `tests/app_fixture.h`, and the two about the profiles `tests/profile_fixture.h`), which link the real `app.c` and `app_profile.c` and all of `core/` against `adapters/host/host_ports.c`.
   The fake ports script what the inputs return, record log calls in order, keep the level of each output, hold 192 bytes of storage that survive a re-init, and keep every MIDI byte written.
   Time is scripted, so the tests check on which tick each thing happens.
-- **22 `#include` the one source file they test**, against `tests/fake_atmega328p_regs.h`, which stands in for every register header.
+- **23 `#include` the one source file they test**, against `tests/fake_atmega328p_regs.h`, which stands in for every register header.
   This is how each target adapter and `main.c` are tested: the set-up values, the order of writes, the timed sequences, and the timeouts.
 
 `make coverage` rebuilds the same programs with `--coverage -O0` and fails unless every `.c` file in `core/`, `app/` and `adapters/target/` has every line run and every branch taken.
@@ -554,6 +578,7 @@ The details are in [tools/sim/CLAUDE.md](../tools/sim/CLAUDE.md).
 | `transport.test.js` | 48 | The clock and reset inputs, the run button, the pot and selector, the level light |
 | `modulation.test.js` | 30 | The LFO moving the note, the gate length, the step chance, the step played, the amplitude and the pitch of a sounding note; the envelope CV; the sequencer's own LFO |
 | `profiles.test.js` | 21 | The profile button: save, recall, clear and clear all; the records in the EEPROM; the load at power-on |
+| `status_light.test.js` | 18 | The status light: steady for a profile that holds something, the winks of a hold, the flickers and the long blink, with their lengths |
 | `engines.test.js` | 41 | The six engines and the step lights |
 | `watchdog.test.js` | 21 | The watchdog, the breadcrumb and the crash log |
 | `midi.test.js` | 10 | MIDI out on the midi image: the bytes, the notes and ties |
@@ -588,8 +613,8 @@ The chip has one USART, so an image has the log or MIDI out, not both.
 | Logger | `serial_logger.c` | `null_logger.c` | `null_logger.c` |
 | MIDI output | `null_midi_output.c` | `null_midi_output.c` | `midi_output.c` |
 | USART0 | The log, 115200 baud | Never switched on | MIDI out, 31250 baud |
-| Flash | 13712 bytes | 12264 bytes | 12416 bytes |
-| Static RAM | 966 bytes | 316 bytes | 350 bytes |
+| Flash | 14332 bytes | 12886 bytes | 13038 bytes |
+| Static RAM | 977 bytes | 329 bytes | 363 bytes |
 
 ### Where the flash goes
 

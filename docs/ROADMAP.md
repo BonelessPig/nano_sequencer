@@ -16,11 +16,9 @@ One marked **unverified** is from memory or a secondary source; check it before 
 Read this section to know what comes next; the rest of the document is the record behind it.
 Keep it to a screen, and bring it up to date at the end of each piece of work.
 
-- **Next piece of work: modulation, stage 7, a status light** on PD3: steady when on, flickering once for a recall, twice for a save, three times for a clear and four for clearing all (decision 146).
-  Nothing about it is settled beyond that; put the options to the owner before any code, as stages 2 to 6 were.
-  The profiles (stage 6, decisions 179 to 187) are built, with their button on the tenth 74HC165; until the light there is nothing but the debug log to say what a hold did.
-  The stage after it, if wanted: an enable button for a type.
-- **After the modulation: MIDI in**, the second piece of phase 10 (decision 117), and then phase 11.
+- **Next piece of work: ask the owner which.** The modulation has one stage left on its list, an enable button for a type (decision 146), which was only ever "possibly"; if it is not wanted, the next piece is **MIDI in**, the second piece of phase 10 (decision 117), and then phase 11.
+  Nothing about either is settled; put the options to the owner before any code, as stages 2 to 7 were.
+  The status light (stage 7, decisions 188 to 193) is built, on PD3, and the profiles before it (stage 6, decisions 179 to 187).
 - **Waiting on the board, not on firmware:** everything from phase 1 on is unrun on hardware.
   Section 8 lists what to check, and OPEN_ITEMS.md the order to check it in.
 - **Start each piece of work in a fresh session**, from this section and the decisions it names.
@@ -64,7 +62,7 @@ Adding one is a core file and its tests.
 The layers, the modules, the ports and the tick are built and are described in ARCHITECTURE.md; `core/CLAUDE.md` lists the modules.
 What is planned and not yet there:
 
-- **Core modules to come:** a parser for MIDI in, beside `midi_out`; ratchets, slide and swing, in `gate` and `clock`; the status light (decision 146).
+- **Core modules to come:** a parser for MIDI in, beside `midi_out`; ratchets, slide and swing, in `gate` and `clock`.
 - **Ports are named for what the core needs**, not for the bus.
   No `spi_port`.
 - **`adapters/target/` has two levels**: peripheral drivers with headers private to that folder, and device adapters above them that implement ports.
@@ -159,7 +157,7 @@ In use today, but for the 74HC595 on PB1 and PB3 (not wired) and the proposals m
 |---|---|---|---|
 | PD0, PD1 | UART (log or MIDI) | PB0 (ICP1) | Clock in |
 | PD2 (INT0) | Reset in | PB1 | 74HC165 load and 74HC595 latch |
-| PD3 (INT1) | Free; proposed: a status light (decision 146) | PB2 (SS) | DAC chip select |
+| PD3 (INT1) | Status light | PB2 (SS) | DAC chip select |
 | PD4 | Gate out | PB3 (MOSI) | DAC and 595 data |
 | PD5 | Clock out | PB4 (MISO) | 74HC165 data, through 1 kΩ |
 | PD6 (OC0A) | Level light, by pulse width | PB5 (SCK) | SPI clock (on-board LED flickers) |

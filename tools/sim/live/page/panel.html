@@ -221,8 +221,11 @@
                     <input type="range" id="rate" min="0" max="1023" step="1">
                     <span class="num" id="rate-reading"></span></div>
             </div>
-            <span><span class="led" id="level-led"></span> Level light (D6)
-                <span class="num dim" id="level-reading"></span></span>
+            <div>
+                <div><span class="led" id="level-led"></span> Level light (D6)
+                    <span class="num dim" id="level-reading"></span></div>
+                <div><span class="led" id="status-led"></span> Status light (D3)</div>
+            </div>
         </div>
         <div class="row spaced">
             <span class="num" id="tempo-means"></span>
@@ -268,6 +271,15 @@
                 <tr><th>Level light</th>
                     <td>As bright as the amount the selector is on, so it
                         shows where the pot has to go to meet it.</td></tr>
+                <tr><th>Status light</th>
+                    <td>Lit while the profile the selector is on holds
+                        something. It turns the other way for a moment to
+                        say things: a wink as a hold of the Profile button
+                        passes 1 s, 5 s and 10 s; after letting go, one
+                        flicker for a recall, two for a save, three for a
+                        clear and four for a clear of all eight; and one
+                        long blink, half a second, when a recall found
+                        nothing or a save could not be started.</td></tr>
                 <tr><th>LFO input</th>
                     <td>The reading the chip takes from the modulation
                         input's stage, used as each step begins, and all

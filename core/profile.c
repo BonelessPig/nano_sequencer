@@ -76,7 +76,7 @@ profile_action_t profile_tick(profile_state_t *p_state, const profile_inputs_t *
         {
             // Power-on: the profile is recalled once, as soon as it can be
             p_state->b_loaded = true;
-            action            = PROFILE_RECALL;
+            action            = PROFILE_LOAD;
         }
         else if (b_down)
         {
@@ -101,4 +101,20 @@ profile_action_t profile_tick(profile_state_t *p_state, const profile_inputs_t *
     }
 
     return action;
+}
+
+
+
+uint8_t profile_hold_stage(const profile_state_t *p_state)
+{
+    uint8_t stage = 0U;
+
+    if (NULL != p_state)
+    {
+        // The actions a hold asks for are numbered in the order of their
+        // hold times, from the recall, which is no stage at all
+        stage = (uint8_t)((uint8_t)action_for(p_state->held_ticks) - (uint8_t)PROFILE_RECALL);
+    }
+
+    return stage;
 }

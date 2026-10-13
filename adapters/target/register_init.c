@@ -27,22 +27,22 @@ port_status_t register_init(void)
     PORTB |= BIT_1;
     DDRB  |= BIT_1;
 
-    // Gate (PD4) and clock (PD5) outputs and the level light (PD6): low
-    // first, so that none is driven high on its way to being an output.
-    // gate_output.c and clock_output.c set the first two's levels from then
-    // on; the light's stays low, and level_output.c puts a timer on the pin
-    PORTD &= (uint8_t)~(BIT_4 | BIT_5 | BIT_6);
-    DDRD  |= (BIT_4 | BIT_5 | BIT_6);
+    // The status light (PD3), the gate (PD4) and clock (PD5) outputs and
+    // the level light (PD6): low first, so that none is driven high on its
+    // way to being an output. status_output.c, gate_output.c and
+    // clock_output.c set the first three's levels from then on; the level
+    // light's stays low, and level_output.c puts a timer on the pin
+    PORTD &= (uint8_t)~(BIT_3 | BIT_4 | BIT_5 | BIT_6);
+    DDRD  |= (BIT_3 | BIT_4 | BIT_5 | BIT_6);
 
     // Inputs with their pull-ups on. The clock input (PB0) and the reset
     // input (PD2) are each pulled low by a transistor while their jack is
     // high; the run button (PD7) closes to ground. clock_input.c,
-    // reset_input.c and run_input.c read them. PD3 has nothing on it, and
-    // is held by its pull-up so that it does not float
+    // reset_input.c and run_input.c read them
     DDRB  &= (uint8_t)~BIT_0;
     PORTB |= BIT_0;
-    DDRD  &= (uint8_t)~(BIT_2 | BIT_3 | BIT_7);
-    PORTD |= (BIT_2 | BIT_3 | BIT_7);
+    DDRD  &= (uint8_t)~(BIT_2 | BIT_7);
+    PORTD |= (BIT_2 | BIT_7);
 
     // ADC Initialization
     ADCSRA = (uint8_t)((1U << ADEN) |   // Enable ADC

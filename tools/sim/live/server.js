@@ -3,7 +3,7 @@
  * The emulated board, live (`make live`): runs one firmware image at the pace
  * of a real chip and serves a page that shows what the board does and lets
  * its panel be worked. The chip and the parts are the same ones the scenarios
- * use; only this file, page.html and page/ know about a browser.
+ * use; only this folder knows about a browser.
  *
  *   GET  /         The page: page.html, with each section kept in page/ put
  *                  in where its `part:` comment stands.
@@ -45,25 +45,13 @@
  * Unlike a scenario this is paced by the PC's clock, so no two runs are the
  * same; nothing is asserted here. The chip stops while no page is connected.
  *
- * Two things shown are worked out here, not read from the chip: the
- * transport and the step that is playing. Both follow the log where there is
- * one and what this server did to the controls where there is not (the
- * release and midi images); see predictRunPress(), nextStep() and record().
- * The midi image's Start and Stop say whether the pattern is running, as a
- * `Transport = N` line does, and are believed over the presses; they do not
- * name a step. The step is sent as -1 when it cannot be worked out: the
- * chance engine shuffling, on an image with no log. Nothing here follows
- * the firmware's random numbers, nor the amounts the pot has set: on an
- * image with no log the step given is the one the pattern has got to, which
- * is not the one played while the LFO moves the step position (selector
- * position 4). The step lights, which are the chip's own, show that one.
+ * Two things shown are worked out, not read from the chip: the transport
+ * and the step that is playing. That is predict.js, which record() and the
+ * controls here tell what happened.
  *
  * MIDI out is not worked out: the messages are the board's, read from the
- * bytes the chip sent. Three things are kept of them for a page to show
- * without a row a clock: how many clocks there have been since the last
- * Start, the tempo they are coming at, and the notes a receiver would be
- * sounding. They are `midi` in the state and `now` in every `midi` event;
- * see recordMidi().
+ * bytes the chip sent. What is kept of them for a page to show is in
+ * midi_out.js.
  *
  * The sixteen step lights are not worked out: `leds` in the state and the
  * `led` events are what the two 74HC595s last latched, bit n for step n.
@@ -74,23 +62,22 @@
  * the release image too: it is a `watchdog` event, and the transport, the
  * step and the mode are then worked out afresh, as at power-on.
  */
-const fs = require('node:fs');
 const http = require('node:http');
-const path = require('node:path');
 const {
     createBoard, CONFIGS, STEP_COUNT, CLOCK_PATTERNS,
 } = require('../boards/nano_sequencer');
-const { midiNoteName } = require('../boards/midi_messages');
+const {
+    STEP_UNKNOWN, startAfresh, isInCalibrationMode, takePanelRead, nextStep,
+    followLog, takeExternalEdge, predictRunPress, predictReset,
+} = require('./predict');
+const {
+    midiSummary, recordMidi, forgetMidi, beginMidiSlice, addMidiClocks,
+    addMidiClockQuiet,
+} = require('./midi_out');
+const { reply, servePage, serveAsset, ASSET_URL } = require('./page_files');
 
 const HOST = '127.0.0.1'; // This PC only
 const DEFAULT_PORT = 8165;
-const PAGE_PATH = path.join(__dirname, 'page.html');
-const PARTS_DIR = path.join(__dirname, 'page');
-// A line of page.html that stands for a file of PARTS_DIR
-const PART_MARK = /^[ \t]*<!-- part: ([\w-]+\.html) -->$/gm;
-// The only other files served: a name with no folder in it, from PARTS_DIR
-const ASSET_URL = /^\/([\w-]+\.(css|js))$/;
-const ASSET_TYPES = { css: 'text/css', js: 'text/javascript' };
 const SLICE_MS = 10;         // How often the chip is run on and the page told
 const MAX_SLICE_CHIP_MS = 50; // The most chip time one slice may catch up
 const SPEED_WINDOW_MS = 1000;
@@ -98,29 +85,6 @@ const EEPROM_BYTES = 1024;
 const POWER_ON_RESET = 0x01;
 const MAX_NOTE = 15;
 const MAX_MODE = 255;
-// The low three mode switches choose the engine, as a number. Every number
-// with no engine of its own plays the plain one
-const ENGINE_MASK = 0x07;
-const ENGINE_PLAIN = 0;
-const ENGINE_STAGE = 1;
-const ENGINE_KLEE = 2;
-const ENGINE_CHANCE = 3;
-const ENGINE_CARTESIAN = 4;
-const ENGINE_EUCLID = 5;
-// The stage engine: stage n's note is step n and its control step n + 8,
-// whose low two switches are the stage's length in steps, less one
-const STAGE_COUNT = 8;
-const STAGE_LENGTH_MASK = 0x03;
-// Mode switches 3 to 7 are the chosen engine's own. Those that decide which
-// step is next: the Klee engine's load switch, the chance engine's shuffle
-// switch, and the Cartesian engine's two settings of two switches each
-const KLEE_LOAD = 0x08;
-const CHANCE_SHUFFLE = 0x20;
-const GRID_SIDE = 4;
-const GRID_X_SHIFT = 3;
-const GRID_Y_SHIFT = 5;
-const GRID_SETTING_MASK = 0x03;
-const STEP_UNKNOWN = -1;         // No step can be named, so none is lit
 const MAX_TEMPO_READING = 1023;
 const MAX_SELECTOR = 7;
 const MAX_LFO_READING = 1023;
@@ -137,20 +101,8 @@ const JACK_PULSE_MS = 5;         // How long a single pulse on a jack is high
 // not taken until it has been up as long: both well over the 20 ms the
 // firmware wants before it believes the button, so every press counts once
 const RUN_HOLD_MS = 60;
-const TRANSPORT_STOPPED = 0;     // As the firmware numbers them in its log
-const TRANSPORT_INTERNAL = 1;
-const TRANSPORT_EXTERNAL = 2;
 const TRANSPORT_LINE = /^Transport = ([0-2])$/;
 const STEP_LINE = /^Step (\d+) /;
-const MIDI_CLOCKS_PER_QUARTER = 24;
-// The MIDI clock's tempo is taken over the last quarter note of clocks, and
-// not given until there has been a step's worth: clocks are sent on a 1 ms
-// tick, so one gap alone is out by up to 6%
-const MIDI_RATE_MIN_GAPS = 6;
-// With no clock for this long of chip time there is no tempo to give. The
-// slowest the firmware sends them, at 30 BPM, is one every 83 ms
-const MIDI_CLOCK_QUIET_MS = 1000;
-const MS_PER_MINUTE = 60000;
 
 // Where the controls stand. They outlast a power cycle, as the real ones do
 const panel = {
@@ -169,43 +121,19 @@ const panel = {
 const clients = new Set();
 let board = null;
 let outputs = null;
-let isCalibrating = false; // Powered up with the calibration entry pattern set
-// An edge has come on the clock input since the last stop, which is what
-// the firmware goes by to choose its clock
-let hasExternalEdge = false;
-let isFirstStepDue = false; // The next step to begin is the pattern's first
-let stepEngine = ENGINE_PLAIN; // The engine that gave the last step counted
-// What else is kept of an engine's place, beside the last step counted: the
-// chance engine's place in the order (which it keeps while it shuffles), the
-// Cartesian engine's two counters as they stand for the step to come, and
-// the Klee engine's load switch as it was on the last step
-const place = { order: 0, x: 0, y: 0, xSteps: 0, ySteps: 0, isLoadOn: false };
-// The mode switches and step switches as the chip last read them, which is
-// what a step is worked out from: the firmware reads the panel every 8 ms,
-// so a switch moved just before a step is not in that step. See record()
-const seen = { mode: 0, notes: START_NOTES };
 let runUpDueMs = null;     // Chip time at which the run button is let go
 let profileDownMs = null;  // Chip time at which the profile button went down
+let isStatusLit = false;   // The status light, as the last slice left it
 let runFreeMs = 0;         // Chip time from which it may be pressed again
 let isTickStopped = false; // The tick was stopped here and no reset has come
 let watchdogResets = 0;    // How many there have been since power-up
 let crashLog = null;       // The crash log as the board last read it
-// What is kept of MIDI out, from its messages: the clocks since the last
-// Start, the tempo they are coming at (null when it cannot be told), the
-// notes given a Note On and no Note Off yet, and the chip time of each of
-// the last 25 clocks, which the tempo is taken from. See recordMidi()
-const midiOut = { clocks: 0, bpm: null, sounding: [], clockTimes: [] };
-let midiClockMs = null;    // Chip time of the last clock in this slice, if any
 let timer = null;
 let wallStartMs = 0;  // The wall time at which the chip's time was zero
 let speed = { wallMs: 0, chipMs: 0, percent: 100 };
 
 function chipMs() {
     return board.machine.cyclesToMs(board.machine.cpu.cycles);
-}
-
-function runningTransport() {
-    return hasExternalEdge ? TRANSPORT_EXTERNAL : TRANSPORT_INTERNAL;
 }
 
 /** Starts a board from reset with the panel as it stands. */
@@ -219,35 +147,29 @@ function powerUp(config, eeprom) {
     board.setRateReading(panel.rate);
     board.setProfileButton(panel.profileDown);
     profileDownMs = panel.profileDown ? 0 : null;
+    isStatusLit = false;
     // Whatever is plugged into the clock input carries on; the run button
-    // is up, and the firmware starts on its own clock
-    hasExternalEdge = false;
+    // is up
     if (panel.clockOn) {
         board.startClockIn(panel.clockMs, panel.clockPattern);
     }
     panel.config = config;
-    // The firmware chooses its mode once, from the panel as it is now. This
-    // is worked out from the panel, not read from the chip
-    isCalibrating = board.readsCalibrationEntry();
-    // The firmware comes up running. In calibration mode nothing is
-    // sequenced and there is no transport to speak of
     outputs = {
         gate: false,
         clock: false,
-        step: -1,
+        step: STEP_UNKNOWN,
         stageStep: 0,   // The stage engine: which step of its stage, from 1,
         stageSteps: 0,  // and how many steps the stage lasts
         millivolts: 0,
         envMillivolts: 0, // The envelope CV, the DAC's channel B
         leds: 0,        // The step lights as last latched, bit n for step n
-        transport: isCalibrating ? null : runningTransport(),
-        transportFrom: 'controls',
+        transport: null, // These two, the step and the stage's count are
+        transportFrom: 'controls', // worked out: see startAfresh()
     };
-    Object.assign(midiOut, { clocks: 0, bpm: null, sounding: [], clockTimes: [] });
-    isFirstStepDue = true;
-    stepEngine = ENGINE_PLAIN;
-    seen.mode = panel.mode;
-    seen.notes = panel.notes;
+    // The firmware chooses its mode once, from the panel as it is now. This
+    // is worked out from the panel, not read from the chip
+    startAfresh(outputs, panel, board.readsCalibrationEntry());
+    forgetMidi();
     runUpDueMs = null;
     runFreeMs = 0;
     isTickStopped = false;
@@ -268,270 +190,10 @@ function powerUp(config, eeprom) {
  * Note Off was sent for it.
  */
 function startAgain() {
-    isCalibrating = board.readsCalibrationEntry();
-    hasExternalEdge = false;
-    outputs.step = -1;
-    outputs.stageStep = 0;
-    outputs.stageSteps = 0;
-    outputs.transport = isCalibrating ? null : runningTransport();
-    outputs.transportFrom = 'controls';
-    isFirstStepDue = true;
-    stepEngine = ENGINE_PLAIN;
-    seen.mode = panel.mode;
-    seen.notes = panel.notes;
+    startAfresh(outputs, panel, board.readsCalibrationEntry());
     isTickStopped = false;
+    isStatusLit = false;
     watchdogResets++;
-}
-
-/** The engine the mode switches choose, as the firmware takes them. */
-function chosenEngine() {
-    const engine = seen.mode & ENGINE_MASK;
-
-    return (engine <= ENGINE_EUCLID) ? engine : ENGINE_PLAIN;
-}
-
-/** Counts a step towards a Cartesian counter's next move; true if it is due. */
-function isGridMoveDue(counted, period) {
-    place[counted]++;
-    if (place[counted] < period) {
-        return false;
-    }
-    place[counted] = 0;
-    return true;
-}
-
-/**
- * The Cartesian engine: gives the step at column x of row y and moves the
- * two counters on, x every 1 to 4 steps and y every 4 to 1, as mode switches
- * 3, 4 and 5, 6 say now.
- */
-function nextGridStep(isFirst) {
-    const xSetting = (seen.mode >> GRID_X_SHIFT) & GRID_SETTING_MASK;
-    const ySetting = (seen.mode >> GRID_Y_SHIFT) & GRID_SETTING_MASK;
-    let step = 0;
-
-    if (isFirst) {
-        Object.assign(place, { x: 0, y: 0, xSteps: 0, ySteps: 0 });
-    }
-    step = (place.y * GRID_SIDE) + place.x;
-    if (isGridMoveDue('xSteps', xSetting + 1)) {
-        place.x = (place.x + 1) % GRID_SIDE;
-    }
-    if (isGridMoveDue('ySteps', GRID_SIDE - ySetting)) {
-        place.y = (place.y + 1) % GRID_SIDE;
-    }
-    return step;
-}
-
-/**
- * The Klee engine: gives how many times the register has moved since it was
- * last loaded, which is what the firmware calls the step. A load is the
- * first step, and the step after mode switch 3 is moved either way. What
- * the register holds is not followed here.
- */
-function nextKleePosition(isFirst) {
-    const isLoadOn = (seen.mode & KLEE_LOAD) !== 0;
-    const isLoad = isFirst || (isLoadOn !== place.isLoadOn);
-
-    place.isLoadOn = isLoadOn;
-    return isLoad ? 0 : (outputs.step + 1) % STEP_COUNT;
-}
-
-/**
- * The chance engine: gives the next step in order, or none that can be
- * named while mode switch 5 has it picking each step at random. The place
- * in the order is kept through that, as the firmware keeps it.
- */
-function nextChanceStep(isFirst) {
-    place.order = isFirst ? 0 : (place.order + 1) % STEP_COUNT;
-    return ((seen.mode & CHANCE_SHUFFLE) !== 0) ? STEP_UNKNOWN : place.order;
-}
-
-/** Starts counting a stage's steps, its length as the chip last read it. */
-function beginStage(stage) {
-    outputs.stageStep = 1;
-    outputs.stageSteps = (seen.notes[STAGE_COUNT + stage] & STAGE_LENGTH_MASK) + 1;
-    return stage;
-}
-
-/**
- * Says which step the clock pulse that has just risen belongs to, as the
- * firmware's engines would have it. A pattern starts from its beginning
- * after a start or a reset made here, and when the engine chosen is not the
- * one that gave the last step. The plain engine then goes on a step a
- * pulse, and so does the Euclidean one, which only rests on some of them;
- * the stage engine stays on a stage for as many pulses as the stage has
- * steps, and names the stage, 0 to 7, each time. The others have a function
- * each, above. The chance engine's answer can be STEP_UNKNOWN.
- */
-function nextStep() {
-    const engine = chosenEngine();
-    const isFirst = isFirstStepDue || (engine !== stepEngine);
-
-    stepEngine = engine;
-    isFirstStepDue = false;
-    if (engine === ENGINE_STAGE) {
-        if (!isFirst && (outputs.stageStep < outputs.stageSteps)) {
-            outputs.stageStep++;
-            return outputs.step;
-        }
-        return beginStage(isFirst ? 0 : (outputs.step + 1) % STAGE_COUNT);
-    }
-    outputs.stageStep = 0;
-    outputs.stageSteps = 0;
-    switch (engine) {
-        case ENGINE_KLEE:
-            return nextKleePosition(isFirst);
-        case ENGINE_CHANCE:
-            return nextChanceStep(isFirst);
-        case ENGINE_CARTESIAN:
-            return nextGridStep(isFirst);
-        default:
-            return isFirst ? 0 : (outputs.step + 1) % STEP_COUNT;
-    }
-}
-
-/**
- * Puts the count right from a step the log has named, which was not the
- * one counted, as far as can be told: a stage is taken to be on its first
- * step, and the Cartesian counters to have only just come to that step.
- */
-function followLog(step) {
-    if (stepEngine === ENGINE_STAGE) {
-        beginStage(step % STAGE_COUNT);
-    } else if (stepEngine === ENGINE_CARTESIAN) {
-        Object.assign(place, {
-            x: step % GRID_SIDE, y: Math.floor(step / GRID_SIDE) % GRID_SIDE,
-            xSteps: 0, ySteps: 0,
-        });
-        nextGridStep(false);
-    } else if ((stepEngine === ENGINE_CHANCE)
-        && ((seen.mode & CHANCE_SHUFFLE) === 0)) {
-        place.order = step % STEP_COUNT;
-    } else {
-        // The others count on from the step shown
-    }
-}
-
-/**
- * What is kept of MIDI out, as the state and every `midi` event carry it:
- * the clocks since the last Start, their tempo or null, and each note
- * sounding with its name.
- */
-function midiSummary() {
-    return {
-        clocks: midiOut.clocks,
-        bpm: midiOut.bpm,
-        sounding: midiOut.sounding.map((note) => ({ note, name: midiNoteName(note) })),
-    };
-}
-
-/** Counts a MIDI clock, and takes the tempo over the last quarter note. */
-function countMidiClock(t) {
-    const times = midiOut.clockTimes;
-
-    midiOut.clocks++;
-    midiClockMs = t;
-    times.push(t);
-    if (times.length > (MIDI_CLOCKS_PER_QUARTER + 1)) {
-        times.shift();
-    }
-    if (times.length > MIDI_RATE_MIN_GAPS) {
-        const quarterMs = ((t - times[0]) * MIDI_CLOCKS_PER_QUARTER) / (times.length - 1);
-
-        midiOut.bpm = MS_PER_MINUTE / quarterMs;
-    }
-}
-
-/**
- * Gives the tempo up when the clocks have stopped coming: stopped after an
- * external edge, or following an external clock that has gone away.
- */
-function addMidiClockQuiet(events) {
-    const times = midiOut.clockTimes;
-
-    if ((times.length > 0) && ((chipMs() - times[times.length - 1]) > MIDI_CLOCK_QUIET_MS)) {
-        midiOut.bpm = null;
-        midiOut.clockTimes = [];
-        events.push({ t: chipMs(), k: 'midi', v: 'quiet', now: midiSummary() });
-    }
-}
-
-/**
- * Takes the transport from a MIDI Start or Stop, which says whether the
- * pattern is running as surely as the log does. Which clock it runs from
- * is not in the message; that is whether an edge has come.
- */
-function followMidiTransport(transport, t, events) {
-    if ((outputs.transport !== transport) || (outputs.transportFrom !== 'midi')) {
-        outputs.transport = transport;
-        outputs.transportFrom = 'midi';
-        events.push({ t, k: 'transport', v: transport, from: 'midi' });
-    }
-}
-
-/**
- * Takes an edge on the clock input as the firmware does: that is the clock
- * from then until the next stop. Running, the transport changes at once;
- * stopped, the next start shows it. An image with a log says the same a
- * moment later. A stop is taken here when the button goes down and by the
- * firmware 20 ms on, so a lone edge in between is forgotten there and not
- * here until the log or the next stop puts it right.
- */
-function takeExternalEdge(t, events) {
-    if (!isCalibrating) {
-        hasExternalEdge = true;
-        if (outputs.transport === TRANSPORT_INTERNAL) {
-            outputs.transport = TRANSPORT_EXTERNAL;
-            outputs.transportFrom = 'controls';
-            events.push({ t, k: 'transport', v: TRANSPORT_EXTERNAL, from: 'controls' });
-        }
-    }
-}
-
-/**
- * Takes one MIDI message the midi image sent. A clock is only counted:
- * drain() adds one event for all of a slice's. Anything else is an event of
- * its own. A Start begins the count of clocks again, as a receiver would
- * count its bars from it, and the notes sounding are kept as a receiver
- * would have them: a Note On adds one, unless it is sounding already, and
- * a Note Off takes it away.
- */
-function recordMidi(message, t, events) {
-    const event = { t, k: 'midi', v: message.type };
-
-    switch (message.type) {
-        case 'clock':
-            countMidiClock(t);
-            return;
-        case 'start':
-            Object.assign(midiOut, { clocks: 0, bpm: null, clockTimes: [] });
-            followMidiTransport(runningTransport(), t, events);
-            break;
-        case 'stop':
-            followMidiTransport(TRANSPORT_STOPPED, t, events);
-            break;
-        case 'noteOn':
-            if (!midiOut.sounding.includes(message.note)) {
-                midiOut.sounding.push(message.note);
-            }
-            break;
-        case 'noteOff':
-            midiOut.sounding = midiOut.sounding.filter((note) => note !== message.note);
-            break;
-        default:
-            // A byte that is none of the messages the firmware should send
-            event.byte = message.value;
-            break;
-    }
-    if (message.note !== undefined) {
-        event.note = message.note;
-        event.name = midiNoteName(message.note);
-        event.vel = message.velocity;
-        event.ch = message.channel;
-    }
-    event.now = midiSummary();
-    events.push(event);
 }
 
 /**
@@ -580,10 +242,7 @@ function record(item, events) {
             }
             break;
         case 'read':
-            // The chip has read the panel. The controls only change between
-            // slices, so it read them as they stand now
-            seen.mode = panel.mode;
-            seen.notes = panel.notes;
+            takePanelRead();
             break;
         case 'led':
             // The lights are latched at every panel read, 8 ms apart
@@ -654,15 +313,16 @@ function drain() {
     midi.messages.forEach((message) => add(message.cycle, 'midi', message));
     // A step's clock pulse comes ahead of its log line, and stays ahead
     items.sort((a, b) => a.cycle - b.cycle);
-    midiClockMs = null;
+    beginMidiSlice();
     items.forEach((item) => record(item, events));
-    if (midiClockMs !== null) {
-        // One event for the slice's MIDI clocks, however many
-        events.push({ t: midiClockMs, k: 'midi', v: 'clock', now: midiSummary() });
+    addMidiClocks(events);
+    addMidiClockQuiet(chipMs(), events);
+    if (board.statusLight.edges.length > 0) {
+        isStatusLit = board.statusLight.edges[board.statusLight.edges.length - 1].high;
     }
-    addMidiClockQuiet(events);
 
-    for (const list of [board.gate.edges, board.clockOut.edges, board.cvWrites,
+    for (const list of [board.gate.edges, board.clockOut.edges, board.statusLight.edges,
+        board.cvWrites,
         board.envWrites,
         board.cvIgnoredFrames, board.panelReads, board.spiSent,
         board.ledLatches, board.clockIn.rises, board.resetIn.rises,
@@ -686,7 +346,7 @@ function broadcast(event, data) {
 function stateMessage(isFresh) {
     return {
         ...panel, ...outputs, runDown: board.runButton.isClosed(),
-        calibrating: isCalibrating, ms: chipMs(), fresh: isFresh,
+        calibrating: isInCalibrationMode(), ms: chipMs(), fresh: isFresh,
         hasLog: board.hasLog, sendsMidi: board.sendsMidi, midi: midiSummary(),
         tickStopped: isTickStopped, watchdogResets, crashLog,
     };
@@ -750,7 +410,8 @@ function runSlice() {
     // The level light is switched too fast to send edge by edge: what goes
     // out is how much of the slice it was on for
     broadcast('run', {
-        ms: chipMs(), speed: measureSpeed(nowMs), level: board.takeLevel(), events,
+        ms: chipMs(), speed: measureSpeed(nowMs), level: board.takeLevel(),
+        status: isStatusLit, events,
         profileHeldMs: (profileDownMs === null) ? null : chipMs() - profileDownMs,
     });
     if (events.some((event) => event.k === 'watchdog')) {
@@ -774,29 +435,6 @@ function isWholeNumberUpTo(value, max) {
 function isNotes(value) {
     return Array.isArray(value) && (value.length === STEP_COUNT)
         && value.every((note) => isWholeNumberUpTo(note, MAX_NOTE));
-}
-
-/**
- * Says what the firmware will make of a run button press, since the button
- * only toggles and the release image never says which way it went: stopped
- * becomes running, from the first step, and running becomes stopped. It is
- * a prediction from the presses made here, each held long enough to count;
- * the debug image's `Transport = N` line, or the midi image's Start or
- * Stop, then confirms or corrects it.
- */
-function predictRunPress() {
-    if (isCalibrating) {
-        return; // Nothing is sequenced, so the button does nothing
-    }
-    if (outputs.transport === TRANSPORT_STOPPED) {
-        outputs.transport = runningTransport();
-        isFirstStepDue = true;
-    } else {
-        // A stop forgets the external clock
-        outputs.transport = TRANSPORT_STOPPED;
-        hasExternalEdge = false;
-    }
-    outputs.transportFrom = 'controls';
 }
 
 /** Presses the run button, unless it is still down or only just let go. */
@@ -836,11 +474,7 @@ function setClock(periodMs, pattern) {
 function pulseJack(jack) {
     if (jack === 'reset') {
         board.pulseResetIn(JACK_PULSE_MS);
-        // A reset is taken only while running, and plays the first step at
-        // the next step boundary
-        if (!isCalibrating && (outputs.transport !== TRANSPORT_STOPPED)) {
-            isFirstStepDue = true;
-        }
+        predictReset();
     } else if (!panel.clockOn) {
         // With the clock source running, the jack is already taken
         board.pulseClockIn(JACK_PULSE_MS);
@@ -902,37 +536,6 @@ function applyCommand(command) {
     }
     broadcast('state', stateMessage(isFresh));
     return true;
-}
-
-function reply(res, status, text) {
-    res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end(text);
-}
-
-function servePage(res) {
-    res.writeHead(200, {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'no-store',
-    });
-    res.end(fs.readFileSync(PAGE_PATH, 'utf8').replace(PART_MARK,
-        (mark, name) => fs.readFileSync(path.join(PARTS_DIR, name), 'utf8').trimEnd()));
-}
-
-// Read on every request, as the page is, so an edit shows at the next reload
-function serveAsset(res, name, extension) {
-    let text;
-
-    try {
-        text = fs.readFileSync(path.join(PARTS_DIR, name));
-    } catch (error) {
-        reply(res, 404, 'Not found');
-        return;
-    }
-    res.writeHead(200, {
-        'Content-Type': `${ASSET_TYPES[extension]}; charset=utf-8`,
-        'Cache-Control': 'no-store',
-    });
-    res.end(text);
 }
 
 function openStream(req, res) {

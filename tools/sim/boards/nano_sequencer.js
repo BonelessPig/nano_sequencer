@@ -151,6 +151,9 @@ function createBoard(config, options = {}) {
     const leds = attachHc595Chain(machine.cpu, portOf(PINS.load), PINS.load.bit, LED_CHIPS);
     const gate = attachPinRecorder(machine.cpu, portOf(PINS.gate), PINS.gate.bit);
     const clockOut = attachPinRecorder(machine.cpu, portOf(PINS.clockOut), PINS.clockOut.bit);
+    // The status light: high is lit
+    const statusLight = attachPinRecorder(
+        machine.cpu, portOf(PINS.statusLight), PINS.statusLight.bit);
     // Switched a thousand times a second, so measured and not recorded
     const levelLight = attachDutyMeter(machine.cpu, portOf(PINS.levelLight), PINS.levelLight.bit);
 
@@ -249,6 +252,7 @@ function createBoard(config, options = {}) {
         ledLatches: leds.latches,
         gate,
         clockOut,
+        statusLight,
         clockIn,
         resetIn,
         runButton,
@@ -335,7 +339,8 @@ function createBoard(config, options = {}) {
             this.pressRunButton(60);
             this.pulseClockIn(2);
             this.runForMs(60);
-            for (const list of [gate.edges, clockOut.edges, dac.writes.A, dac.writes.B, dac.ignored,
+            for (const list of [gate.edges, clockOut.edges, statusLight.edges,
+                dac.writes.A, dac.writes.B, dac.ignored,
                 chain.reads, spiSent, leds.latches, clockIn.rises, resetIn.rises,
                 serial.lines, serial.notices, midi.bytes, midi.messages]) {
                 list.length = 0;
@@ -366,6 +371,21 @@ function createBoard(config, options = {}) {
         /** Completed clock output pulses, in the same form. */
         clockOutPulsesMs() {
             return pulsesMs(clockOut);
+        },
+
+        /**
+         * The times the status light has come on and gone out again, in the
+         * same form. One that is still lit is not among them.
+         */
+        statusLightPulsesMs() {
+            return pulsesMs(statusLight);
+        },
+
+        /** Whether the status light is lit just now. */
+        statusLit() {
+            const last = statusLight.edges[statusLight.edges.length - 1];
+
+            return (last !== undefined) && last.high;
         },
 
         /**

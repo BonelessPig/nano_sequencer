@@ -7,7 +7,8 @@ The numbers are referred to from other documents, so a closed item keeps its num
 
 ## 1. Unused pins are configured
 
-PC1 is given a direction in `register_init.c` and never used, and PD3 is made an input with its pull-up on.
+PC1 is given a direction in `register_init.c` and never used.
+PD3, which was the other, has the status light.
 
 ## 2. The crash log has not run on the board, and needs the reset cause
 
@@ -30,7 +31,7 @@ The tick that starts the pattern no longer counts towards its second step.
 
 ## 5. `make check` under-reports static RAM
 
-`avr-size` counts constant data under flash only, although it is also copied to RAM: it prints 382 bytes for the debug build where 966 are used, 248 for release where 316 are, and 282 for midi where 350 are.
+`avr-size` counts constant data under flash only, although it is also copied to RAM: it prints 393 bytes for the debug build where 977 are used, 259 for release where 329 are, and 293 for midi where 363 are.
 
 ## 6. The pattern controls have no hardware
 
@@ -168,7 +169,7 @@ The tenth 74HC165 is not wired; until it is the selector reads 0 and the pot is 
 Only the board can show whether a coded switch reads a third position between detents (harmless to the amounts), whether the pot is steady enough for the pickup's window of 8 counts, and whether the level light is even in brightness across its range.
 
 The profile button is on that chip too, on its fourth input, and has not run either.
-On the board, look at: that a click, and holds of 1, 5 and 10 s, do what they should with nothing to show which was reached (the status light is still to come, and until then only the debug log says); that a save in the middle of a pattern is not heard (on the emulated board no step moves through the 55 ms it takes); and that a profile comes back after the power has been off.
+On the board, look at: that a click, and holds of 1, 5 and 10 s, do what they should, and that the status light on D3 says so (lit for a profile that holds something, a wink as each time is passed, the flickers after letting go, the long blink for an empty recall), bright enough and slow enough to count; that a save in the middle of a pattern is not heard (on the emulated board no step moves through the 55 ms it takes); and that a profile comes back after the power has been off.
 A save rewrites up to 16 bytes of an EEPROM rated for 100,000 writes a byte, from memory; a byte that already holds its value is not written.
 
 ## 21. The first step after a crash is 0.2 ms late in the debug build
@@ -180,7 +181,7 @@ Only that one step, in that build, after a crash.
 
 The pattern starts on the internal clock, so with a master already running step 0 begins at once and the first edge begins step 1.
 A stop and a start puts the two in step.
-A jack with a switch contact on a spare pin (PD3) would tell at power-on that a clock is coming.
+A jack with a switch contact on a spare pin would tell at power-on that a clock is coming; PC1 is the last one, PD3 having gone to the status light.
 
 ## 23. Closed: the figures were kept by hand
 

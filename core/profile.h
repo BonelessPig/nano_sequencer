@@ -18,7 +18,7 @@
  *
  * At power-on the profile is recalled without the button: the first tick
  * on which the button could be read, which is the first on which the
- * caller's selector could be, asks for a recall.
+ * caller's selector could be, asks for a load.
  *
  * Which profile is meant is not this module's business: the caller takes it
  * from wherever its selector stands when the action is given.
@@ -39,7 +39,9 @@ typedef enum
     PROFILE_RECALL,    // Put the stored amounts in use
     PROFILE_SAVE,      // Store the amounts in use
     PROFILE_CLEAR,     // Empty the profile
-    PROFILE_CLEAR_ALL  // Empty every profile
+    PROFILE_CLEAR_ALL, // Empty every profile
+    PROFILE_LOAD       // Put the stored amounts in use, at power-on: a
+                       // recall the button did not ask for
 } profile_action_t;
 
 /**
@@ -80,10 +82,20 @@ void profile_init(profile_state_t *p_state);
  *         writes *p_state, and has no other effect.
  * @param  p_state  State from profile_init() or the previous tick; updated.
  * @param  p_in     The button and the time gone by.
- * @return The action: PROFILE_RECALL on the first tick with a valid
+ * @return The action: PROFILE_LOAD on the first tick with a valid
  *         button, then one for each press, on one tick; PROFILE_NONE on
  *         every other, and if either pointer is null.
  */
 profile_action_t profile_tick(profile_state_t *p_state, const profile_inputs_t *p_in);
+
+/**
+ * @brief  Gives how far the hold that is going on has got, so that it can
+ *         be shown before the button is let go.
+ * @param  p_state  State from the last profile_tick().
+ * @return 0 while the button is up or has been down for under 1 s, 1 from
+ *         1 s (a save), 2 from 5 s (a clear), 3 from 10 s (a clear of every
+ *         profile); 0 if the pointer is null.
+ */
+uint8_t profile_hold_stage(const profile_state_t *p_state);
 
 #endif /* PROFILE_H */

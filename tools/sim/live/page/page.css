@@ -132,6 +132,7 @@ label { cursor: pointer; }
 #gate-led.lit { background: var(--out); }
 #level-led { background: var(--on); border-color: var(--line); opacity: 0; }
 #clock-led.lit { background: var(--out); }
+#status-led.lit { background: var(--on); border-color: var(--on); }
 #run.down, #gear-power[aria-pressed="true"] { background: var(--on); border-color: var(--on);
                                               color: #1b1b1b; }
 #transport { font-weight: 600; }

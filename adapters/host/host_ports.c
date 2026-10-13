@@ -16,6 +16,7 @@
 #include "cv_output_port.h"
 #include "env_output_port.h"
 #include "gate_output_port.h"
+#include "status_output_port.h"
 #include "led_output_port.h"
 #include "level_output_port.h"
 #include "midi_output_port.h"
@@ -57,6 +58,9 @@ static uint16_t      g_watchdog_kick_count = 0U;
 static uint16_t      g_log_poll_count = 0U;
 
 static bool          g_b_gate_high = false;
+static bool          g_b_host_status_lit = false;
+static uint16_t      g_host_status_write_count = 0U;
+static uint16_t      g_host_status_change_count = 0U;
 static uint8_t       g_host_level = 0U;
 static uint16_t      g_host_level_write_count = 0U;
 static uint16_t      g_host_leds = 0U;
@@ -166,6 +170,9 @@ void host_reset(void)
     g_event_count          = 0U;
 
     g_b_gate_high              = false;
+    g_b_host_status_lit        = false;
+    g_host_status_write_count  = 0U;
+    g_host_status_change_count = 0U;
     g_host_mod_raw             = HOST_MOD_CENTRE;
     g_host_mod_status          = STATUS_OK;
     g_host_mod_read_count      = 0U;
@@ -855,6 +862,39 @@ void level_output_write(uint8_t level)
 {
     g_host_level = level;
     g_host_level_write_count++;
+}
+
+
+
+void status_output_write(bool b_lit)
+{
+    g_host_status_write_count++;
+    if (b_lit != g_b_host_status_lit)
+    {
+        g_host_status_change_count++;
+    }
+    g_b_host_status_lit = b_lit;
+}
+
+
+
+bool host_status_lit(void)
+{
+    return g_b_host_status_lit;
+}
+
+
+
+uint16_t host_status_write_count(void)
+{
+    return g_host_status_write_count;
+}
+
+
+
+uint16_t host_status_change_count(void)
+{
+    return g_host_status_change_count;
 }
 
 
