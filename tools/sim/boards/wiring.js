@@ -55,6 +55,10 @@ const WIRING = {
             nano: 'D4', port: 'D', bit: 4, kind: 'out',
             net: 'gate output',
         },
+        statusLight: {
+            nano: 'D3', port: 'D', bit: 3, kind: 'out',
+            net: 'status light, through a resistor',
+        },
         resetIn: {
             nano: 'D2', port: 'D', bit: 2, kind: 'in', via: 'INT0',
             net: 'INT0: reset input, from its input stage',

@@ -46,7 +46,7 @@ static void quiet_ticks(profile_state_t *p_state, bool b_button, unsigned int co
 static void start(profile_state_t *p_state)
 {
     profile_init(p_state);
-    TEST_ASSERT_EQUAL(PROFILE_RECALL, tick(p_state, false, 1U));
+    TEST_ASSERT_EQUAL(PROFILE_LOAD, tick(p_state, false, 1U));
 }
 
 /**
@@ -69,7 +69,7 @@ static void test_the_first_valid_tick_asks_for_the_power_on_recall_once(void)
     profile_state_t state;
 
     profile_init(&state);
-    TEST_ASSERT_EQUAL(PROFILE_RECALL, tick(&state, false, 1U));
+    TEST_ASSERT_EQUAL(PROFILE_LOAD, tick(&state, false, 1U));
     quiet_ticks(&state, false, 3000U);
 }
 
@@ -91,7 +91,7 @@ static void test_the_power_on_recall_waits_for_a_button_that_can_be_read(void)
     }
 
     in.b_button_valid = true;
-    TEST_ASSERT_EQUAL(PROFILE_RECALL, profile_tick(&state, &in));
+    TEST_ASSERT_EQUAL(PROFILE_LOAD, profile_tick(&state, &in));
     TEST_ASSERT_EQUAL(PROFILE_NONE, profile_tick(&state, &in));
 
     // After that a button that cannot be read is taken as it stands
@@ -114,13 +114,13 @@ static void test_a_button_down_at_power_on_is_held_from_then(void)
 
     // The first tick is the power-on recall; the hold is counted from the next
     profile_init(&state);
-    TEST_ASSERT_EQUAL(PROFILE_RECALL, tick(&state, true, 1U));
+    TEST_ASSERT_EQUAL(PROFILE_LOAD, tick(&state, true, 1U));
     quiet_ticks(&state, true, SAVE_TICKS - SETTLE_TICKS);
     quiet_ticks(&state, false, SETTLE_TICKS - 1U);
     TEST_ASSERT_EQUAL(PROFILE_RECALL, tick(&state, false, 1U)); // One short of a second
 
     profile_init(&state);
-    TEST_ASSERT_EQUAL(PROFILE_RECALL, tick(&state, true, 1U));
+    TEST_ASSERT_EQUAL(PROFILE_LOAD, tick(&state, true, 1U));
     quiet_ticks(&state, true, (SAVE_TICKS - SETTLE_TICKS) + 1U);
     quiet_ticks(&state, false, SETTLE_TICKS - 1U);
     TEST_ASSERT_EQUAL(PROFILE_SAVE, tick(&state, false, 1U));
@@ -243,7 +243,7 @@ static void test_the_hold_is_counted_in_elapsed_ticks(void)
     TEST_ASSERT_EQUAL(PROFILE_RECALL, tick(&state, false, SETTLE_TICKS));
 
     profile_init(&state);
-    TEST_ASSERT_EQUAL(PROFILE_RECALL, tick(&state, true, 0U)); // Power-on
+    TEST_ASSERT_EQUAL(PROFILE_LOAD, tick(&state, true, 0U)); // Power-on
     TEST_ASSERT_EQUAL(PROFILE_NONE, tick(&state, true, 0U));
     TEST_ASSERT_EQUAL(PROFILE_NONE, tick(&state, false, SETTLE_TICKS));
 }
@@ -257,8 +257,44 @@ static void test_init_forgets_a_hold_and_asks_for_the_recall_again(void)
     start(&state);
     quiet_ticks(&state, true, 2000U);
     profile_init(&state);
-    TEST_ASSERT_EQUAL(PROFILE_RECALL, tick(&state, false, 1U));
+    TEST_ASSERT_EQUAL(PROFILE_LOAD, tick(&state, false, 1U));
     quiet_ticks(&state, false, 100U);
+}
+
+
+
+static void test_the_hold_stage_follows_the_hold_and_ends_with_it(void)
+{
+    profile_state_t state;
+
+    start(&state);
+    TEST_ASSERT_EQUAL(0, profile_hold_stage(&state));
+
+    // The debounce finds the button down SETTLE_TICKS - 1 late
+    quiet_ticks(&state, true, (SAVE_TICKS + SETTLE_TICKS) - 2U);
+    TEST_ASSERT_EQUAL(0, profile_hold_stage(&state)); // One short of a second
+    quiet_ticks(&state, true, 1U);
+    TEST_ASSERT_EQUAL(1, profile_hold_stage(&state));
+
+    quiet_ticks(&state, true, (CLEAR_TICKS - SAVE_TICKS) - 1U);
+    TEST_ASSERT_EQUAL(1, profile_hold_stage(&state));
+    quiet_ticks(&state, true, 1U);
+    TEST_ASSERT_EQUAL(2, profile_hold_stage(&state));
+
+    quiet_ticks(&state, true, (CLEAR_ALL_TICKS - CLEAR_TICKS) - 1U);
+    TEST_ASSERT_EQUAL(2, profile_hold_stage(&state));
+    quiet_ticks(&state, true, 1U);
+    TEST_ASSERT_EQUAL(3, profile_hold_stage(&state));
+    quiet_ticks(&state, true, 500U); // And no further
+    TEST_ASSERT_EQUAL(3, profile_hold_stage(&state));
+
+    // Let go: the stage ends on the tick the action is given
+    quiet_ticks(&state, false, SETTLE_TICKS - 1U);
+    TEST_ASSERT_EQUAL(3, profile_hold_stage(&state));
+    TEST_ASSERT_EQUAL(PROFILE_CLEAR_ALL, tick(&state, false, 1U));
+    TEST_ASSERT_EQUAL(0, profile_hold_stage(&state));
+
+    TEST_ASSERT_EQUAL(0, profile_hold_stage(NULL));
 }
 
 
@@ -278,7 +314,7 @@ static void test_null_pointers_do_nothing(void)
     // And the recall is still to be asked afterwards
     profile_init(&state);
     TEST_ASSERT_EQUAL(PROFILE_NONE, profile_tick(&state, NULL));
-    TEST_ASSERT_EQUAL(PROFILE_RECALL, profile_tick(&state, &in));
+    TEST_ASSERT_EQUAL(PROFILE_LOAD, profile_tick(&state, &in));
 }
 
 
@@ -296,6 +332,7 @@ int main(void)
     RUN_TEST(test_each_press_is_counted_from_nothing);
     RUN_TEST(test_the_hold_is_counted_in_elapsed_ticks);
     RUN_TEST(test_init_forgets_a_hold_and_asks_for_the_recall_again);
+    RUN_TEST(test_the_hold_stage_follows_the_hold_and_ends_with_it);
     RUN_TEST(test_null_pointers_do_nothing);
     return TEST_RESULT();
 }

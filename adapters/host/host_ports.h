@@ -317,6 +317,23 @@ uint16_t host_log_poll_count(void);
 bool host_gate_level(void);
 
 /**
+ * @brief What status_output_write() was last given (false if never called).
+ */
+bool host_status_lit(void);
+
+/**
+ * @brief Number of times status_output_write() has been called since
+ *        host_reset().
+ */
+uint16_t host_status_write_count(void);
+
+/**
+ * @brief Number of times the status light has gone from dark to lit or from
+ *        lit to dark since host_reset(): two for each flicker.
+ */
+uint16_t host_status_change_count(void);
+
+/**
  * @brief The level level_output_write() was last given (0 if never called).
  */
 uint8_t host_level(void);

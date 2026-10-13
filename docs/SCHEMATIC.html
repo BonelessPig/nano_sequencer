@@ -218,13 +218,14 @@ logic outputs, the clock and reset inputs, the run button and the two
 <text x="674" y="648">Reset in: a rising edge, back to step 0</text>
 <text class="sub" x="674" y="663">Both stages suggested only, not built</text>
 
-<!-- The run button, from its pin to ground. D3, where the sync switch was, is free -->
+<!-- The run button, from its pin to ground. D3, where the sync switch was, has the
+     status light, which is not drawn -->
 <path class="w sw" d="M240 750H420"/>
 <rect class="box" x="420" y="732" width="120" height="36" rx="4"/>
 <text class="title" x="480" y="754" text-anchor="middle">Run button</text>
 <text class="lbl" x="312" y="743">low while pressed</text>
 <path class="w gnd" d="M540 750H570V766M560 766H580M564 771H576M568 776H572"/>
-<text class="sub" x="252" y="704">Free: nothing is wired here</text>
+<text class="sub" x="252" y="704">Status light: a resistor, an LED, ground</text>
 <text x="594" y="754">A push button. Each press stops or starts the pattern</text>
 <text class="sub" x="594" y="769">Both to ground: the chip's pull-ups hold the pins high</text>
 
@@ -266,9 +267,9 @@ logic outputs, the clock and reset inputs, the run button and the two
 </svg>
 </div>
 
-<p><b>Not drawn above yet:</b> the tenth 74HC165 with the selector, the level light on D6
-and the modulation input on A7. Their pins are in the tables below, under "Selector, level
-light and modulation input".</p>
+<p><b>Not drawn above yet:</b> the tenth 74HC165 with the selector, the level light on D6,
+the status light on D3 and the modulation input on A7. Their pins are in the tables below,
+under "Selector, level light and modulation input".</p>
 
 <h2>Arduino Nano</h2>
 <p>Seen from above with the USB socket at the top. Labels inside the outline are the ones
@@ -386,6 +387,9 @@ the board yet, and the modulation input's stage is not designed.</p>
 <tr><td>D6</td><td>PD6 (OC0A)</td><td>Level light, an LED</td>
     <td>From the pin through a resistor to the LED and ground. Value to be chosen for the
         LED, at a few milliamps</td></tr>
+<tr><td>D3</td><td>PD3</td><td>Status light, an LED</td>
+    <td>The same: from the pin, which is high for lit, through a resistor to the LED and
+        ground</td></tr>
 <tr><td>A0</td><td>ADC0 (PC0)</td><td>The LFO rate pot</td>
     <td>Like the pot: its ends to 5 V and ground, its wiper to the pin. Right down, the
         sequencer's own LFO is off</td></tr>
@@ -405,6 +409,12 @@ the board yet, and the modulation input's stage is not designed.</p>
         turned to meet the amount that position holds.</li>
     <li><b>Level light.</b> As bright as the amount the selector is on, by pulse width, 977
         times a second. Dark at 0.</li>
+    <li><b>Status light.</b> Lit while the profile the selector is on holds something. It
+        turns the other way for 80 ms to say things: once as a hold of the profile button
+        passes 1 s, 5 s and 10 s, and after the button is let go once for a recall, twice
+        for a save, three times for a clear and four for a clear of all eight. One long
+        blink, half a second, says a recall found nothing or a save could not be
+        started.</li>
     <li><b>Modulation input.</b> Read on seven ticks in eight, used as each step begins,
         and on every tick by the vibrato. At half of 5 V it moves nothing.</li>
 </ul>
@@ -412,7 +422,7 @@ the board yet, and the modulation input's stage is not designed.</p>
 <h2>Clock and reset inputs and run button</h2>
 <p>Three inputs, each with the chip's internal pull-up switched on, so each pin rests high and
 something outside pulls it low. The firmware looks at all three once a millisecond. D3,
-where the sync switch used to be, is free; its pull-up is still on.</p>
+where the sync switch used to be, is an output now, for the status light.</p>
 
 <div class="tablewrap">
 <table>
@@ -657,7 +667,7 @@ drawChip("nano", {
         wired("levelLight"),
         wired("clockOut"),
         wired("gate"),
-        ["", "D3 · PD3", "free", "nc"],
+        wired("statusLight"),
         wired("resetIn"),
         ["", "GND", "common ground", "gnd"],
         ["", "RST", "not connected", "nc"],

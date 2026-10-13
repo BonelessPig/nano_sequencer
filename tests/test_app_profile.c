@@ -16,111 +16,7 @@
 #include "profile_record.h"
 #include "test_harness.h"
 #include "app_fixture.h"
-
-#define PROFILES_ADDRESS (64U)   // Where the app keeps the profiles
-#define RECORD_BYTES     (16U)
-#define BUTTON_BIT       (0x08U) // The profile button, in the selector's byte
-#define CLICK_TICKS      (100U)
-#define SAVE_TICKS       (1100U)  // A hold of over a second
-#define CLEAR_TICKS      (5100U)  // Of over five
-#define CLEAR_ALL_TICKS  (10100U) // And of over ten
-#define ACTION_RECALL    (1U)     // As log_profile() is given them
-#define ACTION_SAVE      (2U)
-#define ACTION_CLEAR     (3U)
-#define ACTION_CLEAR_ALL (4U)
-#define STORED_VERSION   (1U)
-#define ERASED           (0xFFU)
-
-// A profile's seven amounts, for selector positions 1 to 7
-static const uint16_t g_stored[PROFILE_AMOUNT_COUNT] =
-{
-    100U, 200U, 300U, 400U, 500U, 600U, 700U
-};
-
-/**
- * @brief Where a profile's record begins in the storage.
- */
-static uint16_t address_of(uint8_t profile)
-{
-    return (uint16_t)(PROFILES_ADDRESS + (profile * RECORD_BYTES));
-}
-
-/**
- * @brief Puts the stored amounts in the storage as a profile, as if saved
- *        before the power last went off.
- */
-static void store_profile(uint8_t profile)
-{
-    uint8_t record[RECORD_BYTES];
-
-    profile_record_encode(g_stored, record);
-    host_set_nv_bytes(address_of(profile), record, (uint8_t)sizeof(record));
-}
-
-/**
- * @brief Counts the events in the record of one kind with these arguments.
- */
-static unsigned int count_events(host_event_kind_t kind, uint16_t a, uint16_t b)
-{
-    unsigned int count = 0U;
-
-    for (uint16_t i = 0U; i < host_event_count(); i++)
-    {
-        const host_event_t *p_event = host_event_get(i);
-
-        if ((NULL != p_event) && (kind == p_event->kind) && (a == p_event->a) && (b == p_event->b))
-        {
-            count++;
-        }
-    }
-    return count;
-}
-
-/**
- * @brief Counts the events in the record of one kind, whatever they say.
- */
-static unsigned int count_kind(host_event_kind_t kind)
-{
-    unsigned int count = 0U;
-
-    for (uint16_t i = 0U; i < host_event_count(); i++)
-    {
-        const host_event_t *p_event = host_event_get(i);
-
-        if ((NULL != p_event) && (kind == p_event->kind))
-        {
-            count++;
-        }
-    }
-    return count;
-}
-
-/**
- * @brief A started app with the pattern stopped, so that a long hold does
- *        not fill the event record with steps.
- */
-static void start_stopped(void)
-{
-    start_app();
-    run_ticks(2U);
-    host_set_run_button(true);
-    run_ticks(SETTLE_TICKS + 5U);
-    host_set_run_button(false);
-    run_ticks(SETTLE_TICKS + 5U);
-}
-
-/**
- * @brief Holds the profile button down for a time with the selector at a
- *        position and the pot at a reading, lets it go, and runs on until
- *        what it asked for has been done.
- */
-static void press_button(uint8_t position, uint16_t pot, unsigned int hold_ticks)
-{
-    set_selector_and_pot((uint8_t)(position | BUTTON_BIT), pot);
-    run_ticks(hold_ticks);
-    set_selector_and_pot(position, pot);
-    run_ticks(SETTLE_TICKS + (2U * SCAN_PERIOD_TICKS));
-}
+#include "profile_fixture.h"
 
 
 
@@ -189,9 +85,10 @@ static void test_a_click_recalls_the_selected_profile_and_detaches_the_pot(void)
 
 static void test_a_recall_leaves_the_tempo_where_the_pot_put_it(void)
 {
-    // Profile 0 is the one chosen with the selector on the tempo
+    // Profile 0 is the one chosen with the selector on the tempo. It is
+    // stored once the power-on recall has been and gone, on the tenth tick
     start_app();
-    run_ticks(2U);
+    run_ticks(12U);
     store_profile(0U);
     expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
 
@@ -201,7 +98,8 @@ static void test_a_recall_leaves_the_tempo_where_the_pot_put_it(void)
 
     // Still a step every 100 ticks, the fourth logged on tick 302, and
     // the pot still has the tempo
-    run_ticks((3U * TICKS_PER_STEP) - (CLICK_TICKS + SETTLE_TICKS + (2U * SCAN_PERIOD_TICKS)));
+    run_ticks((3U * TICKS_PER_STEP) -
+              (10U + CLICK_TICKS + SETTLE_TICKS + (2U * SCAN_PERIOD_TICKS)));
     TEST_ASSERT_EQUAL(4, count_kind(HOST_EVENT_STEP_NOTE));
     set_selector_and_pot(0U, 800U);
     run_ticks(2U * SCAN_PERIOD_TICKS);
@@ -238,22 +136,30 @@ static void test_the_selected_profile_is_loaded_at_power_on(void)
     TEST_ASSERT_EQUAL(2, host_nv_read_count()); // The calibration, the crash log
     TEST_ASSERT_EQUAL(0, host_event_count());
 
-    // The first tick reads the panel, and the profile the selector is at
-    // is read on the second, ahead of the first step's log line. The
-    // amounts are in use from then; the pot gave the tempo and has not
-    // met position 3's amount
+    // The first tick reads the panel. The eight ticks after it each read
+    // a byte of one profile, for the status light, the first of them the
+    // tick that logs the first step; the profile the selector is at is
+    // read on the tick after those, the tenth. The amounts are in use
+    // from then; the pot gave the tempo and has not met position 3's amount
     run_ticks(1U);
     TEST_ASSERT_EQUAL(2, host_nv_read_count());
     run_ticks(1U);
     TEST_ASSERT_EQUAL(3, host_nv_read_count());
-    expect_event(0U, HOST_EVENT_PROFILE, 3U, ACTION_RECALL);
-    expect_event(1U, HOST_EVENT_STEP_NOTE, 0U, 14U);
+    TEST_ASSERT_EQUAL(1, host_event_count());
+    expect_event(0U, HOST_EVENT_STEP_NOTE, 0U, 14U);
+    run_ticks(7U);
+    TEST_ASSERT_EQUAL(10, host_nv_read_count());
+    TEST_ASSERT_EQUAL(0, count_kind(HOST_EVENT_PROFILE));
+    TEST_ASSERT_EQUAL(0, host_level());
+    run_ticks(1U);
+    TEST_ASSERT_EQUAL(11, host_nv_read_count());
+    expect_event(1U, HOST_EVENT_PROFILE, 3U, ACTION_RECALL);
     run_ticks(1U);
     TEST_ASSERT_EQUAL(75, host_level());
     run_ticks(TICKS_PER_STEP);
     TEST_ASSERT_EQUAL(2, count_kind(HOST_EVENT_STEP_NOTE));
     TEST_ASSERT_EQUAL(1, count_kind(HOST_EVENT_PROFILE)); // Loaded the once
-    TEST_ASSERT_EQUAL(3, host_nv_read_count());
+    TEST_ASSERT_EQUAL(11, host_nv_read_count());
     TEST_ASSERT_EQUAL(75, host_level());
 }
 
@@ -266,8 +172,8 @@ static void test_a_profile_that_holds_nothing_loads_nothing_at_power_on(void)
     set_selector_and_pot(3U, TEMPO_RAW_150_BPM);
     (void)app_init();
 
-    run_ticks(3U);
-    TEST_ASSERT_EQUAL(3, host_nv_read_count()); // Looked at, and not a profile
+    run_ticks(20U);
+    TEST_ASSERT_EQUAL(11, host_nv_read_count()); // Looked at, and not a profile
     TEST_ASSERT_EQUAL(0, count_kind(HOST_EVENT_PROFILE));
     TEST_ASSERT_EQUAL(0, count_kind(HOST_EVENT_ERROR));
     TEST_ASSERT_EQUAL(0, host_level());
@@ -294,7 +200,7 @@ static void test_the_profile_is_loaded_once_the_panel_can_be_read(void)
 
     host_set_steps(raw, STATUS_OK);
     run_ticks(2U * SCAN_PERIOD_TICKS);
-    TEST_ASSERT_EQUAL(3, host_nv_read_count());
+    TEST_ASSERT_EQUAL(11, host_nv_read_count()); // Each of the eight, and then it
     TEST_ASSERT_EQUAL(1, count_events(HOST_EVENT_PROFILE, 3U, ACTION_RECALL));
     run_ticks(10U * SCAN_PERIOD_TICKS);
     TEST_ASSERT_EQUAL(1, count_kind(HOST_EVENT_PROFILE));
@@ -336,18 +242,35 @@ static void test_a_recall_waits_while_the_storage_is_busy(void)
     TEST_ASSERT_EQUAL(0, count_kind(HOST_EVENT_PROFILE));
     TEST_ASSERT_EQUAL(0, host_level());
 
+    // Each of the eight is looked at, then the recall, and no more is read
     host_set_nv_read_status(STATUS_OK);
-    run_ticks(2U);
+    run_ticks(10U);
     TEST_ASSERT_EQUAL(1, count_events(HOST_EVENT_PROFILE, 3U, ACTION_RECALL));
     TEST_ASSERT_EQUAL(75, host_level());
-
-    // And then no more is read
     {
         const uint16_t reads = host_nv_read_count();
 
         run_ticks(20U);
         TEST_ASSERT_EQUAL(reads, host_nv_read_count());
     }
+}
+
+
+
+static void test_a_recall_by_the_button_waits_while_the_storage_is_busy(void)
+{
+    start_stopped();
+    store_profile(5U);
+    host_set_nv_read_status(ERR_BUSY);
+
+    press_button(5U, TEMPO_RAW_150_BPM, CLICK_TICKS);
+    run_ticks(20U);
+    TEST_ASSERT_EQUAL(0, count_kind(HOST_EVENT_ERROR));
+    TEST_ASSERT_EQUAL(0, count_kind(HOST_EVENT_PROFILE));
+
+    host_set_nv_read_status(STATUS_OK);
+    run_ticks(2U);
+    TEST_ASSERT_EQUAL(1, count_events(HOST_EVENT_PROFILE, 5U, ACTION_RECALL));
 }
 
 
@@ -513,6 +436,7 @@ int main(void)
     RUN_TEST(test_the_profile_is_loaded_once_the_panel_can_be_read);
     RUN_TEST(test_a_recall_that_cannot_be_read_is_logged_and_given_up);
     RUN_TEST(test_a_recall_waits_while_the_storage_is_busy);
+    RUN_TEST(test_a_recall_by_the_button_waits_while_the_storage_is_busy);
     RUN_TEST(test_a_save_that_cannot_be_started_is_logged);
     RUN_TEST(test_a_hold_of_five_seconds_clears_the_selected_profile_only);
     RUN_TEST(test_a_hold_of_ten_seconds_clears_every_profile_and_nothing_else);

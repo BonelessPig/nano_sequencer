@@ -37,7 +37,7 @@ const DDRD = 0x2A;
 const TCCR0B = 0x45;
 const PORTD = 0x2B;
 const CLOCK_IN_PIN = 0x01;       // PB0
-const PORT_D_INPUTS = 0x8C;      // PD2 (reset), PD3 (unused), PD7 (run)
+const PORT_D_INPUTS = 0x84;      // PD2 (reset), PD7 (run)
 
 // A board on the internal clock as it powers on, or with external true one
 // on the external clock that is waiting for its first edge

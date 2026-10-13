@@ -54,7 +54,7 @@ INCLUDING_TESTS = test_serial_logger test_null_logger test_register_init \
                   test_clock_input test_reset_input test_run_input \
                   test_watchdog test_breadcrumb \
                   test_midi_output test_null_midi_output \
-                  test_level_output
+                  test_level_output test_status_output
 TEST_INCLUDING := $(patsubst %,$(HOST_DIR)/%$(EXE),$(INCLUDING_TESTS))
 
 # Tests for the core alone, which is every other one: one program per core

@@ -11,12 +11,13 @@ The firmware plays a 16-step pattern at 30 to 285 BPM, and its main loop never b
 
 - **Panel.** Each step has four switches, its note value: 0 is a rest and 1 to 15 are notes of a scale.
   Eight mode switches choose one of six engines (plain, stage, Klee, chance, Cartesian, Euclidean) and set its options.
-- **Outputs.** A pitch CV at 1 V to the octave from an MCP4822 DAC, a gate, a clock pulse per step, sixteen step lights, and a level light.
+- **Outputs.** A pitch CV at 1 V to the octave from an MCP4822 DAC, a gate, a clock pulse per step, sixteen step lights, a level light, and a status light.
 - **Clock and transport.** A run button stops and restarts the pattern, and a reset input sends it back to its first step.
   The first edge at the clock input takes the pattern over from the internal clock, and the pot then sets a ratio to that clock.
 - **An LFO of its own.** A sine, from a cycle a minute to about 20 Hz on a second pot, and off with that pot right down. It is added to whatever is at the modulation input, so everything below that an LFO moves works with nothing plugged in.
 - **One pot, eight amounts.** A selector says which amount the pot sets: the tempo, or how much an LFO at the modulation input moves the note, the gate length, the chance of a step dropping out, which step is played and how loud a note is, the time of the envelope on the DAC's second output, or how far the LFO bends the pitch of the note that is sounding (vibrato, up to two semitones either way).
 - **Profiles.** One button keeps eight sets of those amounts, all but the tempo, in the EEPROM, one for each selector position: a click recalls the selected one, a hold of 1 s saves to it, of 5 s clears it and of 10 s clears them all, and the selected one is loaded at power-on.
+  A status light is lit while the selected one holds something, winks as a hold passes each of those times, and flickers once for a recall, twice for a save, three times for a clear and four for a clear of all; one long blink says a recall found nothing or a save could not be started.
 - **Calibration.** A mode entered at power-on trims the pitch CV against a meter, octave by octave, and stores the result in the EEPROM.
 - **Watchdog and crash log.** A watchdog restarts a stuck firmware, and the next start-up records in the EEPROM where the loop had got to.
 - **Three builds.** Debug logs each step over serial, midi sends MIDI out in place of the log, and release has neither.
@@ -61,7 +62,7 @@ The wiring is drawn pin by pin in [docs/SCHEMATIC.html](docs/SCHEMATIC.html) (op
 - **SPI bus** (D9 to D13): ten 74HC165s for the panel, two 74HC595s for the step lights, and the MCP4822 DAC.
   Each 74HC165's Clock Inhibit pin must be tied to GND.
 - **Analog inputs:** the pot on A6, the modulation input on A7 and the LFO rate pot on A0.
-- **Digital pins:** gate out on D4, clock out on D5, level light on D6, run button on D7, clock in on D8, reset in on D2.
+- **Digital pins:** gate out on D4, clock out on D5, level light on D6, status light on D3, run button on D7, clock in on D8, reset in on D2.
 - **USART** (D1): the log at 115200 baud in the debug build, MIDI out at 31250 baud in the midi build.
 - **EEPROM:** 180 bytes, for the calibration record, the crash log and the eight profiles.
   A chip erase by an ISP programmer wipes it unless the EESAVE fuse is set; an upload through the bootloader does not.
@@ -133,9 +134,9 @@ The chip has one USART, so an image has the log or MIDI out, not both.
 
 | | Logging | MIDI out | Flash | Static RAM |
 |---|---|---|---:|---:|
-| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | None | 13712 bytes | 966 bytes |
-| `make CONFIG=release` | None | None | 12264 bytes | 316 bytes |
-| `make CONFIG=midi` | None | Over USART0 at 31250 baud | 12416 bytes | 350 bytes |
+| `make` (same as `CONFIG=debug`) | Text over USART0 at 115200 baud | None | 14332 bytes | 977 bytes |
+| `make CONFIG=release` | None | None | 12886 bytes | 329 bytes |
+| `make CONFIG=midi` | None | Over USART0 at 31250 baud | 13038 bytes | 363 bytes |
 
 `CONFIG` applies to `make`, `make size` and `make flash` (for example `make flash CONFIG=release`), and each image goes to `build/<config>/output.hex`.
 The checks always cover all three.

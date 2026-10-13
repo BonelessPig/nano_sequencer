@@ -40,6 +40,7 @@ They share the SPI clock, and one pin (D9) serves as both the 165s' load line an
 | 1 | Rotary switch, 8 positions, binary coded (real code, with a common that goes to 5 V) | The selector: which amount the pot sets |
 | 1 | Push button, momentary, normally open | The profile button: between 5 V and input D of the tenth 74HC165, which a pull-down holds low |
 | 1 | LED and resistor | The level light on D6: as bright as the amount the selector is on |
+| 1 | LED and resistor | The status light on D3, from the pin through the resistor to the LED and ground: lit while the selected profile holds something. Value to be chosen for the LED, at a few milliamps |
 | 1 | Momentary push button | Run and stop |
 
 ### Step lights

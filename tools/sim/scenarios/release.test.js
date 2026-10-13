@@ -32,7 +32,8 @@ const MOSI_PIN = 0x08;          // PB3
 const MISO_PIN = 0x10;          // PB4
 const LOAD_PIN = 0x02;          // PB1, the shift register load line
 const SCK_PIN = 0x20;           // PB5
-const OUTPUT_PINS = 0x70;       // PD4 (gate), PD5 (clock out), PD6 (level light)
+// PD3 (status light), PD4 (gate), PD5 (clock out), PD6 (level light)
+const OUTPUT_PINS = 0x78;
 const SPI_HZ = 1000000;
 const RUN_LIMIT_MS = 5000;
 const PANEL = [1, 4, 7, 10, 13, 0, 3, 6, 9, 12, 15, 2, 5, 8, 11, 14];
@@ -70,7 +71,7 @@ test('never switches the USART on or drives its pins', () => {
     assert.equal(board.machine.cpu.data[DDRD] & UART_PINS, 0);
 });
 
-test('drives only the gate, clock and level light pins of port D', () => {
+test('drives only the gate, clock and two light pins of port D', () => {
     const board = releaseBoard();
 
     board.runUntilPanelReads(2, RUN_LIMIT_MS);

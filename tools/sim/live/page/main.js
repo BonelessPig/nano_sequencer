@@ -44,6 +44,7 @@ function applyRun(run) {
     run.events.forEach(applyEvent);
     el('level-led').style.opacity = String(run.level);
     el('level-reading').textContent = `${Math.round(run.level * 100)}%`;
+    el('status-led').classList.toggle('lit', run.status);
     el('profile-means').textContent = profileMeaning(run.profileHeldMs);
     el('status').textContent = `Running ${state.config}: ${(run.ms / 1000).toFixed(1)} s `
         + `of chip time, at ${run.speed}% of real speed`;
