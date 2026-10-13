@@ -16,8 +16,9 @@ One marked **unverified** is from memory or a secondary source; check it before 
 Read this section to know what comes next; the rest of the document is the record behind it.
 Keep it to a screen, and bring it up to date at the end of each piece of work.
 
-- **Next piece of work: ask the owner which.** The modulation has one stage left on its list, an enable button for a type (decision 146), which was only ever "possibly"; if it is not wanted, the next piece is **MIDI in**, the second piece of phase 10 (decision 117), and then phase 11.
-  Nothing about either is settled; put the options to the owner before any code, as stages 2 to 7 were.
+- **Next piece of work: MIDI in, its first piece** (the second piece of phase 10, decision 117): the clock, Start and Stop, in the midi image. The owner chose it over the enable button for a type (146), which stays unbuilt, and settled four things on 2026-10-13 (decisions 194 to 197): notes are read and dropped for now, the pot keeps the jack's ratio with six MIDI clocks as an edge, the first external clock seen since the last stop is the one followed, and a Continue is a Start.
+  Not settled, to put to the owner before the code that needs them: whether a MIDI clock with no Start takes over a running pattern as a jack edge does, what a framing error or a full ring buffer does, and the input circuit (PARTS.md has only placeholders).
+  The emulated board's USART has never received anything (`tools/sim/CLAUDE.md`, Limits), so the board needs a way to send bytes in first.
   The status light (stage 7, decisions 188 to 193) is built, on PD3, and the profiles before it (stage 6, decisions 179 to 187).
 - **Waiting on the board, not on firmware:** everything from phase 1 on is unrun on hardware.
   Section 8 lists what to check, and OPEN_ITEMS.md the order to check it in.

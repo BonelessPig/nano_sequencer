@@ -149,6 +149,7 @@ Known limits: there is no All Notes Off, so a reset in the middle of a note leav
 
 The second piece of the roadmap's phase 10.
 The receiver is already enabled in the midi image, and nothing reads it.
+It is the next piece of work: the clock, Start and Stop first, with notes read and dropped (decisions 194 to 197).
 
 ## 18. A step short on a very fast external clock
 
