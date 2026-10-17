@@ -14,19 +14,19 @@ Timing figures marked as measured come from the emulated board; the rest are cal
 | | |
 |---|---|
 | Target | ATmega328P (Arduino Nano, old bootloader), 16 MHz |
-| Flash | 14332 bytes debug, 12886 release, 13038 midi, of 30720 below the bootloader |
-| Static RAM | 977 bytes debug, 329 release, 363 midi (`avr-size` reports less: open item 5) |
+| Flash | 14602 bytes debug, 13156 release, 13448 midi, of 30720 below the bootloader |
+| Static RAM | 990 bytes debug, 342 release, 394 midi (`avr-size` reports less: open item 5) |
 | EEPROM | 180 of 1024 bytes: the calibration record (12, from address 0), the crash log (40, from address 16) and the eight profiles (128, from address 64) |
-| Interrupts | One: Timer/Counter2 compare match, 1000 times a second, which adds one to a counter. The clock and reset inputs use interrupt flags, polled, with their interrupts off |
+| Interrupts | Timer/Counter2 compare match, 1000 times a second, which adds one to a counter, and in the midi build a second, USART receive, which puts a byte in a ring. The clock and reset inputs use interrupt flags, polled, with their interrupts off |
 | Main loop | Never blocks. One sequencer tick a millisecond; every output is applied at the next tick boundary |
 | Watchdog | About 250 ms, kicked once a tick. After a watchdog reset the firmware records in the EEPROM which part of the loop it had reached |
-| Inputs | 16 steps × 4 bits, 8 mode switches, an 8-way selector and the profile button on ten 74HC165s (SPI), a pot (ADC 6) and the LFO rate pot (ADC 0), all read every 8 ms. Clock input (PB0), reset input (PD2) and run button (PD7), read every tick, and a modulation input (ADC 7), read on every tick but those |
-| Outputs | Pitch CV from an MCP4822 DAC (SPI), 1 V to the octave; gate (PD4); clock (PD5); 16 step lights on two 74HC595s (SPI); a level light (PD6, PWM); a status light (PD3). A serial log in the debug build, MIDI out in the midi build |
+| Inputs | 16 steps × 4 bits, 8 mode switches, an 8-way selector and the profile button on ten 74HC165s (SPI), a pot (ADC 6) and the LFO rate pot (ADC 0), all read every 8 ms. Clock input (PB0), reset input (PD2) and run button (PD7), read every tick, with MIDI in (PD0) in the midi build, and a modulation input (ADC 7), read on every tick but those |
+| Outputs | Pitch CV from an MCP4822 DAC (SPI), 1 V to the octave; gate (PD4); clock (PD5); 16 step lights on two 74HC595s (SPI); a level light (PD6, PWM); a status light (PD3). A serial log in the debug build, MIDI out in the midi build, which also takes its clock, Start and Stop from MIDI in |
 | Tempo | 30 to 285 BPM, a step being a sixteenth note (500 ms down to 52.6 ms) |
-| Tests | 758 host tests in 66 programs: 472 for the core, 123 for the app loop, 160 for the target adapters, 3 for `main.c` |
-| Coverage | 100% of lines (1669) and branches (758) in `core/`, `app/` and `adapters/target/` |
-| Emulated board | 251 scenarios across the three images |
-| MISRA | Zero findings from cppcheck's addon over four runs; one inline suppression (see "Static analysis") |
+| Tests | 803 host tests in 71 programs: 499 for the core, 129 for the app loop, 172 for the target adapters, 3 for `main.c` |
+| Coverage | 100% of lines (2267) and branches (991) in `core/`, `app/` and `adapters/target/` |
+| Emulated board | 260 scenarios across the three images |
+| MISRA | Zero findings from cppcheck's addon over four runs; two inline suppressions of one false positive (see "Static analysis") |
 
 The sizes and counts are copied from [FIGURES.md](FIGURES.md), which `make figures` writes.
 
@@ -46,7 +46,7 @@ flowchart TD
 
 - **Ports are bound at link time.** The firmware links `adapters/target/`, the tests link `adapters/host/`, and both use the same headers.
   There are no function-pointer tables.
-- **Build configurations are the same idea one level down.** `adapters/target/` holds two implementations of the log port and two of the MIDI output port, and the Makefile links one of each.
+- **Build configurations are the same idea one level down.** `adapters/target/` holds two implementations of the log port, two of the MIDI output port and two of the MIDI input port, and the Makefile links one of each.
   There are no configuration macros.
 - **The core calls nothing outside itself**, and only the app calls it.
   `seq_tick()` reads state and inputs and writes state and outputs; every module under it is the same kind of function, with its own test program.
@@ -79,14 +79,14 @@ sequenceDiagram
         A->>P: timebase_elapsed_ticks()
         opt a tick has passed
             A->>P: 1. apply the outputs the last tick computed, kick the watchdog
-            A->>P: 2. gather inputs (edges and button every tick, panel and ADC every 8th)
+            A->>P: 2. gather inputs (edges, button and MIDI in every tick, panel and ADC every 8th)
             A->>C: 3. cal_tick(), then bank_tick(), seq_tick(), midi_out_tick()
         end
         A->>P: log_poll(), midi_output_poll(), nv_poll(): one byte each
     end
 ```
 
-`platform_init()` brings up the logger, the pins and ADC, the SPI bus, the two edge inputs, the MIDI output, the watchdog and last the timebase, which enables interrupts.
+`platform_init()` brings up the logger, the pins and ADC, the SPI bus, the two edge inputs, the MIDI output and input, the watchdog and last the timebase, which enables interrupts.
 If it fails, `app_init()` logs the error, flushes the log (the only blocking call in the firmware) and `main` returns into libgcc's `_exit`, which masks interrupts and loops; the watchdog is never started, so the board halts and does not reset over and over.
 No target init function can currently fail.
 The loop begins about 0.8 ms after reset.
@@ -98,7 +98,8 @@ With none, it polls the log, the MIDI output and the EEPROM and returns, a few m
 With one or more it runs one tick first, handing the count to the core so that a late pass loses no time.
 
 1. **Apply outputs** from the previous tick: the pitch CV, then the gate, then the clock output, on every tick and ahead of everything else; then the envelope CV, the step lights, the level light and any MIDI bytes; then the status light and what the profile button asked for; then the log lines (a transport change, the step that began, errors).
-2. **Gather inputs.** Every tick: the clock and reset edges, the run button and the room in the MIDI output.
+2. **Gather inputs.** Every tick: the clock and reset edges, the run button, the MIDI bytes received since the last tick (eight at most) and the room in the MIDI output.
+   The MIDI output is polled once more when this is done, so that a byte can leave while the rest of the tick's work goes on.
    Every eighth tick: the ten panel bytes, the pot and the rate pot.
    Every other tick: the modulation input.
    So every tick has one ADC conversion of about 0.1 ms for the LFO, its own or the one from outside, and a scan's tick has the pot's as well, as it had before there was a rate pot.
@@ -159,13 +160,14 @@ An external edge is noticed at the next tick and acted on at the one after, so s
 | `cal`, `cal_record` | Is this calibration mode, and what is being set? Are these stored bytes a table? |
 | `errlog`, `crc8` | Which crash record is the newest, and what does this start-up add? |
 | `midi_out` | Which MIDI bytes does this tick send? |
+| `midi_in` | What do the MIDI bytes just received ask of the transport? |
 | `env` | What is the envelope's level this tick? |
 | `lfo` | What is the modulating signal this tick: the sequencer's own LFO added to the one from outside? |
 | `profile`, `profile_record` | What is the profile button asking for? Are these stored bytes a profile? |
 | `blink` | Is the status light lit this tick? |
 
 `seq` owns the clock, transport, engines, gate, note mapping, modulation and pitch calibration.
-`bank`, `cal`, `cal_record`, `errlog`, `midi_out`, `env`, `lfo`, `profile`, `profile_record` and `blink` stand beside it: the app calls them itself and they include nothing of the sequencer's.
+`bank`, `cal`, `cal_record`, `errlog`, `midi_out`, `midi_in`, `env`, `lfo`, `profile`, `profile_record` and `blink` stand beside it: the app calls them itself and they include nothing of the sequencer's.
 
 ### The clock
 
@@ -206,6 +208,10 @@ stateDiagram-v2
 - **The run button** toggles, once it has settled; holding it is one press, and a button already down at power-on is not a press.
 - **The clock chooses itself.** An edge takes the pattern over and it stays on the external clock, edges or none, until it is stopped.
   A stop forgets the external clock; an edge while stopped brings it back, so a start with a master running waits for its next edge.
+- **Two external clocks.** The clock input and the MIDI clock, whose every sixth clock is an edge.
+  The first of the two to give an edge since the last stop is the one followed, and the other is passed over until the next stop.
+- **MIDI Start and Stop.** A Stop stops the pattern as a press does.
+  A Start starts it from its first step, running or not, on the MIDI clock whichever was being followed, so that it waits for the clock that comes after the Start.
 - **A start** restarts the pattern from its first step; a change of clock does not.
 
 `debounce_update()` takes the first reading as it stands and then changes level only after the raw reading has differed for 20 ticks without a break.
@@ -330,7 +336,29 @@ Every image runs it; only the midi build sends what it produces.
   A Note Off is always sent in the end; a Note On whose gate falls before it could go is given up.
 - Bytes are queued in the apply step of the next tick and leave one a pass, 320 µs each, so a note's MIDI trails its gate by under a millisecond.
 
-Not built: MIDI in, any control for the channel or lowest note, Continue and Song Position, All Notes Off.
+Not built: any control for the channel or lowest note, Continue and Song Position, All Notes Off.
+A MIDI Start that restarts a pattern already running sends nothing: a Start goes out only when a stopped pattern starts.
+
+### MIDI in
+
+`midi_in_read()` is given the bytes received since the last tick and says what they ask of the transport.
+Only the midi build receives any; the others link an adapter that never has a byte to give.
+
+| Byte (hex) | Message | What it does |
+|---|---|---|
+| F8 | Clock | The sixth is an edge of the external clock, as an edge on the clock input is; the first after power-on or a Start is one |
+| FA | Start | Starts the pattern from its first step, on the clock that follows |
+| FB | Continue | Taken as a Start: the pattern cannot be taken up where it stopped |
+| FC | Stop | Stops the pattern |
+| Any other | | Passed over, the bytes of a note among them |
+
+- Each of the four is a single byte that can come anywhere in the stream, so nothing is put together from more than one byte and no channel is looked at.
+- Six clocks are one edge, so the pot is the ratio it is on the clock input: a step to six clocks in the middle, down to one every 24 and up to four in six.
+- Of a Start and a Stop received on the same tick the later one counts, and a Start forgets an edge that came ahead of it.
+- A step begins on the second tick after its clock arrives: the byte is read on the next tick and the step's outputs are applied on the one after.
+- A byte with a frame error is dropped, and so is one that arrives with fifteen already waiting; nothing says so.
+
+Not built: what a received note means, running status and anything else made of more than one byte, Song Position, and the input circuit (PARTS.md).
 
 ### The amount bank
 
@@ -490,7 +518,7 @@ Pitches run from 0 to 45 semitones, which is 3.75 V of the DAC's 4.095.
 | PB5 | D13 (SCK) | output | SPI clock to every chip |
 | PC0 | A0 | analog (ADC0) | The LFO rate pot |
 | PC1 | A1 | output | Nothing (open item 1) |
-| PD0, PD1 | D0, D1 | as at reset | The USART, when a logger or the MIDI output enables it |
+| PD0, PD1 | D0, D1 | as at reset | The USART, when a logger or the MIDI output enables it: PD1 sends, and in the midi build PD0 is MIDI in |
 | PD2 | D2 (INT0) | input, pull-up | Reset input: a falling edge is latched by the INT0 flag |
 | PD3 | D3 | output, idle low | Status light, high for lit |
 | PD4 | D4 | output, idle low | Gate output |
@@ -542,19 +570,22 @@ Each output's level is set before it is made an output, so no line glitches on t
   `null_logger.c` is the same functions, empty.
 - **MIDI output (midi).** 31250 baud, exact at 16 MHz, with a 32-byte ring queue sent one byte a pass.
   `null_midi_output.c` discards everything and always reports room for 255.
+- **MIDI input (midi).** The same USART's receiver, with its interrupt on: the handler reads the status and the byte and puts the byte in a 16-slot ring, which holds 15, unless it came with a frame error or the ring is full.
+  `midi_input_read()` empties the ring once a tick; the two indexes are a byte each, so neither side masks interrupts.
+  `null_midi_input.c` never has a byte.
 - **Timebase (`timebase.c`).** Timer/Counter2 in clear-on-compare mode: 250 counts at 250 kHz.
   The handler increments a one-byte counter, so reading it is one instruction and needs no masking.
   `timebase_elapsed_ticks()` returns the difference since it was last asked, so a late pass loses no ticks, up to 255.
 
 ## Host tests — `adapters/host/` and `tests/`
 
-`make test` builds 66 programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
+`make test` builds 71 programs with the PC compiler under `-std=c99 -pedantic -Wconversion -Wshadow -Werror`.
 There are two kinds:
 
-- **43 link the code they test.** One per core module, with the sequencer's split by topic into six (`test_seq` and `test_seq_*`, sharing `tests/seq_fixture.h`) and MIDI out's into two (`test_midi_out` and `test_midi_out_notes`, sharing `tests/midi_out_fixture.h`), and eight for the app loop (`test_app` and `test_app_*`, sharing `tests/app_fixture.h`, and the two about the profiles `tests/profile_fixture.h`), which link the real `app.c` and `app_profile.c` and all of `core/` against `adapters/host/host_ports.c`.
-  The fake ports script what the inputs return, record log calls in order, keep the level of each output, hold 192 bytes of storage that survive a re-init, and keep every MIDI byte written.
+- **46 link the code they test.** One per core module, with the sequencer's split by topic into seven (`test_seq` and `test_seq_*`, sharing `tests/seq_fixture.h`) and MIDI out's into two (`test_midi_out` and `test_midi_out_notes`, sharing `tests/midi_out_fixture.h`), and nine for the app loop (`test_app` and `test_app_*`, sharing `tests/app_fixture.h`, and the two about the profiles `tests/profile_fixture.h`), which link the real `app.c` and `app_profile.c` and all of `core/` against `adapters/host/host_ports.c`.
+  The fake ports script what the inputs return, record log calls in order, keep the level of each output, hold 192 bytes of storage that survive a re-init, keep every MIDI byte written, and hand over the MIDI bytes a test says were received.
   Time is scripted, so the tests check on which tick each thing happens.
-- **23 `#include` the one source file they test**, against `tests/fake_atmega328p_regs.h`, which stands in for every register header.
+- **25 `#include` the one source file they test**, against `tests/fake_atmega328p_regs.h`, which stands in for every register header.
   This is how each target adapter and `main.c` are tested: the set-up values, the order of writes, the timed sequences, and the timeouts.
 
 `make coverage` rebuilds the same programs with `--coverage -O0` and fails unless every `.c` file in `core/`, `app/` and `adapters/target/` has every line run and every branch taken.
@@ -583,6 +614,7 @@ The details are in [tools/sim/CLAUDE.md](../tools/sim/CLAUDE.md).
 | `watchdog.test.js` | 21 | The watchdog, the breadcrumb and the crash log |
 | `midi.test.js` | 10 | MIDI out on the midi image: the bytes, the notes and ties |
 | `midi_clock.test.js` | 7 | MIDI out on the midi image: the clock, Start and Stop, a line with too much to send |
+| `midi_in.test.js` | 9 | MIDI in on the midi image: the MIDI clock as a clock, the ratio, Start, Stop and Continue, two clocks at once, a line with as much as it can carry; nothing heard on the other two |
 
 Most scenarios run on all three images.
 
@@ -595,6 +627,7 @@ Most scenarios run on all three images.
   It says nothing about a real chip after a watchdog reset, or about the bootloader.
 - The emulated EEPROM enforces the timed write but never wears or fails.
 - The emulated clock is exact; the board's resonator is not.
+- MIDI in has no pin here: a byte is handed to the USART whole, so the optocoupler, the baud rate and a damaged byte are not shown (open item 17).
 
 **`make live`** runs the same board at real speed and shows it in a browser, with every control workable; its rules are in [tools/sim/live/CLAUDE.md](../tools/sim/live/CLAUDE.md).
 It asserts nothing, is paced by the PC's clock, and is not part of `make check`.
@@ -605,16 +638,17 @@ Where the release image gives no log, the step and transport shown are the serve
 The `Makefile` builds and flashes the firmware, and includes `tests/tests.mk` for the host tests and coverage and `tools/checks.mk` for the analysis, the emulated board, `make check` and `make figures`.
 
 Every `.c` under `app/`, `core/` and `adapters/target/` is compiled once into `build/obj/`, the same way for every configuration.
-A configuration only chooses which logger and which MIDI output are linked.
-The chip has one USART, so an image has the log or MIDI out, not both.
+A configuration only chooses which logger, which MIDI output and which MIDI input are linked.
+The chip has one USART, so an image has the log or MIDI, not both.
 
 | | Debug | Release | Midi |
 |---|---:|---:|---:|
 | Logger | `serial_logger.c` | `null_logger.c` | `null_logger.c` |
 | MIDI output | `null_midi_output.c` | `null_midi_output.c` | `midi_output.c` |
-| USART0 | The log, 115200 baud | Never switched on | MIDI out, 31250 baud |
-| Flash | 14332 bytes | 12886 bytes | 13038 bytes |
-| Static RAM | 977 bytes | 329 bytes | 363 bytes |
+| MIDI input | `null_midi_input.c` | `null_midi_input.c` | `midi_input.c` |
+| USART0 | The log, 115200 baud | Never switched on | MIDI out and in, 31250 baud |
+| Flash | 14602 bytes | 13156 bytes | 13448 bytes |
+| Static RAM | 990 bytes | 342 bytes | 394 bytes |
 
 ### Where the flash goes
 
@@ -630,9 +664,9 @@ The scale tables are constant data that this toolchain also copies to RAM.
 `make misra` runs cppcheck with its MISRA addon four times, each over the files linked together for one build: the debug, release and midi firmware, and the `test_app` host programs.
 All four report zero findings; the count before the refactor was 165 ([misra-baseline.md](misra-baseline.md)).
 
-There is one inline suppression, a false positive: rule 8.7 (advisory) on the timer interrupt handler in `timebase.c`.
-The handler is referenced only by the startup object's vector table, which cppcheck never sees.
-It is recorded in the source in the deviation format, so the reason sits beside it.
+There are two inline suppressions, both of one false positive: rule 8.7 (advisory) on the two interrupt handlers, the timer's in `timebase.c` and the USART receiver's in `midi_input.c`.
+A handler is referenced only by the startup object's vector table, which cppcheck never sees.
+Each is recorded in the source in the deviation format, so the reason sits beside it.
 
 Findings in `tests/` are not reported, since test code is outside the standard. cppcheck implements only part of MISRA C, so zero findings is zero from this tool, not a claim of compliance.
 How findings are handled is in [tools/misra/CLAUDE.md](../tools/misra/CLAUDE.md).

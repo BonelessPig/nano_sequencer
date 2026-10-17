@@ -245,8 +245,10 @@ static void test_midi_is_polled_on_every_pass_tick_or_not(void)
     TEST_ASSERT_EQUAL(0, host_midi_write_count());
     TEST_ASSERT_EQUAL(0, host_midi_room_read_count());
 
+    // And twice on a pass with a tick: once between its steps as well, so
+    // that a byte can leave while the tick's work is still being done
     run_ticks(5U);
-    TEST_ASSERT_EQUAL(15, host_midi_poll_count());
+    TEST_ASSERT_EQUAL(20, host_midi_poll_count());
 }
 
 
@@ -332,7 +334,7 @@ static void test_calibration_mode_sends_no_midi(void)
     start_calibration(2U, CAL_TRIM_CENTRE);
     run_ticks(3U * TICKS_PER_STEP);
     TEST_ASSERT_EQUAL(0, host_midi_byte_count());
-    TEST_ASSERT_EQUAL(3U * TICKS_PER_STEP, host_midi_poll_count());
+    TEST_ASSERT_EQUAL(2U * 3U * TICKS_PER_STEP, host_midi_poll_count()); // Twice a tick
 }
 
 

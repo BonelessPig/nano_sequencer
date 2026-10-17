@@ -1,6 +1,7 @@
 #ifndef ATMEGA328P_REGS_H
 #define ATMEGA328P_REGS_H
 #define ATMEGA328P_USART_REGS_H  // This file stands in for the USART header too
+#define ATMEGA328P_USART_RX_REGS_H
 #define ATMEGA328P_TIMER2_REGS_H // And for the Timer/Counter2 header
 #define ATMEGA328P_TIMER0_REGS_H // And for the Timer/Counter0 header
 #define ATMEGA328P_SPI_REGS_H    // And for the SPI header
@@ -62,6 +63,8 @@
 #define TXEN0  3 // Tx Enable bit in UCSR0B
 #define UCSZ01 2 // Character Size bit 1 in UCSR0C
 #define UCSZ00 1 // Character Size bit 0 in UCSR0C
+#define FE0    4 // Frame Error flag in UCSR0A
+#define RXCIE0 7 // RX Complete Interrupt Enable bit in UCSR0B
 
 #define SREG_I 7 // Global Interrupt Enable bit in SREG
 
@@ -101,6 +104,8 @@
 // The interrupt handler becomes an ordinary function the test can call
 #define TIMER2_COMPA_ISR fake_timer2_compa_isr
 #define TIMER2_COMPA_ISR_ATTR
+#define USART_RX_ISR fake_usart_rx_isr
+#define USART_RX_ISR_ATTR
 
 // ---- Watchdog ----
 #define FAKE_WDTCSR_WRITES_MAX (8U)
@@ -642,6 +647,23 @@ static inline uint8_t *fake_udr0(void)
         g_fake_uart_length++;
     }
     return p_slot;
+}
+
+/**
+ * @brief Makes the next read of the UART data register give this byte, as
+ *        one just received would be. The read takes a slot of the capture
+ *        as a write does, so it counts in g_fake_uart_length.
+ */
+static inline void fake_uart_receive(uint8_t byte)
+{
+    if (g_fake_uart_length < FAKE_UART_CAPACITY)
+    {
+        g_fake_uart[g_fake_uart_length] = byte;
+    }
+    else
+    {
+        g_fake_uart[FAKE_UART_CAPACITY] = byte;
+    }
 }
 
 /**

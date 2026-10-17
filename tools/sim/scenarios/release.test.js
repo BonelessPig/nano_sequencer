@@ -15,7 +15,12 @@ const CLOCKS_PER_LED_WRITE = 16; // The step lights, sent ahead of each read
 const CLOCKS_PER_CV_WRITE = 32; // Two DAC frames, sent on every tick
 const SCAN_PERIOD_TICKS = 8;
 const SCAN_PERIOD_MS = 8;       // The panel and pot are read every 8 ticks
-const SCAN_JITTER_MAX_MS = 0.01; // Nothing else happens at the tick boundary
+// Nothing else happens at the tick boundary, but the loop only notices a
+// tick within one pass of it, 6 us, and where in a pass the tick falls
+// moves with anything that changes the length of the tick before. The
+// ninth tick's read of a profile byte adds 3 us more: 10.7 us measured
+// between one read and the next
+const SCAN_JITTER_MAX_MS = 0.015;
 const FASTEST_READING = 1023;
 const DDRD = 0x2A;              // Port D direction register, data address
 const UART_PINS = 0x03;         // PD0 (receive) and PD1 (transmit)

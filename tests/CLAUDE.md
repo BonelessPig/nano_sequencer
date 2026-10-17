@@ -9,10 +9,10 @@ Test code is outside the coding standard and may use the C library freely (`mems
   No ports, no adapters.
   A new `tests/test_<name>.c` is found by its name and needs no list (`tests/tests.mk`).
   A module is tested fully by its own program; the sequencer's tests then check that it uses the module, not every case again.
-- **The sequencer** has six programs, by topic, so a change needs only the one it concerns read: `test_seq.c` (steps, tempo, order, reset, null pointers), `test_seq_gate.c` (gate, clock output, pitch CV), `test_seq_transport.c` (run button, external clock), `test_seq_engines.c` (choice of engine, ties, step lights), `test_seq_pulses.c` (the MIDI clock pulses) and `test_seq_mod.c` (the LFO).
+- **The sequencer** has seven programs, by topic, so a change needs only the one it concerns read: `test_seq.c` (steps, tempo, order, reset, null pointers), `test_seq_gate.c` (gate, clock output, pitch CV), `test_seq_transport.c` (run button, external clock), `test_seq_midi.c` (the MIDI clock, Start and Stop), `test_seq_engines.c` (choice of engine, ties, step lights), `test_seq_pulses.c` (the MIDI clock pulses) and `test_seq_mod.c` (the LFO).
   The inputs they start from and the helpers that tick the sequencer are in `seq_fixture.h`.
 - **MIDI out** has two: `test_midi_out.c` (Start, Stop, the clock, null pointers) and `test_midi_out_notes.c` (notes and ties), sharing `midi_out_fixture.h`.
-- **App loop:** eight programs link the real `app/app.c` and `app/app_profile.c` and core against the fakes in `adapters/host/`: `test_app.c` (the ports called on each tick, outputs, failed reads), `test_app_cal.c` (stored calibration, calibration mode), `test_app_crash.c` (crash log, breadcrumb), `test_app_controls.c` (run button, clock and reset inputs, selector and pot, level light), `test_app_env.c` (the envelope output, the amplitude and the velocity), `test_app_profile.c` (the profile button and the stored profiles), `test_app_status.c` (the status light) and `test_app_midi.c`.
+- **App loop:** nine programs link the real `app/app.c` and `app/app_profile.c` and core against the fakes in `adapters/host/`: `test_app.c` (the ports called on each tick, outputs, failed reads), `test_app_cal.c` (stored calibration, calibration mode), `test_app_crash.c` (crash log, breadcrumb), `test_app_controls.c` (run button, clock and reset inputs, selector and pot, level light), `test_app_env.c` (the envelope output, the amplitude and the velocity), `test_app_profile.c` (the profile button and the stored profiles), `test_app_status.c` (the status light), `test_app_midi.c` (MIDI out) and `test_app_midi_in.c`.
   Their shared helpers are in `app_fixture.h`, and the last two's in `profile_fixture.h`; a new one is named `test_app_<topic>.c` and is found by that name.
 - A helper in a fixture header is `static inline`, so a program that does not use it builds without a warning.
   One that only a single program uses stays in that program.
@@ -28,7 +28,8 @@ Test code is outside the coding standard and may use the C library freely (`mems
 - A new one needs its registers added to the fake header (and to its `fake_regs_reset()`), a `test_<name>.c`, and its name in `INCLUDING_TESTS` in `tests/tests.mk`.
 - Functions the file calls but does not define are stubs in the test.
   For a device adapter that means its driver: `test_shift_reg_reader.c` stubs `spi_transfer()` and has the stub clock the fake's 74HC165 model, `test_cv_output.c` has its stub record each byte and whether chip select was low, and the driver's own register use is tested in `test_spi.c`.
-- An interrupt handler is tested by calling it: the fake header gives it an ordinary function name (`fake_timer2_compa_isr`).
+- An interrupt handler is tested by calling it: the fake header gives it an ordinary function name (`fake_timer2_compa_isr`, `fake_usart_rx_isr`).
+  A byte is received by giving it to `fake_uart_receive()` and then calling the handler; the read takes a slot of the UART capture, so it counts in `g_fake_uart_length`.
 - Where the hardware responds (the ADC clearing its start bit, the shift register chain presenting bits, the EEPROM storing a byte only if the write was armed), the fake models it, so the test only passes if the code drives it in the right order.
 - A fake register is seen before the write the code makes to it, so a model that reacts to a write catches up at the next access (`fake_shift_sync()`, `fake_eeprom_sync()`).
   Call the sync function in the test before checking what the model did.

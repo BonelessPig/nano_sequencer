@@ -102,8 +102,12 @@ typedef struct
     gate_config_t     gate;          // Gate length
     pitch_cal_config_t pitch_cal;    // Pitch CV value of each octave
     bool              b_reset;       // true to send the pattern back to its start
-    bool              b_clock_edge;  // true if an edge arrived on the external clock
+    bool              b_clock_edge;  // true if an edge arrived on the clock input
                                      // since the previous tick
+    bool              b_midi_edge;   // true if a MIDI clock that is an edge arrived
+                                     // since the previous tick (see midi_in.h)
+    bool              b_midi_start;  // true if a MIDI Start arrived since then
+    bool              b_midi_stop;   // true if a MIDI Stop arrived since then
     bool              b_run_button;  // true while the run button is held down, as read
     seq_mod_t         mod;           // The LFO and its six amounts
 } seq_inputs_t;
@@ -170,14 +174,16 @@ void seq_init(seq_state_t *p_state);
  *         The button is debounced here and is given as read. The pattern is
  *         running after seq_init(), on the internal clock, and each press
  *         of the button stops it or starts it again. An edge takes it to
- *         the external clock, where it stays until it is stopped.
+ *         the external clock, where it stays until it is stopped. That
+ *         clock is the clock input or MIDI, whichever gave an edge first,
+ *         and a MIDI Start and Stop start and stop the pattern as well.
  *
  *         A start is the first tick after seq_init() and each tick on which
- *         the button starts the pattern again. It goes back to the first
- *         step of the pattern, and the time elapsed on that tick is not
- *         counted, so the step it begins is a whole one. On the internal
- *         clock that step begins on the same tick. On the external clock it
- *         begins on the first edge.
+ *         the button or a MIDI Start starts the pattern again. It goes back
+ *         to the first step of the pattern, and the time elapsed on that
+ *         tick is not counted, so the step it begins is a whole one. On the
+ *         internal clock that step begins on the same tick. On the external
+ *         clock it begins on the first edge.
  *
  *         While the pattern is stopped nothing is due and nothing begins.
  *         The gate is closed at once and the clock output is low; the pitch

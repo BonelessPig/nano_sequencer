@@ -414,6 +414,24 @@ bool host_clock_output_level(void);
  */
 uint16_t host_clock_output_rise_count(void);
 
+#define HOST_MIDI_IN_MAX (32U) // MIDI bytes that can wait to be read; more are dropped
+
+/**
+ * @brief Puts bytes where midi_input_read() will find them, behind any
+ *        still waiting, as bytes arriving on the line would be. Those that
+ *        do not fit in HOST_MIDI_IN_MAX are dropped. host_reset() empties
+ *        it.
+ * @param p_bytes  The bytes received, oldest first. Null adds nothing.
+ * @param count    How many.
+ */
+void host_receive_midi(const uint8_t *p_bytes, uint8_t count);
+
+/**
+ * @brief Number of times midi_input_read() has been called since
+ *        host_reset().
+ */
+uint16_t host_midi_input_read_count(void);
+
 #define HOST_MIDI_BYTES_MAX    (1024U) // MIDI bytes recorded before further ones are dropped
 #define HOST_MIDI_ROOM_DEFAULT (255U)  // What midi_output_room() gives until it is set
 

@@ -22,6 +22,8 @@ The ports faked for the PC: tests script what the input ports return and read ba
 - The MIDI output gives the room a test sets (`host_set_midi_room()`) and records every byte it is written, at write time, a write of more than the room included, so that a test can see an overrun.
   The bytes are kept out of the event record and nothing is sent on a poll.
   Two readbacks show the order of the apply step: `host_midi_byte_count_at_gate_rise()` and `host_midi_byte_count_at_first_event()`.
+- The MIDI input hands over what a test said was received (`host_receive_midi()`), oldest first and no more than asked for, and keeps the rest for the next read; it holds 32 bytes and drops what does not fit.
+  Its reads are counted and not put in the event record.
 - A static here is named for its fake (`g_host_midi_*`): a name shared with a static in another file of the host run is a rule 5.9 finding.
 - `log_transport()` is in the event record.
   A run that never stops or changes clock logs none, so existing counts of events hold.

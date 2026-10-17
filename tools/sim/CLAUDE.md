@@ -6,7 +6,7 @@ This is JavaScript test tooling, outside the C coding standard; the line length 
 ## Layout
 
 - `lib/`: the chip, `pin_recorder.js` for watching an output pin, `duty_meter.js` for one switched too fast to record, and `edge_flag.js` for a flag that latches an edge on an input pin.
-  `parts/`: models of external chips and of things plugged in or pressed (`clock_source.js`, `switch.js`), with `clock_patterns.js` for the uneven trains a clock source can be given.
+  `parts/`: models of external chips and of things plugged in or pressed (`clock_source.js`, `midi_source.js`, `switch.js`), with `clock_patterns.js` for the uneven trains a clock source can be given.
   Neither may know anything about the sequencer, so they can be lifted out for another project.
 - `boards/nano_sequencer.js`: which part is on which pin, and everything a scenario does to the board or reads from it, which `.claude/rules/sim-scenarios.md` lists.
   `boards/cal_record.js` works the calibration record out on its own, so a scenario does not check the firmware against itself, and `boards/crash_record.js` does the same for a crash log record, says where the log is, and reads a log back into its records (`readCrashLog()`).
@@ -26,7 +26,7 @@ This is JavaScript test tooling, outside the C coding standard; the line length 
   Assert the SPI mode in a scenario, because the model cannot object to a wrong one.
 - The board gives every transfer to every part on the bus, as the wiring does.
   A part with a chip select takes the byte only while selected; the 74HC165 chain has none and is clocked by all of them, so its clock count per read includes the DAC frames sent before the next load.
-- A part records what it was told (the MCP4822's frames, with the cycle each took effect) and the board exposes that; a scenario asks what the part held at a given cycle (`cvWriteBefore`) to check an order of events against a pin recorder.
+- A part records what it was told (the MCP4822's frames, each with its cycle) and the board exposes that; a scenario asks what the part held at a given cycle (`cvWriteBefore`) to check an order of events against a pin recorder.
 - A part is driven only through the wires that reach it and models the datasheet's logic, including which inputs are level-sensitive and which are edge-triggered.
   The first 74HC165 model got that wrong and blamed the firmware.
 - Measure time in CPU cycles from `cpu.cycles`, never wall time, so every run gives the same result.
@@ -44,16 +44,16 @@ Read the file yourself before writing a new file that belongs to its topic.
 - `sim-transport.md`: the clock, the jacks, the run button and the level light (`transport.test.js`, `clock_source.js`, `clock_patterns.js`, `switch.js`, `edge_flag.js`, `duty_meter.js`).
 - `sim-engines.md`: the engines and the step lights (`engines.test.js`, `hc595.js`).
 - `sim-watchdog.md`: the watchdog and the crash log (`watchdog.test.js`, `crash_record.js`).
-- `sim-midi.md`: MIDI out (`midi.test.js`, `midi_clock.test.js`, `midi_fixture.js`, `midi_messages.js`).
+- `sim-midi.md`: MIDI out and in (`midi*.test.js`, `midi_fixture.js`, `midi_messages.js`, `midi_source.js`).
 - `sim-modulation.md`: modulation (`modulation.test.js`).
 
 ## Limits
 
 The chip and parts are models.
-Nothing analog is modelled, parts have no setup or hold limits, and only the GPIO, ADC, USART (sending only), Timer/Counter2 (with its compare match interrupt), SPI, EEPROM and watchdog models have been exercised so far.
+Nothing analog is modelled, parts have no setup or hold limits, and only the GPIO, ADC, USART, Timer/Counter2 (with its compare match interrupt), SPI, EEPROM and watchdog models have been exercised so far.
 The two edge flags are this project's own model, with no synchroniser, noise canceller or minimum pulse width, and a switch bounces only as scripted.
 The EEPROM model keeps the four-cycle rule for starting a write but never wears or fails, and the reset flags register holds only what the scenario put there.
 SPI clock edges are not modelled at all, and an output pin is a logic level with no voltage, rise time or load.
-The USART's transmit pin is not a pin here at all: what is captured is each byte as it is handed over, so bit timing, framing and the MIDI current loop are not modelled, and nothing is ever received.
+The USART's transmit pin is not a pin here at all: what is captured is each byte as it is handed over, so bit timing, framing and the MIDI current loop are not modelled; a byte coming in is handed over whole too, and never damaged.
 The emulated USART holds one byte where the real one has a buffer behind its shift register, so on the chip a second byte is taken at once and the queue empties a byte sooner; a byte behind another leaves the pin there with no wait for the loop to come round, a few microseconds earlier than here.
 A scenario passing is not proof on hardware; say so when reporting.

@@ -2,11 +2,13 @@
 paths:
   - "tools/sim/scenarios/midi.test.js"
   - "tools/sim/scenarios/midi_clock.test.js"
+  - "tools/sim/scenarios/midi_in.test.js"
+  - "tools/sim/parts/midi_source.js"
   - "tools/sim/scenarios/midi_fixture.js"
   - "tools/sim/boards/midi_messages.js"
 ---
 
-# tools/sim: MIDI out
+# tools/sim: MIDI out and in
 
 Loaded with the files below, on top of `tools/sim/CLAUDE.md`, whose rules apply to all of `tools/sim/`.
 
@@ -22,3 +24,11 @@ Loaded with the files below, on top of `tools/sim/CLAUDE.md`, whose rules apply 
   Play the note messages back as a receiver would (`soundingAtEnd()` in `midi_fixture.js`) to show none is left on.
 - `midi_messages.js` does not accept running status and calls anything but Start, Stop, the clock and the two note messages `unknown`.
   A scenario that asserts none is unknown has shown that no byte was dropped from inside a message.
+- MIDI in is `parts/midi_source.js`, on the board as `midiIn`: `sendMidi(bytes)` queues bytes at 320 µs each, `startMidiClockIn(ms)` sends a clock byte on a period, and `midiIn.sent` lists each byte with the cycle it arrived in.
+  A byte is handed to the USART whole as its last bit would arrive; only the midi image takes it, and a scenario for it goes in `midi_in.test.js`.
+- The firmware counts every sixth clock as an edge and keeps the count through a stop.
+  A scenario that needs an edge sends six clocks, or a Start first, which makes the next clock one.
+- A step begins 1.2 to 2.2 ms after its clock byte arrives: read on the next tick, applied on the one after.
+  With a clock period that is a whole number of ticks the steps are then exactly six periods apart.
+- Two things sent on the same cycle go in the order they were asked for, so a Start sent as a clock falls due may land either side of it.
+  Run to a time between two clocks before sending one.

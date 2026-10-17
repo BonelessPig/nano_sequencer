@@ -75,7 +75,7 @@ void midi_output_init(void)
     // Frame format: 8 data bits, no parity, 1 stop bit
     UCSR0C = (uint8_t)((1U << UCSZ01) | (1U << UCSZ00));
 
-    // The receiver is enabled as the logger enables it; nothing reads it yet
+    // The receiver is enabled as the logger enables it; midi_input.c reads it
     UCSR0B = (uint8_t)((1U << RXEN0) | (1U << TXEN0));
 
     g_midi_tail  = 0U; // Empty the queue

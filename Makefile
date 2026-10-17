@@ -97,11 +97,13 @@ F_CPU      = 16000000UL
 # all of them, so they share build/obj/. There is one USART, so at most one of
 # the two uses it.
 #   debug     serial_logger.c: text log over USART0 at 115200 baud (the default)
-#             null_midi_output.c: no MIDI
+#             null_midi_output.c, null_midi_input.c: no MIDI
 #   release   null_logger.c: no logging
-#             null_midi_output.c: no MIDI, and the USART is never switched on
+#             null_midi_output.c, null_midi_input.c: no MIDI, and the USART
+#             is never switched on
 #   midi      null_logger.c: no logging
 #             midi_output.c: MIDI out over USART0 at 31250 baud
+#             midi_input.c: MIDI in over the same USART
 # Each configuration gets its own output folder, so switching between them
 # can never leave a stale image behind. CONFIG applies to `make`, `make size`
 # and `make flash`; the tests and the analysis always cover every one of
@@ -110,15 +112,19 @@ CONFIG ?= debug
 
 LOGGERS      = serial_logger null_logger
 MIDI_OUTPUTS = midi_output null_midi_output
+MIDI_INPUTS  = midi_input null_midi_input
 ifeq ($(CONFIG),debug)
     LOGGER      = serial_logger
     MIDI_OUTPUT = null_midi_output
+    MIDI_INPUT  = null_midi_input
 else ifeq ($(CONFIG),release)
     LOGGER      = null_logger
     MIDI_OUTPUT = null_midi_output
+    MIDI_INPUT  = null_midi_input
 else ifeq ($(CONFIG),midi)
     LOGGER      = null_logger
     MIDI_OUTPUT = midi_output
+    MIDI_INPUT  = midi_input
 else
     $(error CONFIG must be debug, release or midi, not "$(CONFIG)")
 endif
@@ -158,10 +164,11 @@ TARGET    = $(BUILD_DIR)/$(CONFIG)/output
 SRC_DIRS     = app core adapters/target
 INCLUDE_DIRS = core ports adapters/target
 
-# SRCS: every .c file in SRC_DIRS, less the logger and the MIDI output this
-# configuration does not use. A new .c file in one of those folders is picked
+# SRCS: every .c file in SRC_DIRS, less the logger, the MIDI output and the
+# MIDI input this configuration does not use. A new .c file in one of those folders is picked
 # up automatically; a new folder must be added to SRC_DIRS.
-UNUSED_CHOICES     := $(filter-out $(LOGGER) $(MIDI_OUTPUT),$(LOGGERS) $(MIDI_OUTPUTS))
+USED_CHOICES       := $(LOGGER) $(MIDI_OUTPUT) $(MIDI_INPUT)
+UNUSED_CHOICES     := $(filter-out $(USED_CHOICES),$(LOGGERS) $(MIDI_OUTPUTS) $(MIDI_INPUTS))
 UNUSED_CHOICE_SRCS := $(patsubst %,adapters/target/%.c,$(UNUSED_CHOICES))
 SRCS := $(filter-out $(UNUSED_CHOICE_SRCS),$(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)))
 

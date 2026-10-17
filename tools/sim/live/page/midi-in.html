@@ -1,0 +1,52 @@
+    <section>
+        <h2>MIDI in (D0, 31250 baud)</h2>
+        <div class="row">
+            <label><input type="checkbox" id="midi-clock-on"> MIDI clock into
+                MIDI in</label>
+            <button id="midi-in-start">Start</button>
+            <button id="midi-in-stop">Stop</button>
+            <button id="midi-in-continue">Continue</button>
+            <span class="dim" id="midi-in-note"></span>
+        </div>
+        <div class="pots">
+            <div><label for="midi-bpm">Tempo</label>
+                <input type="range" id="midi-bpm" min="30" max="300" step="1">
+                <span class="num" id="midi-bpm-reading"></span></div>
+        </div>
+        <details>
+            <summary>What MIDI in does</summary>
+            <div class="scroll"><table class="key">
+                <tr><th>Which image</th>
+                    <td>Only the midi image listens. The debug image's
+                        serial pins are its log, and the release image
+                        never switches them on.</td></tr>
+                <tr><th>Clock</th>
+                    <td>24 to a quarter note. Every sixth is an edge, as an
+                        edge on the clock input is: the first one takes the
+                        pattern over from the internal clock, and a step
+                        then begins on each, until the pattern is
+                        stopped.</td></tr>
+                <tr><th>Tempo pot, on the MIDI clock</th>
+                    <td>The same ratio as on the clock input, ÷4 to ×4,
+                        with six clocks counted as one edge.</td></tr>
+                <tr><th>Clock input and MIDI clock together</th>
+                    <td>The first of the two to give an edge since the last
+                        stop is the one followed. The other is passed over
+                        until the next stop.</td></tr>
+                <tr><th>Start</th>
+                    <td>Starts the pattern from its first step, running or
+                        not, on the MIDI clock: the step begins on the clock
+                        that follows. With no clock it waits.</td></tr>
+                <tr><th>Stop</th>
+                    <td>Stops the pattern, as the run button does, and
+                        forgets the external clock.</td></tr>
+                <tr><th>Continue</th>
+                    <td>Taken as a Start: the firmware cannot take a
+                        pattern up where it stopped.</td></tr>
+                <tr><th>Notes, and every other byte</th>
+                    <td>Passed over.</td></tr>
+                <tr><th>Power cycle</th>
+                    <td>Leaves the MIDI clock as it is.</td></tr>
+            </table></div>
+        </details>
+    </section>

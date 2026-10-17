@@ -18,6 +18,9 @@ Loaded with the files below, on top of `tests/CLAUDE.md`, whose rules apply to a
   For one that waits on the external clock from its first tick, the sequencer's tests set the transport's latch in the state straight after `seq_init()` (`wait_for_external()` in `seq_fixture.h`), which is what an edge while stopped leaves; the app's tests have to get there with a stop, an edge and a start.
 - An external edge is one tick with the edge flag set.
   Clear the flag again before the next tick, as the port does.
+  A MIDI edge, Start or Stop is the same in the sequencer's tests (`midi_edge_tick()` and the like in `test_seq_midi.c`).
+- In `test_app`, a MIDI byte given with `host_receive_midi()` is read on the next tick and what it does is applied and logged on the one after: allow two ticks.
+  Only every sixth clock is an edge, counted from `app_init()` or the last Start.
 - In `test_app`, giving a selector position an amount takes the pot down to 0 and up again with a scan after each (`set_amount()`, 20 ticks).
   The tempo is not disturbed by it, since the pot is not on the tempo's position.
   Allow a scan (8 ticks) for any change of the panel or the pot to be seen.

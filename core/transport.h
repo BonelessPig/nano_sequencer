@@ -17,6 +17,17 @@
  * clock back, so a start with a clock running waits for its next edge. The
  * transport never changes clock by itself for want of edges.
  *
+ * There are two external clocks, the clock input and MIDI (see midi_in.h),
+ * and the first of them to give an edge since the last stop is the one
+ * followed until the next: the other's edges are passed over. If both give
+ * one on the same tick it is the clock input.
+ *
+ * A MIDI Start and a MIDI Stop work the pattern too. A Stop stops it as a
+ * press does. A Start starts it from its beginning, running or not, on the
+ * MIDI clock whatever was being followed, so that it waits for the clock
+ * that comes after the Start. Of a Start and a Stop on the same tick the
+ * Start is the one taken.
+ *
  * The pattern is running after transport_init(), on the internal clock. A
  * button that is already held down then is not a press.
  *
@@ -49,6 +60,8 @@ typedef struct
     bool             b_starting; // true until the start has been reported
     bool             b_external; // true once an external edge has come, until
                                  // the next stop
+    bool             b_midi;     // While b_external: true if that clock is
+                                 // MIDI, false if it is the clock input
     transport_mode_t mode;       // The mode reported last tick
 } transport_state_t;
 
@@ -58,8 +71,12 @@ typedef struct
 typedef struct
 {
     bool    b_run_button;  // true while the run button is held down
-    bool    b_clock_edge;  // true if an edge arrived on the external clock
+    bool    b_clock_edge;  // true if an edge arrived on the clock input
                            // since the previous tick
+    bool    b_midi_edge;   // true if a MIDI clock that is an edge arrived
+                           // since the previous tick
+    bool    b_midi_start;  // true if a MIDI Start arrived since then
+    bool    b_midi_stop;   // true if a MIDI Stop arrived since then
     uint8_t elapsed_ticks; // Ticks (milliseconds) since the previous tick
 } transport_inputs_t;
 
@@ -71,7 +88,7 @@ typedef struct
     transport_mode_t mode; // What the pattern is doing
     bool b_started;        // true on the tick the pattern starts running: the
                            // first after transport_init(), and each time the
-                           // run button starts it again
+                           // run button or a MIDI Start starts it again
     bool b_changed;        // true on a tick whose mode is not the last one's.
                            // The first tick is compared with
                            // TRANSPORT_INTERNAL
@@ -79,6 +96,8 @@ typedef struct
                            // the one a start would use: an edge has come
                            // since the last stop. Given on every tick,
                            // stopped or running
+    bool b_edge;           // true if an edge arrived on this tick from the
+                           // external clock that b_external speaks of
 } transport_outputs_t;
 
 /**
@@ -89,9 +108,10 @@ typedef struct
 void transport_init(transport_state_t *p_state);
 
 /**
- * @brief  Runs one tick: settles the run button, notes an external edge and
- *         works out the mode. A press that stops the pattern forgets the
- *         external clock; an edge on the same tick brings it straight back.
+ * @brief  Runs one tick: settles the run button, takes a MIDI Stop and
+ *         Start, notes an external edge and works out the mode. A stop
+ *         forgets the external clock; an edge on the same tick brings it
+ *         straight back.
  *         Which clock is in use is given as well, since the mode does not
  *         say while the pattern is stopped. Reads *p_state and *p_in, writes
  *         *p_state and *p_out, and has no other effect.

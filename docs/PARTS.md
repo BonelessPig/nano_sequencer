@@ -84,7 +84,7 @@ They share the SPI clock, and one pin (D9) serves as both the 165s' load line an
 | 1 | 5-pin DIN socket | MIDI out. Its shield is left unconnected |
 | 2 | 220 Ω resistors | One from +5 V to pin 4, one from D1 (TX) to pin 5; pin 2 goes to ground. From memory of the MIDI specification, not verified (roadmap section 8) |
 
-### MIDI in (roadmap phase 10, not built)
+### MIDI in (roadmap phase 10: firmware built, circuit not designed)
 
 | Qty | Part | For |
 |---|---|---|
