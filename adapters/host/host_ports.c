@@ -19,6 +19,7 @@
 #include "status_output_port.h"
 #include "led_output_port.h"
 #include "level_output_port.h"
+#include "midi_input_port.h"
 #include "midi_output_port.h"
 #include "mod_input_port.h"
 #include "rate_input_port.h"
@@ -120,6 +121,9 @@ static uint16_t      g_host_midi_write_count = 0U;
 static uint16_t      g_host_midi_poll_count = 0U;
 static uint16_t      g_host_midi_bytes_at_gate_rise = 0U;
 static uint16_t      g_host_midi_bytes_at_first_event = 0U;
+static uint8_t       g_host_midi_in[HOST_MIDI_IN_MAX]; // Waiting to be read, oldest first
+static uint8_t       g_host_midi_in_count = 0U;
+static uint16_t      g_host_midi_in_read_count = 0U;
 
 
 
@@ -227,6 +231,8 @@ void host_reset(void)
     g_host_midi_poll_count      = 0U;
     g_host_midi_bytes_at_gate_rise   = 0U;
     g_host_midi_bytes_at_first_event = 0U;
+    g_host_midi_in_count      = 0U;
+    g_host_midi_in_read_count = 0U;
 
     for (uint8_t i = 0U; i < HOST_BREADCRUMB_HISTORY; i++)
     {
@@ -1125,6 +1131,56 @@ void log_flush(void)
 void host_set_midi_room(uint8_t room)
 {
     g_host_midi_room = room;
+}
+
+
+
+void host_receive_midi(const uint8_t *p_bytes, uint8_t count)
+{
+    if (NULL != p_bytes)
+    {
+        for (uint8_t i = 0U; i < count; i++)
+        {
+            if (g_host_midi_in_count < HOST_MIDI_IN_MAX)
+            {
+                g_host_midi_in[g_host_midi_in_count] = p_bytes[i];
+                g_host_midi_in_count++;
+            }
+        }
+    }
+}
+
+
+
+uint16_t host_midi_input_read_count(void)
+{
+    return g_host_midi_in_read_count;
+}
+
+
+
+uint8_t midi_input_read(uint8_t *p_bytes, uint8_t max_count)
+{
+    uint8_t count = 0U;
+
+    g_host_midi_in_read_count++;
+
+    if (NULL != p_bytes)
+    {
+        count = (g_host_midi_in_count < max_count) ? g_host_midi_in_count : max_count;
+        for (uint8_t i = 0U; i < count; i++)
+        {
+            p_bytes[i] = g_host_midi_in[i];
+        }
+        // What was not taken moves up, to be handed over next time
+        for (uint8_t i = count; i < g_host_midi_in_count; i++)
+        {
+            g_host_midi_in[i - count] = g_host_midi_in[i];
+        }
+        g_host_midi_in_count = (uint8_t)(g_host_midi_in_count - count);
+    }
+
+    return count;
 }
 
 

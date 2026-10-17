@@ -3,6 +3,7 @@ paths:
   - "core/transport.*"
   - "core/clock.*"
   - "core/debounce.*"
+  - "core/midi_in.*"
   - "core/seq.*"
 ---
 
@@ -23,6 +24,14 @@ Loaded with the files below, on top of `core/CLAUDE.md`, whose rules apply to al
   An edge is looked at while stopped too, for the latch alone, so that a start with a clock running waits for its edge.
   `b_external` in `transport_outputs_t` is that latch.
   It exists because `mode` does not say which clock a stopped pattern would start on.
+- There are two external clocks, the clock input and MIDI, and `transport` says which is followed: the first to give an edge since the last stop (`b_midi` beside the latch), the clock input if both do on one tick.
+  `seq.c` follows `b_edge` in `transport_outputs_t`, never the inputs' own edge flags, so the clock that was not first moves nothing.
+- A MIDI Stop is a stop as a press is one.
+  A MIDI Start is a start whether the pattern runs or not, and takes the MIDI clock even from the clock input: it has to be the external clock at once, so that the start waits for the clock after it and that clock begins step 0.
+  On one tick a Stop is taken before a Start.
+- `midi_in` looks at four bytes, each a whole message that can come anywhere in the stream (clock, Start, Continue, Stop), and passes every other byte over, so it keeps no running status and no channel.
+  Its one piece of state is the count to the next edge, the sixth clock; a Start puts it back so the next clock is an edge, and forgets an edge already seen in that call.
+  A note that is to mean something needs messages put together: that is a change to `midi_in`, not to `transport`.
 - A control that bounces (the run button) arrives as read, and `transport` debounces it.
   `debounce` counts in ticks, like `cal`: it is for a finger, not for music.
   Its first reading is taken as it stands; `transport` starts with the button as if held, so a button down at power-on is not a press.

@@ -20,6 +20,8 @@ The only code that knows about both the core and the ports.
   Failed reads are reported once per step, with the step, not once per scan, and so is a failed pitch CV write, although it happens every tick.
 - The three transport inputs (clock edge, reset edge, run button) are read on every tick, ahead of the scan, and go to the core as read: an edge lasts one tick, and the button is debounced in the core.
   Do not move them to the 8 ms scan: an edge would wait up to 8 ms, and the debounce counts ticks.
+  MIDI in is read with them, calibration mode included so that nothing piles up: eight bytes at most (`MIDI_IN_BYTES_PER_TICK`), which `midi_in_read()` turns into three flags for the sequencer's inputs.
+  The buffer is a static inside `read_midi_in()`: at file scope it is a rule 8.9 finding, and on the stack it would be set to zeroes every tick.
 - A change of transport is logged in the apply step, after the outputs and ahead of the step, so that a start reads `Transport = 1` and then `Step 0`.
 - Core inputs the board has no hardware for (direction, range, one-shot, scale, root, gate length) are set once in `set_fixed_controls()`.
   When one gets a control, read it through a port in the scan and take it out of that function.
@@ -41,6 +43,9 @@ The only code that knows about both the core and the ports.
   A failed write of it is logged with the step as a failed pitch write is, under the same error, and only if the pitch's own write went.
 - MIDI out is `midi_out_tick()`, called after `seq_tick()` with plain values from the sequencer's outputs, and not called in calibration mode, which sends nothing.
   Its bytes are written in the apply step of the next tick, after the step lights and ahead of the log, on every tick, a count of 0 included, so the apply step takes the same path every time.
+- The MIDI output is polled a second time on a pass with a tick, between the gather and the core, so that a byte can leave during the tick's work.
+  Without it the midi image at a step every 5 ms gave up Note Ons once MIDI in had added 9 µs to a tick (decision 202).
+  Anything that lengthens a tick moves where in a loop pass the next tick falls, by up to a pass (6 µs): a scenario bound tighter than that fails for no other reason.
 - The MIDI output's room is read in the gather step on every tick.
   The room read on one tick is still good when that tick's bytes are written on the next, because the queue only drains in between.
   Keep the write ahead of the read within a tick, or that stops being true.

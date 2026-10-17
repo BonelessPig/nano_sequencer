@@ -145,11 +145,19 @@ Keep each LED to a few milliamps.
 
 Known limits: there is no All Notes Off, so a reset in the middle of a note leaves it sounding (a scenario in `midi.test.js` holds this, to be turned round when it changes); a start is always from the first step; and once an external edge has come there is no clock while stopped.
 
-## 17. MIDI in is not built
+## 17. MIDI in: built for the clock, Start and Stop, and unrun
 
-The second piece of the roadmap's phase 10.
-The receiver is already enabled in the midi image, and nothing reads it.
-It is the next piece of work: the clock, Start and Stop first, with notes read and dropped (decisions 194 to 197).
+The second piece of the roadmap's phase 10 (decisions 194 to 202).
+The midi image follows a MIDI clock and takes Start, Stop and Continue; a note is passed over, and what one should mean is not decided.
+
+Not built or not known:
+
+- **The input circuit.** PARTS.md has placeholders. The optocoupler's output and the Nano's USB serial chip both reach D0, the chip through 1 kΩ, so the pull-up and whether an upload works with the circuit attached have to be worked out on the bench.
+- **D0 with nothing driving it.** On the Nano the USB serial chip holds it high. On a board without one it floats, and noise there would be read as bytes: a stray 0xF8 is a clock.
+- **A damaged byte.** The emulated board cannot make a frame error, so that path is proven only by the host test.
+- **A MIDI Start into a running pattern** restarts it and sends nothing out: MIDI out sends a Start only when a stopped pattern starts.
+
+On the board: a DAW's clock should give a step to six clocks with the pot in the middle of its range, its Start should begin the pattern on the downbeat, and its Stop should stop it.
 
 ## 18. A step short on a very fast external clock
 

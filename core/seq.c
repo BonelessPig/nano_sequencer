@@ -94,21 +94,21 @@ static void sync_ratio(uint16_t tempo_raw, clock_follow_t *p_follow)
  *         tempo on the internal clock, in step with the edges on the
  *         external one.
  * @param  p_state        Sequencer state; the clock moves on.
- * @param  p_in           Inputs for this tick.
- * @param  mode           Which clock the pattern is running from.
+ * @param  p_transport    Which clock the pattern is running from, and
+ *                        whether the external one gave an edge.
  * @param  elapsed_ticks  Ticks to move the clock on by.
  * @return Pulses that fell due.
  */
-static uint8_t pulses_due(seq_state_t *p_state, const seq_inputs_t *p_in,
-                          transport_mode_t mode, uint8_t elapsed_ticks)
+static uint8_t pulses_due(seq_state_t *p_state, const transport_outputs_t *p_transport,
+                          uint8_t elapsed_ticks)
 {
     uint8_t pulses;
 
-    if (TRANSPORT_EXTERNAL == mode)
+    if (TRANSPORT_EXTERNAL == p_transport->mode)
     {
         clock_follow_t follow;
 
-        follow.b_edge         = p_in->b_clock_edge;
+        follow.b_edge         = p_transport->b_edge;
         follow.elapsed_ticks  = elapsed_ticks;
         follow.pulses_to_step = 0U;
         if (p_state->step_pulses < SEQ_PULSES_PER_STEP)
@@ -455,14 +455,16 @@ static void start(seq_state_t *p_state, transport_mode_t mode)
  *         edge of its own.
  * @param  p_state        Sequencer state; updated.
  * @param  p_in           Inputs for this tick.
- * @param  mode           Which clock the pattern is running from.
+ * @param  p_transport    Which clock the pattern is running from, and
+ *                        whether the external one gave an edge.
  * @param  elapsed_ticks  Ticks to move the clock on by.
  * @param  p_out          Outputs, with the step fields already cleared; the
  *                        pulses that fell are given, whether or not a step
  *                        begins.
  */
-static void run(seq_state_t *p_state, const seq_inputs_t *p_in, transport_mode_t mode,
-                uint8_t elapsed_ticks, seq_outputs_t *p_out)
+static void run(seq_state_t *p_state, const seq_inputs_t *p_in,
+                const transport_outputs_t *p_transport, uint8_t elapsed_ticks,
+                seq_outputs_t *p_out)
 {
     // The level the clock output was left at by the tick before
     const bool b_clock_was_high = (p_state->step_pulses < SEQ_CLOCK_OUT_PULSES);
@@ -474,12 +476,12 @@ static void run(seq_state_t *p_state, const seq_inputs_t *p_in, transport_mode_t
         engines_init(p_state);
     }
 
-    pulses               = pulses_due(p_state, p_in, mode, elapsed_ticks);
+    pulses               = pulses_due(p_state, p_transport, elapsed_ticks);
     p_state->step_pulses = (uint16_t)(p_state->step_pulses + pulses);
     gate_pulses          = pulses;
     p_out->pulses        = pulses;
 
-    if ((TRANSPORT_EXTERNAL == mode) && b_clock_was_high
+    if ((TRANSPORT_EXTERNAL == p_transport->mode) && b_clock_was_high
         && (p_state->step_pulses >= SEQ_PULSES_PER_STEP))
     {
         // An edge that came early. The step stays due and begins on the
@@ -574,6 +576,9 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
 
         controls.b_run_button  = p_in->b_run_button;
         controls.b_clock_edge  = p_in->b_clock_edge;
+        controls.b_midi_edge   = p_in->b_midi_edge;
+        controls.b_midi_start  = p_in->b_midi_start;
+        controls.b_midi_stop   = p_in->b_midi_stop;
         controls.elapsed_ticks = p_in->elapsed_ticks;
         transport_tick(&p_state->transport, &controls, &transport);
 
@@ -606,7 +611,7 @@ void seq_tick(seq_state_t *p_state, const seq_inputs_t *p_in, seq_outputs_t *p_o
         }
         else
         {
-            run(p_state, p_in, transport.mode, elapsed_ticks, p_out);
+            run(p_state, p_in, &transport, elapsed_ticks, p_out);
         }
 
         p_out->cv                  = vibrato_cv(p_state, p_in);

@@ -13,15 +13,18 @@
 # The analysis runs four times, once per program that is actually linked,
 # because cppcheck treats everything it is given as one program. The target and
 # host adapters each define the same port functions, as do the two target
-# loggers and the two target MIDI outputs (only one of each is ever linked),
+# loggers, the two target MIDI outputs and the two MIDI inputs (only one of
+# each is ever linked),
 # and analysing them together would report every such function as defined
 # twice.
 #
 # Each run analyses the same files that are linked together for that build:
 #   misra-debug    core, ports, all of app (including main.c), adapters/target
-#                    without null_logger.c and midi_output.c
-#   misra-release  the same without serial_logger.c and midi_output.c
-#   misra-midi     the same without serial_logger.c and null_midi_output.c
+#                    without null_logger.c, midi_output.c and midi_input.c
+#   misra-release  the same without serial_logger.c, midi_output.c and
+#                    midi_input.c
+#   misra-midi     the same without serial_logger.c, null_midi_output.c and
+#                    null_midi_input.c
 #   misra-host     core, ports, app/ but main.c, adapters/host, tests/test_app*.c
 # The host run mirrors the test_app programs. It leaves out app/main.c because
 # the tests supply their own main, and it includes the test files only so
@@ -50,9 +53,9 @@ misra: misra-debug misra-release misra-midi misra-host
 
 # The three firmware runs share a recipe. MISRA_SKIP names the files of
 # adapters/target that the run's build does not link.
-misra-debug:   MISRA_SKIP = null_logger midi_output
-misra-release: MISRA_SKIP = serial_logger midi_output
-misra-midi:    MISRA_SKIP = serial_logger null_midi_output
+misra-debug:   MISRA_SKIP = null_logger midi_output midi_input
+misra-release: MISRA_SKIP = serial_logger midi_output midi_input
+misra-midi:    MISRA_SKIP = serial_logger null_midi_output null_midi_input
 MISRA_SKIP_FLAGS = $(patsubst %,-i adapters/target/%.c,$(MISRA_SKIP))
 
 misra-debug misra-release misra-midi:

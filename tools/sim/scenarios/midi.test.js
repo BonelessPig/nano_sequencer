@@ -247,13 +247,17 @@ test('midi: the gate, the clock output and the pitch are the release image\'s', 
     const pitches = (board) => board.gate.rises()
         .map((rise) => board.cvWriteBefore(rise).millivolts);
 
-    // The outputs are written first in a tick, ahead of the MIDI bytes
+    // The outputs are written first in a tick, ahead of the MIDI bytes.
+    // Each image notices a tick within a pass of its loop, 6 us, and where
+    // in the pass moves with the length of the tick before, so the two are
+    // not on the same cycle: 9 to 18 us apart measured before MIDI in was
+    // read on every tick, 17 to 26 since
     for (const pin of ['gate', 'clockOut']) {
         assert.equal(midi[pin].edges.length, release[pin].edges.length);
         midi[pin].edges.forEach((edge, i) => {
             assert.equal(edge.high, release[pin].edges[i].high);
             assertBetween(ms(midi, edge.cycle) - ms(release, release[pin].edges[i].cycle),
-                -0.02, 0.02, `ms between the two images' ${pin} edge ${i}`);
+                -0.03, 0.03, `ms between the two images' ${pin} edge ${i}`);
         });
     }
     assert.deepEqual(pitches(midi), pitches(release));

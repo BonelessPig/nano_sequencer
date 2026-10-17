@@ -35,12 +35,14 @@ const { attachClockSource } = require('../parts/clock_source');
 const { attachHc165Chain } = require('../parts/hc165');
 const { attachHc595Chain } = require('../parts/hc595');
 const { attachMcp4822 } = require('../parts/mcp4822');
+const { attachMidiSource } = require('../parts/midi_source');
 const { attachSwitch } = require('../parts/switch');
 const { readCrashLog, CRASH_LOG_ADDRESS, CRASH_LOG_BYTES } = require('./crash_record');
 const { createMidiParser } = require('./midi_messages');
 const WIRING = require('./wiring');
 
 const CLOCK_HZ = 16000000;
+const MIDI_BYTE_MS = 0.32; // Ten bits at 31250 baud
 const STEP_COUNT = 16;
 const NOTE_BITS = 4;
 const MODE_BITS = 8;
@@ -164,6 +166,13 @@ function createBoard(config, options = {}) {
     const resetIn = attachClockSource(
         machine.cpu, (high) => machine.externalInt0.setPin(!high));
 
+    // Whatever is plugged into MIDI in. There is no pin for it here: a byte
+    // is handed to the USART whole as its last bit arrives, which the
+    // USART takes only if its receiver is on
+    const midiIn = attachMidiSource(
+        machine.cpu, (value) => machine.usart.writeByte(value, true),
+        machine.msToCycles(MIDI_BYTE_MS));
+
     // The run button closes its pin to ground
     const runButton = attachSwitch(
         machine.cpu, (closed) => portOf(PINS.runButton).setPin(PINS.runButton.bit, !closed));
@@ -243,6 +252,7 @@ function createBoard(config, options = {}) {
         // What this image sends from the USART: a log, MIDI, or neither
         hasLog: WIRES[config] === WIRE_LOG,
         sendsMidi: WIRES[config] === WIRE_MIDI,
+        hearsMidi: WIRES[config] === WIRE_MIDI, // And listens to MIDI in
         panelReads: chain.reads,
         spiSent,
         // The DAC's frames: the pitch CV on channel A, the envelope on B
@@ -255,6 +265,8 @@ function createBoard(config, options = {}) {
         statusLight,
         clockIn,
         resetIn,
+        // What was sent to MIDI in: sent lists each byte as { value, cycle }
+        midiIn,
         runButton,
         // The cycle of each reset since power-on, which only the watchdog
         // causes
@@ -309,6 +321,24 @@ function createBoard(config, options = {}) {
             clockIn.pulse(machine.msToCycles(widthMs));
         },
 
+        /**
+         * Sends bytes to MIDI in, one after another at 320 us a byte, behind
+         * any still on their way. Only the midi image listens.
+         */
+        sendMidi(bytes) {
+            midiIn.send(bytes);
+        },
+
+        /** Starts a MIDI clock into MIDI in: a clock byte every clockMs. */
+        startMidiClockIn(clockMs) {
+            midiIn.startClock(machine.msToCycles(clockMs));
+        },
+
+        /** Stops the MIDI clock into MIDI in. */
+        stopMidiClockIn() {
+            midiIn.stopClock();
+        },
+
         /** One pulse on the reset input jack, high for widthMs (0: no time). */
         pulseResetIn(widthMs = 0) {
             resetIn.pulse(machine.msToCycles(widthMs));
@@ -342,7 +372,7 @@ function createBoard(config, options = {}) {
             for (const list of [gate.edges, clockOut.edges, statusLight.edges,
                 dac.writes.A, dac.writes.B, dac.ignored,
                 chain.reads, spiSent, leds.latches, clockIn.rises, resetIn.rises,
-                serial.lines, serial.notices, midi.bytes, midi.messages]) {
+                midiIn.sent, serial.lines, serial.notices, midi.bytes, midi.messages]) {
                 list.length = 0;
             }
             this.pressRunButton(60);

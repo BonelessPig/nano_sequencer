@@ -9,6 +9,23 @@ function noLogText() {
         : `(the ${state.config} image has no log)`;
 }
 
+// What a MIDI clock at a tempo comes to, beside its pot
+function showMidiBpm(bpm) {
+    el('midi-bpm-reading').textContent = `${bpm} BPM: six clocks every `
+        + `${(MS_PER_MINUTE / (bpm * STEPS_PER_BEAT)).toFixed(1)} ms`;
+}
+
+// MIDI in: where its controls stand, and whether this image listens
+function showMidiIn() {
+    el('midi-clock-on').checked = state.midiClockOn;
+    if (document.activeElement !== el('midi-bpm')) {
+        el('midi-bpm').value = String(state.midiBpm);
+        showMidiBpm(state.midiBpm);
+    }
+    el('midi-in-note').textContent = state.hearsMidi
+        ? '' : `The ${state.config} image does not listen to MIDI in`;
+}
+
 function applyState(newState) {
     state = newState;
     if (state.fresh) {
@@ -37,6 +54,7 @@ function applyState(newState) {
     showWatchdog();
     showCrashLog();
     showMidi();
+    showMidiIn();
 }
 
 function applyRun(run) {
@@ -98,6 +116,17 @@ el('clock-pattern').addEventListener('change',
     () => post({ clockPattern: el('clock-pattern').value }));
 el('clock-pulse').addEventListener('click', () => post({ pulse: 'clock' }));
 el('reset-pulse').addEventListener('click', () => post({ pulse: 'reset' }));
+el('midi-clock-on').addEventListener('change',
+    () => post({ midiClockOn: el('midi-clock-on').checked }));
+// Posted when the pot is let go, as the clock source's rate is
+el('midi-bpm').addEventListener('input', () => showMidiBpm(Number(el('midi-bpm').value)));
+el('midi-bpm').addEventListener('change', () => {
+    el('midi-bpm').blur(); // So the answer from the server sets it
+    post({ midiBpm: Number(el('midi-bpm').value) });
+});
+for (const message of ['start', 'stop', 'continue']) {
+    el(`midi-in-${message}`).addEventListener('click', () => post({ midiIn: message }));
+}
 el('stop-tick').addEventListener('click', () => post({ tick: 'stop' }));
 el('power').addEventListener('click', powerCycle);
 // Choosing an image is a power cycle with it: until one, the image named

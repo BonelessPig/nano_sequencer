@@ -7,7 +7,7 @@ The core owns these; adapters implement them.
 - Document every port function in its header: purpose, units, valid ranges, and whether it's ISR-safe.
 - A port header includes nothing from `adapters/` and names no register, pin or MCU.
 - Every port function has two implementations: one in `adapters/target/` and a fake in `adapters/host/host_ports.c`.
-  `log_port.h` has two on the target, one per logger, and `midi_output_port.h` is the second such port, with one that sends and one that discards.
+  `log_port.h` has two on the target, one per logger; `midi_output_port.h` is the second such port, with one that sends and one that discards, and `midi_input_port.h` the third, with one that receives and one that never has a byte.
   Add all of them in the same change.
 - A port function nothing calls yet is a rule 8.7 finding in every analysis run that links it.
   A port and its first caller land in the same change.
@@ -20,5 +20,7 @@ The core owns these; adapters implement them.
 - An input that can come and go between two ticks (a clock edge, a reset pulse) is a port function that reports whether one has arrived since it was last called, and forgets it (`clock_input_edge()`).
   The app calls it once on every tick.
   A control that bounces (a button, a switch) is given as read; the core debounces it.
+- An input that is a stream of bytes (`midi_input_read()`) hands over what arrived since it was last called, up to a count the caller gives, and keeps the rest.
+  What could not be kept is dropped by the adapter; the port has no way to say so.
 - Functions that can fail return `port_status_t` from `port_status.h`.
   Its values are printed in the serial log, so never renumber them; add new codes with new numbers.

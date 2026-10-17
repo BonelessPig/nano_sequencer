@@ -17,6 +17,7 @@
 #include "cal_record.h"
 #include "env.h"
 #include "errlog.h"
+#include "midi_in.h"
 #include "midi_out.h"
 #include "note_map.h"
 #include "panel.h"
@@ -33,6 +34,7 @@
 #include "led_output_port.h"
 #include "level_output_port.h"
 #include "log_port.h"
+#include "midi_input_port.h"
 #include "midi_output_port.h"
 #include "mod_input_port.h"
 #include "nv_port.h"
@@ -49,6 +51,10 @@
 // The panel and the tempo control are read once every this many ticks
 // (125 times a second), not on every tick
 #define INPUT_SCAN_PERIOD_TICKS (8U)
+
+// The most MIDI bytes taken from the input in one tick. Three can arrive in
+// a tick, so this catches up after a stalled one; the rest wait for the next
+#define MIDI_IN_BYTES_PER_TICK (8U)
 
 // The board has no gate length control yet: a note is held for half its step
 #define GATE_LENGTH_PULSES (SEQ_PULSES_PER_STEP / 2U)
@@ -95,6 +101,7 @@ static cal_outputs_t g_cal_outputs; // What it computed on the last tick
 static midi_out_state_t g_midi_state; // MIDI out's state carried between ticks
 static midi_out_bytes_t g_midi_bytes; // What it computed on the last tick
 static uint8_t          g_midi_room = 0U; // Bytes the MIDI output could take, as last read
+static midi_in_state_t  g_midi_in_state;  // MIDI in's state carried between ticks
 
 static bank_state_t g_bank;                // The amounts the pot sets, one a slot
 static uint16_t     g_pot_raw     = 0U;    // The pot's position, as last read
@@ -244,9 +251,31 @@ static void scan_inputs(void)
 
 
 /**
+ * @brief  Reads the MIDI bytes received since the last tick and gives the
+ *         snapshot what they ask of the transport: an edge of the MIDI
+ *         clock, a start, a stop.
+ */
+static void read_midi_in(void)
+{
+    // Static so that it is not set to zeroes on every tick: only the bytes
+    // just read are looked at
+    static uint8_t   bytes[MIDI_IN_BYTES_PER_TICK];
+    midi_in_events_t events;
+    const uint8_t    count = midi_input_read(bytes, (uint8_t)MIDI_IN_BYTES_PER_TICK);
+
+    midi_in_read(&g_midi_in_state, bytes, count, &events);
+    g_inputs.b_midi_edge  = events.b_edge;
+    g_inputs.b_midi_start = events.b_start;
+    g_inputs.b_midi_stop  = events.b_stop;
+}
+
+
+
+/**
  * @brief  Brings the input snapshot up to date for this tick: records the
- *         elapsed time, reads the transport inputs and the room the MIDI
- *         output has, which are read on every tick, and then either
+ *         elapsed time, reads the transport inputs, MIDI in among them, and
+ *         the room the MIDI output has, which are read on every tick, and
+ *         then either
  *         re-reads the panel and the pots, if a scan is due, or reads the
  *         LFO. A scan's tick has the rate pot's conversion where the
  *         others have the LFO's, so that no tick is longer for it, and the
@@ -260,6 +289,7 @@ static void gather_inputs(uint8_t elapsed_ticks)
     g_inputs.b_clock_edge  = clock_input_edge();
     g_inputs.b_reset       = reset_input_edge();
     g_inputs.b_run_button  = run_input_read();
+    read_midi_in();
     g_midi_room            = midi_output_room();
 
     if (elapsed_ticks >= g_ticks_until_scan)
@@ -455,6 +485,9 @@ static void reset_tick_state(void)
     g_inputs.elapsed_ticks = 0U;
     g_inputs.b_reset       = false;
     g_inputs.b_clock_edge  = false;
+    g_inputs.b_midi_edge   = false;
+    g_inputs.b_midi_start  = false;
+    g_inputs.b_midi_stop   = false;
     g_inputs.b_run_button  = false;
     g_inputs.mod.lfo         = 0U;
     g_inputs.mod.b_lfo_valid = false;
@@ -504,6 +537,7 @@ static void reset_tick_state(void)
     g_env_level = 0U;
 
     midi_out_init(&g_midi_state);
+    midi_in_init(&g_midi_in_state);
     g_midi_bytes.count = 0U;
     g_midi_room        = 0U;
 
@@ -642,6 +676,10 @@ void app_run_once(void)
         watchdog_kick();
         breadcrumb_write(PLACE_GATHER);
         gather_inputs(elapsed_ticks);
+        // A byte may leave here too, and not only once the tick's work is
+        // done: the line is then idle for less of a tick, which is what
+        // lets it carry twelve bytes every 5 ms with MIDI in being read
+        midi_output_poll();
         breadcrumb_write(PLACE_CORE);
         run_core();
         breadcrumb_write(PLACE_IDLE);

@@ -2,10 +2,12 @@
 paths:
   - "adapters/target/*logger*"
   - "adapters/target/*midi_output*"
+  - "adapters/target/*midi_input*"
   - "adapters/target/atmega328p_usart_regs.h"
+  - "adapters/target/atmega328p_usart_rx_regs.h"
 ---
 
-# adapters/target: loggers, MIDI outputs and the UART
+# adapters/target: loggers, MIDI out and in, and the UART
 
 Loaded with the files below, on top of `adapters/target/CLAUDE.md`, whose rules apply to all of `adapters/target/`.
 
@@ -15,6 +17,13 @@ Loaded with the files below, on top of `adapters/target/CLAUDE.md`, whose rules 
 - `serial_logger.c` (debug) and `null_logger.c` (release and midi) both implement `log_port.h` and `logger.h`.
   A change to either interface changes both files.
   The same goes for `midi_output.c` (midi) and `null_midi_output.c` (debug and release), which implement `midi_output_port.h` and `midi_output.h`.
+- MIDI in is a third link-time pair, `midi_input.c` (midi) and `null_midi_input.c` (debug and release), implementing `midi_input_port.h` and `midi_input.h`; it goes with the MIDI output of the same build, never against it.
+  `midi_input.c` sets up nothing of the USART but its receive interrupt: `midi_output_init()` writes the control register whole, so `midi_input_init()` comes after it and only sets its one bit.
+- The receive handler reads the status register before the data register, because reading the data moves both on to the next byte.
+  It drops a byte with a frame error and keeps one that came with an overrun: the overrun's lost byte is the one after, which the hardware has already thrown away.
+- The ring is 16 slots and holds 15, with a byte each for the two indexes: the handler writes the head, `midi_input_read()` the tail, and neither masks interrupts.
+  Take each `volatile` into a local once; two reads of one in an expression is a finding.
+- The receive vector is 18, checked in the midi image's vector table with `avr-objdump -d`.
 - `null_midi_output.c` never touches a register and gives a room of 255.
   That is what keeps the release build off PD0 and PD1.
 - MIDI's 31250 baud is exact in double-speed mode at 16 MHz, a divisor of 63.

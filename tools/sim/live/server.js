@@ -37,6 +37,9 @@
  *                  { clockPattern: name }       How even its edges are:
  *                                               one of the board's
  *                                               CLOCK_PATTERNS.
+ *                  { midiClockOn }, { midiBpm }, { midiIn }   What is
+ *                                               plugged into MIDI in: see
+ *                                               midi_in.js.
  *                  { tick: 'stop' }             Stops the firmware's tick,
  *                                               for the watchdog to catch.
  *                  { power: 'debug' | 'release' | 'midi',
@@ -68,12 +71,13 @@ const {
 } = require('../boards/nano_sequencer');
 const {
     STEP_UNKNOWN, startAfresh, isInCalibrationMode, takePanelRead, nextStep,
-    followLog, takeExternalEdge, predictRunPress, predictReset,
+    followLog, takeExternalEdge, takeMidiIn, predictRunPress, predictReset,
 } = require('./predict');
 const {
     midiSummary, recordMidi, forgetMidi, beginMidiSlice, addMidiClocks,
     addMidiClockQuiet,
 } = require('./midi_out');
+const { plugMidiIn, applyMidiInCommand } = require('./midi_in');
 const { reply, servePage, serveAsset, ASSET_URL } = require('./page_files');
 
 const HOST = '127.0.0.1'; // This PC only
@@ -117,6 +121,8 @@ const panel = {
     clockOn: false,
     clockMs: START_CLOCK_MS,
     clockPattern: CLOCK_PATTERNS[0], // Steady
+    midiClockOn: false,
+    midiBpm: 120,
 };
 const clients = new Set();
 let board = null;
@@ -153,6 +159,7 @@ function powerUp(config, eeprom) {
     if (panel.clockOn) {
         board.startClockIn(panel.clockMs, panel.clockPattern);
     }
+    plugMidiIn(board, panel);
     panel.config = config;
     outputs = {
         gate: false,
@@ -277,6 +284,11 @@ function record(item, events) {
             startAgain();
             events.push({ t, k: 'watchdog' });
             break;
+        case 'midiin':
+            if (board.hearsMidi) {
+                takeMidiIn(item.value, t, events);
+            }
+            break;
         case 'clockin':
             events.push({ t, k: item.kind });
             takeExternalEdge(t, events);
@@ -305,6 +317,7 @@ function drain() {
     board.ledLatches.forEach((latch) => add(latch.cycle, 'led', latch.value));
     board.panelReads.forEach((read) => add(read.cycle, 'read'));
     board.clockIn.rises.forEach((cycle) => add(cycle, 'clockin'));
+    board.midiIn.sent.forEach((byte) => add(byte.cycle, 'midiin', byte.value));
     board.resetIn.rises.forEach((cycle) => add(cycle, 'resetin'));
     board.resets.forEach((cycle) => add(cycle, 'watchdog'));
     for (const line of [...serial.lines, ...serial.notices]) {
@@ -326,6 +339,7 @@ function drain() {
         board.envWrites,
         board.cvIgnoredFrames, board.panelReads, board.spiSent,
         board.ledLatches, board.clockIn.rises, board.resetIn.rises,
+        board.midiIn.sent,
         board.resets, serial.lines, serial.notices, midi.bytes, midi.messages]) {
         list.length = 0;
     }
@@ -348,6 +362,7 @@ function stateMessage(isFresh) {
         ...panel, ...outputs, runDown: board.runButton.isClosed(),
         calibrating: isInCalibrationMode(), ms: chipMs(), fresh: isFresh,
         hasLog: board.hasLog, sendsMidi: board.sendsMidi, midi: midiSummary(),
+        hearsMidi: board.hearsMidi,
         tickStopped: isTickStopped, watchdogResets, crashLog,
     };
 }
@@ -523,6 +538,8 @@ function applyCommand(command) {
         setClock(command.clockMs, panel.clockPattern);
     } else if (CLOCK_PATTERNS.includes(command.clockPattern)) {
         setClock(panel.clockMs, command.clockPattern);
+    } else if (applyMidiInCommand(command, board, panel)) {
+        // MIDI in's own: the clock into it, or a message
     } else if (command.tick === 'stop') {
         board.stopTick();
         isTickStopped = true;

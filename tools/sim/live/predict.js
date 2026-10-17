@@ -14,6 +14,11 @@
  * the step position (selector position 4). The step lights, which are the
  * chip's own, show that one.
  *
+ * MIDI in is followed for the same two things, on an image that listens to
+ * it: its clock is an external clock, the sixth of them an edge as the
+ * firmware counts them, and a Start makes the next step the first. Whether
+ * the pattern runs is still taken from what the image sends back.
+ *
  * Whether the firmware came up in calibration mode is kept here too, since
  * nothing is sequenced there and there is no transport to speak of.
  */
@@ -45,6 +50,13 @@ const STEP_UNKNOWN = -1;         // No step can be named, so none is lit
 const TRANSPORT_STOPPED = 0;     // As the firmware numbers them in its log
 const TRANSPORT_INTERNAL = 1;
 const TRANSPORT_EXTERNAL = 2;
+// MIDI in: the bytes that matter, and the clocks passed over between one
+// edge and the next (six to a step, less the edge)
+const MIDI_CLOCK = 0xF8;
+const MIDI_START = 0xFA;
+const MIDI_CONTINUE = 0xFB;
+const MIDI_STOP = 0xFC;
+const MIDI_CLOCKS_BETWEEN_EDGES = 5;
 
 // The server's own, written to from here: of `outputs` the step, the stage's
 // count and the transport are worked out in this file, and `panel` is where
@@ -57,6 +69,7 @@ let isCalibrating = false; // Powered up with the calibration entry pattern set
 let hasExternalEdge = false;
 let isFirstStepDue = false; // The next step to begin is the pattern's first
 let stepEngine = ENGINE_PLAIN; // The engine that gave the last step counted
+let midiClocksToEdge = 0;      // MIDI clocks to pass over before the next edge
 // What else is kept of an engine's place, beside the last step counted: the
 // chance engine's place in the order (which it keeps while it shuffles), the
 // Cartesian engine's two counters as they stand for the step to come, and
@@ -91,6 +104,7 @@ function startAfresh(liveOutputs, livePanel, isInCalibration) {
     outputs.transportFrom = 'controls';
     isFirstStepDue = true;
     stepEngine = ENGINE_PLAIN;
+    midiClocksToEdge = 0;
     seen.mode = panel.mode;
     seen.notes = panel.notes;
 }
@@ -272,6 +286,35 @@ function takeExternalEdge(t, events) {
 }
 
 /**
+ * Takes one byte sent to MIDI in, as the firmware does: the sixth clock is
+ * an edge of the external clock, the first after a Start or a Continue
+ * among them; a Start or a Continue is on the MIDI clock at once and makes
+ * the next step the first; a Stop forgets the external clock. Whether the
+ * pattern is running is not changed here: the image's own Start or Stop
+ * says so a moment later.
+ */
+function takeMidiIn(value, t, events) {
+    if (value === MIDI_CLOCK) {
+        if (midiClocksToEdge === 0) {
+            midiClocksToEdge = MIDI_CLOCKS_BETWEEN_EDGES;
+            takeExternalEdge(t, events);
+        } else {
+            midiClocksToEdge--;
+        }
+    } else if ((value === MIDI_START) || (value === MIDI_CONTINUE)) {
+        midiClocksToEdge = 0;
+        if (!isCalibrating) {
+            hasExternalEdge = true;
+            isFirstStepDue = true;
+        }
+    } else if (value === MIDI_STOP) {
+        hasExternalEdge = false;
+    } else {
+        // A byte of a note or of anything else: the firmware passes it over
+    }
+}
+
+/**
  * Says what the firmware will make of a run button press, since the button
  * only toggles and the release image never says which way it went: stopped
  * becomes running, from the first step, and running becomes stopped. It is
@@ -307,5 +350,5 @@ function predictReset() {
 module.exports = {
     STEP_UNKNOWN, TRANSPORT_STOPPED, startAfresh, isInCalibrationMode,
     takePanelRead, runningTransport, nextStep, followLog, followMidiTransport,
-    takeExternalEdge, predictRunPress, predictReset,
+    takeExternalEdge, takeMidiIn, predictRunPress, predictReset,
 };

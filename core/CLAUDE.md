@@ -17,7 +17,7 @@ The same source is compiled for the MCU and for a PC.
 
 ## Modules
 
-- One module, one question: `seq` (is a step due), `clock` (ticks to pulses, at a tempo or following external edges), `transport` (is the pattern running, and from which clock), `debounce` (a control's settled level), `engine_*` (which step, its note value, and whether it is tied to the next), `address` (next step in the range, and the step an offset moves it to), `note_map` (note value to pitch), `panel` (a step's switches, and the mode switches), `gate` (is the note still held), `prng` (the next random byte), `pitch_cal` (pitch to CV value), `cal` (is this calibration mode, and what is it setting), `cal_record` (are these stored bytes a calibration table), `errlog` (which crash log record is the newest, and what this start-up adds), `crc8` (the checksum of these bytes), `midi_out` (which MIDI bytes this tick sends), `pickup` (has the pot met this stored value), `bank` (what each slot's amount is, and which the pot is setting), `mod` (how far a signal and an amount move a value, and whether they make a chance come up), `env` (the envelope's level this tick), `lfo` (the modulating signal this tick: the sequencer's own LFO added to the one from outside), `profile` (what the profile button asks for), `profile_record` (are these bytes a profile), `blink` (is the status light lit).
+- One module, one question: `seq` (is a step due), `clock` (ticks to pulses, at a tempo or following external edges), `transport` (is the pattern running, and from which clock), `debounce` (a control's settled level), `engine_*` (which step, its note value, and whether it is tied to the next), `address` (next step in the range, and the step an offset moves it to), `note_map` (note value to pitch), `panel` (a step's switches, and the mode switches), `gate` (is the note still held), `prng` (the next random byte), `pitch_cal` (pitch to CV value), `cal` (is this calibration mode, and what is it setting), `cal_record` (are these stored bytes a calibration table), `errlog` (which crash log record is the newest, and what this start-up adds), `crc8` (the checksum of these bytes), `midi_out` (which MIDI bytes this tick sends), `midi_in` (what the MIDI bytes received ask for), `pickup` (has the pot met this stored value), `bank` (what each slot's amount is, and which the pot is setting), `mod` (how far a signal and an amount move a value or a chance), `env` (the envelope's level this tick), `lfo` (the modulating signal this tick), `profile` (what the profile button asks for), `profile_record` (are these bytes a profile), `blink` (is the status light lit).
   A new one gets its own `.c`, `.h` and test program; `docs/ROADMAP.md` section 4 lists the ones planned.
 - A module includes only the modules below it.
   `seq` is the top of the sequencer, and nothing includes `seq.h` from inside `core/`.
@@ -26,7 +26,7 @@ The same source is compiled for the MCU and for a PC.
   `midi_out` stands beside `seq` too: the app calls it after `seq_tick()` with plain values taken from the sequencer's outputs, and it includes nothing else from the core.
   `bank` stands beside `seq` as well, with `pickup` under it: the app runs it ahead of the sequencer and hands the sequencer the amounts it uses as plain values.
   Neither includes anything of the sequencer's, so that another board can take them as they are.
-  `env`, `lfo`, `profile`, `profile_record` and `blink` stand beside `seq` too: `env` and `blink` include nothing from the core, `lfo` only `mod.h`, and the profile pair only `debounce.h` and `crc8.h`.
+  `env`, `lfo`, `profile`, `profile_record`, `blink` and `midi_in` stand beside `seq` too: `env`, `blink` and `midi_in` include nothing from the core, `lfo` only `mod.h`, and the profile pair only `debounce.h` and `crc8.h`.
 - Two files of the core cannot have a static function of the same name (rule 5.9): `lfo.c` has `capped()` because `mod.c` has `at_most()`.
 - Every pointer parameter is checked for null, and a null means do nothing and return the harmless value (false, 0).
   The header says so.
@@ -48,7 +48,7 @@ The lessons about one part of the core are in `.claude/rules/`, each loaded when
 A new lesson about one of these goes in its file; one about the whole folder goes here.
 Read the file yourself before writing a new file that belongs to its topic.
 
-- `core-transport.md`: transport and the external clock (`transport.*`, `clock.*`, `debounce.*`, `seq.*`).
+- `core-transport.md`: transport and the external clock (`transport.*`, `clock.*`, `debounce.*`, `midi_in.*`, `seq.*`).
 - `core-bank.md`: the amount bank (`bank.*`, `pickup.*`).
 - `core-mod.md`: modulation (`mod.*`, `seq.*`).
 - `core-midi-out.md`: MIDI out (`midi_out.*`).

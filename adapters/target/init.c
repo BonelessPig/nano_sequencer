@@ -13,6 +13,7 @@
 #include "clock_input.h"
 #include "level_output.h"
 #include "logger.h"
+#include "midi_input.h"
 #include "midi_output.h"
 #include "register_init.h"
 #include "port_status.h"
@@ -25,8 +26,8 @@
 
 /**
  * @brief  Initializes the logger, the MCU registers, the SPI bus, the edge
- *         inputs, the level light, the MIDI output (the USART or nothing,
- *         whichever the build links), the watchdog and the timebase (see
+ *         inputs, the level light, the MIDI output and input (the USART or
+ *         nothing, whichever the build links), the watchdog and the timebase (see
  *         platform_port.h). The timebase
  *         comes last because it switches interrupts on, and it and the
  *         watchdog are only started if everything before them worked: a
@@ -49,6 +50,7 @@ port_status_t platform_init(void)
         reset_input_init();
         level_output_init(); // After the registers: the pin is low by now
         midi_output_init(); // The USART, in the build that sends MIDI
+        midi_input_init();  // After it: its receive interrupt, in that build
         watchdog_init();    // While interrupts are still off; kicked on every tick
         timebase_init();    // Start the 1 kHz tick and enable interrupts
     }
